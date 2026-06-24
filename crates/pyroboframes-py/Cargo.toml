@@ -14,4 +14,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyroboframes-core = { path = "../pyroboframes-core" }
-pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
+pyo3 = { version = "0.22", features = ["abi3-py310"] }
+
+[features]
+# Enabled by maturin when building the wheel (see pyproject.toml). Left off for plain
+# `cargo build`/`cargo test` so the crate links against the local Python instead of
+# requiring maturin's dynamic-lookup linker flags.
+extension-module = ["pyo3/extension-module"]

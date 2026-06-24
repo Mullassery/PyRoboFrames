@@ -98,14 +98,24 @@ for batch in loader:
     ...                                          # your MLX training step
 ```
 
+## Cross-platform
+
+PyRoboFrames runs on **both macOS and Linux** from the same API and the same Rust core.
+The platform-specific part is decode and output, selected behind a single `Decoder` trait:
+
+- **macOS (Apple Silicon)** — the optimized path: VideoToolbox hardware decode → IOSurface →
+  **zero-copy MLX**. This is the differentiator.
+- **Linux** — the same engine, decoding via FFmpeg (VAAPI / NVDEC hardware acceleration where
+  available, software fallback otherwise) and outputting **NumPy / PyTorch**.
+
 ## Supported (target matrix)
 
 | | v0.1 | Planned |
 |---|---|---|
 | Datasets | LeRobotDataset v3.0 | MCAP, RLDS, HDF5 |
-| Codecs (HW) | H.264, HEVC (VideoToolbox) | ProRes, AV1 (M3+) |
-| Output | MLX, NumPy | PyTorch-MPS (DLPack) |
-| Platform | macOS / Apple Silicon | Linux+CUDA fallback, x86 (SW decode) |
+| Decode (HW) | macOS: H.264/HEVC (VideoToolbox) · Linux: VAAPI/NVDEC (FFmpeg) + software fallback | ProRes, AV1 (M3+) |
+| Output | macOS: MLX · all: NumPy | PyTorch (MPS/CUDA) via DLPack |
+| Platform | macOS (Apple Silicon) · Linux (x86_64, aarch64) | CUDA zero-copy |
 
 ## Benchmarks
 

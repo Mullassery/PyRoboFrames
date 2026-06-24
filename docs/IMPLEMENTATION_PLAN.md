@@ -6,13 +6,14 @@ design rationale this plan implements.
 
 ## Definition of done (v0.1)
 
-- Load a real **LeRobotDataset v3.0** (local path or HF Hub) and iterate a dataloader that
-  yields **MLX arrays** decoded on the Apple Media Engine.
-- Train a toy MLX policy end-to-end using the loader.
+- Load a real **LeRobotDataset v3.0** (local path or HF Hub) and iterate a dataloader on
+  **both macOS and Linux** — yielding zero-copy **MLX arrays** on Apple Silicon (decoded on
+  the Media Engine) and **NumPy/PyTorch** on Linux (FFmpeg decode).
+- Train a toy policy end-to-end through the loader (MLX on macOS).
 - Beat the PyAV/CPU decode baseline by a meaningful multiple (target ≥3× frames/s), measured
   by a reproducible harness.
 - `validate()` catches missing frames, timestamp gaps, and camera/state misalignment.
-- Apple Silicon wheels published to PyPI via Trusted Publishing; CI green.
+- macOS + Linux wheels published to PyPI (`maturin publish`, run manually — no CI workflows).
 
 ---
 
@@ -54,10 +55,10 @@ plan.
 
 `decode.rs` (implements the `Decoder` trait already in `lib.rs`)
 
-- `VideoToolboxDecoder` from Spike B: open/seek/decode → `Frame { IOSurface }`. **Frame pool**
-  recycles buffers (avoid per-frame alloc).
-- `FfmpegDecoder` behind a `--features ffmpeg` flag — **deferred to v0.2** (v0.1 MVP is
-  Apple-only; keep the trait + flag so it slots in).
+- `VideoToolboxDecoder` (macOS, `cfg(target_os = "macos")`) from Spike B: open/seek/decode →
+  `Frame { IOSurface }`. **Frame pool** recycles buffers (avoid per-frame alloc).
+- `FfmpegDecoder` (Linux) — **in v0.1** (Linux is a first-class target): VAAPI/NVDEC hwaccel
+  where available, software fallback otherwise. Same `Decoder` trait, selected by `cfg`.
 - Tests: decode known frames from a fixture mp4, compare to a PyAV reference within tolerance;
   assert pool reuse.
 
@@ -138,7 +139,8 @@ Phase 1 dataset ───────┘   (Phase 3 sampling feeds Phase 4; Phas
 
 1. **Concurrency:** `std` threads + crossbeam (decode is blocking) over Tokio async — simpler,
    no async runtime in the hot path. *Default: std+crossbeam.*
-2. **FFmpeg fallback:** defer to v0.2; v0.1 is Apple-only MVP. *Default: defer.*
+2. **Platforms:** macOS + Linux both in v0.1 (per requirement). VideoToolbox (macOS) and
+   FFmpeg (Linux) backends, `cfg`-gated. CUDA zero-copy output is the harder follow-on.
 3. **Hub download:** Python `huggingface_hub` for v0.1 (mature, easy) over the Rust `hf-hub`
    crate. *Default: Python side.*
 4. **Arrow across FFI:** only if it pays for itself; otherwise hand tabular data as numpy.

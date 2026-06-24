@@ -48,9 +48,15 @@ Other formats: **MCAP** (the rosbag successor, multimodal log container), **RLDS
 | `videotoolbox` crate (Rust) | ✅ Media Engine, IOSurface I/O | ✅ IOSurface → Metal | **primary backend** |
 | `ff-decode` / `video-rs` / `avio` (Rust, FFmpeg) | via `videotoolbox` hwaccel | partial | **portable fallback** + non-Apple |
 
-Decision: the `videotoolbox` crate is the Apple-native fast path (HW decode, IOSurface
-output, async helpers). An FFmpeg-based crate is the cross-platform / unsupported-codec
-fallback. Both sit behind a single `Decoder` trait.
+Decision: **two `cfg`-gated backends behind one `Decoder` trait**, both shipped in v0.1.
+- macOS: the `videotoolbox` crate — HW decode, IOSurface output, the zero-copy MLX path.
+- Linux: an FFmpeg-based crate (`ff-decode`/`video-rs`) — VAAPI / NVDEC hardware acceleration
+  where available, software decode otherwise.
+
+The `videotoolbox` dependency is `cfg(target_os = "macos")`-gated so Linux builds never pull
+Apple frameworks, and the FFmpeg backend is gated off macOS (or behind a feature). Output is
+likewise per-platform: MLX (macOS) and NumPy/PyTorch (both). The core engine above the
+`Decoder` trait is fully platform-agnostic.
 
 ### 2.3 Rust ↔ Python ↔ MLX boundary
 
