@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-06-25
+
+### Added
+- **`output=` on the loader:** `"numpy"` (default), `"mlx"` (`mlx.core.array`), or `"torch"`
+  (`torch.from_numpy`, zero-copy from the NumPy buffers). Converts every array in the batch —
+  state/action, windows, and camera frames. Verified against torch 2.12 and mlx.
+
+### Notes
+- Closes "MLX/PyTorch output" as **functional**. The *true* zero-copy MLX path (decode →
+  IOSurface → MLX with no NumPy hop) and native VideoToolbox/NVDEC backends remain in progress
+  (zero-copy MLX is gated on upstream mlx#2855).
+
 ## [0.1.1] - 2026-06-25
 
 ### Added

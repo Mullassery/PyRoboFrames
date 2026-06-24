@@ -140,7 +140,10 @@ impl RoboFrameDataset {
     ///
     /// `cameras` (optional) names the video streams to decode and include as `[batch, H, W, 3]`
     /// `uint8` arrays (requires an ffmpeg-enabled build with `ffmpeg`/`ffprobe` on `PATH`).
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None))]
+    ///
+    /// `output` selects the array type per batch: `"numpy"` (default), `"mlx"`
+    /// (`mlx.core.array`), or `"torch"` (`torch.from_numpy`, zero-copy from the NumPy buffers).
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string()))]
     #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
@@ -152,9 +155,15 @@ impl RoboFrameDataset {
         delta_timestamps: Option<Bound<'_, PyDict>>,
         tolerance_s: f64,
         cameras: Option<Vec<String>>,
+        output: String,
     ) -> PyResult<Loader> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
+        }
+        if !matches!(output.as_str(), "numpy" | "mlx" | "torch") {
+            return Err(PyValueError::new_err(format!(
+                "output must be 'numpy', 'mlx', or 'torch' (got '{output}')"
+            )));
         }
         let window = match delta_timestamps {
             None => None,
@@ -195,6 +204,7 @@ impl RoboFrameDataset {
             cameras,
             frame_decoder,
             frame_cache,
+            output,
         })
     }
 
@@ -223,6 +233,8 @@ struct Loader {
     cameras: Vec<String>,
     frame_decoder: Option<Box<dyn Decoder + Send>>,
     frame_cache: FrameCache,
+    /// "numpy" | "mlx" | "torch"
+    output: String,
 }
 
 #[pymethods]
@@ -294,6 +306,11 @@ impl Loader {
                     .map_err(|e| PyValueError::new_err(e.to_string()))?;
                 dict.set_item(cam, arr.into_pyarray_bound(py))?;
             }
+        }
+
+        // Convert every array to the requested framework (NumPy is the native form).
+        if self.output != "numpy" {
+            convert_batch(py, batch.bind(py), &self.output)?;
         }
 
         Ok(Some(batch))
@@ -392,6 +409,33 @@ fn windowed_batch_to_dict(py: Python<'_>, samples: &[WindowedSample]) -> PyResul
     dict.set_item("episode_index", episodes.into_pyarray_bound(py))?;
 
     Ok(dict.unbind())
+}
+
+/// Convert every value in `dict` from a NumPy array to the requested framework's array type
+/// in place. `mlx` -> `mlx.core.array` (copy into unified memory); `torch` -> `torch.from_numpy`
+/// (zero-copy view of the NumPy buffer).
+fn convert_batch(py: Python<'_>, dict: &Bound<'_, PyDict>, output: &str) -> PyResult<()> {
+    let (module_name, func_name) = match output {
+        "mlx" => ("mlx.core", "array"),
+        "torch" => ("torch", "from_numpy"),
+        other => return Err(PyValueError::new_err(format!("unknown output '{other}'"))),
+    };
+    let func = py
+        .import_bound(module_name)
+        .map_err(|e| {
+            PyRuntimeError::new_err(format!("output='{output}' requires {module_name}: {e}"))
+        })?
+        .getattr(func_name)?;
+
+    // Collect keys first to avoid mutating the dict while iterating it.
+    let keys: Vec<Py<PyAny>> = dict.keys().iter().map(|k| k.unbind()).collect();
+    for key in keys {
+        let key = key.bind(py);
+        if let Some(val) = dict.get_item(key)? {
+            dict.set_item(key, func.call1((val,))?)?;
+        }
+    }
+    Ok(())
 }
 
 /// `pyroboframes._core` — the compiled extension module.

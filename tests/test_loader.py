@@ -181,6 +181,31 @@ def test_frame_loader_returns_image_batches(tmp_path):
     assert b0["observation.state"].shape == (4, 3)
 
 
+def test_output_torch(tmp_path):
+    torch = pytest.importorskip("torch")
+    make_dataset(str(tmp_path))
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    b0 = next(iter(ds.loader(batch_size=4, shuffle=False, output="torch")))
+    assert isinstance(b0["observation.state"], torch.Tensor)
+    assert tuple(b0["observation.state"].shape) == (4, 3)
+
+
+def test_output_mlx(tmp_path):
+    mx = pytest.importorskip("mlx.core")
+    make_dataset(str(tmp_path))
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    b0 = next(iter(ds.loader(batch_size=4, shuffle=False, output="mlx")))
+    assert isinstance(b0["observation.state"], mx.array)
+    assert tuple(b0["observation.state"].shape) == (4, 3)
+
+
+def test_output_invalid_raises(tmp_path):
+    make_dataset(str(tmp_path))
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    with pytest.raises(Exception):
+        ds.loader(output="tensorflow")
+
+
 def test_bad_path_raises(tmp_path):
     with pytest.raises(Exception):
         prf.RoboFrameDataset.from_path(str(tmp_path / "nope"))

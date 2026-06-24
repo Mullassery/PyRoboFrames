@@ -42,11 +42,12 @@ engine and run everything on the CPU.
   `pip install` and `import` it.
 - **Runs on Linux too**, including NVIDIA CUDA/NVDEC when present.
 
-> ## Status: early (`0.1.1`, `0.x` — expect API changes)
+> ## Status: early (`0.1.2`, `0.x` — expect API changes)
 > Works today on any LeRobotDataset v3.0: the **dataloader** (state/action **and camera
-> frames**), shuffling, temporal windows, and **`validate()`**. Camera frames decode via
-> **FFmpeg** and return as NumPy. Still in progress: the Apple-Silicon **zero-copy MLX** path
-> and the native VideoToolbox / NVDEC backends. See [What works today](#what-works-today).
+> frames**), shuffling, temporal windows, `validate()`, and **NumPy / MLX / PyTorch output**.
+> Camera frames decode via **FFmpeg**. Still in progress: the Apple-Silicon **zero-copy MLX**
+> path (decode → IOSurface → MLX) and the native VideoToolbox / NVDEC backends. See
+> [What works today](#what-works-today).
 
 ---
 
@@ -123,17 +124,16 @@ Requires `ffmpeg` and `ffprobe` on your `PATH`. Frames come back as `uint8` arra
 shaped `[batch, H, W, 3]`:
 
 ```python
-loader = ds.loader(batch_size=64, cameras=["observation.images.top"])
+# output="numpy" (default) | "mlx" | "torch"
+loader = ds.loader(batch_size=64, cameras=["observation.images.top"], output="torch")
 for batch in loader:
-    frames = batch["observation.images.top"]   # np.uint8, [64, H, W, 3]
-    state  = batch["observation.state"]
-    # one line to your framework:
-    #   torch.from_numpy(frames)   # PyTorch
-    #   mlx.core.array(frames)     # MLX
+    frames = batch["observation.images.top"]   # torch.Tensor [64, H, W, 3] uint8
+    state  = batch["observation.state"]         # torch.Tensor [64, state_dim]
 ```
 
-> Decoding straight into MLX on the Apple Media Engine with **zero copies** is the next
-> milestone (see [Roadmap](#roadmap)); today frames are FFmpeg-decoded and returned as NumPy.
+> `output="torch"` is zero-copy from the NumPy buffers; `output="mlx"` copies into unified
+> memory. Decoding straight into MLX on the Apple Media Engine with **zero copies** (no NumPy
+> hop) is the next milestone — see [Roadmap](#roadmap).
 
 ### Validate a dataset before training
 
@@ -157,9 +157,9 @@ print(report.ok, report.warnings)
 | Decoded-frame cache, batched-seek API, backend selection | ✅ |
 | **Camera frame decoding** (FFmpeg → NumPy) | ✅ (needs `ffmpeg` on `PATH`) |
 | Dataset **validation** (`ds.validate()`) | ✅ |
+| **NumPy / MLX / PyTorch output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
 | Native **VideoToolbox / NVDEC** decode | 🚧 |
-| **Zero-copy MLX** output | 🚧 (NumPy → `mlx.core.array` in one line) |
-| **PyTorch / CUDA** output | 🚧 (NumPy → `torch.from_numpy` in one line) |
+| **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 (upstream `mlx#2855`) |
 
 ---
 
