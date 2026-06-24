@@ -176,17 +176,34 @@ decisions, and trade-offs are in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 PyRoboFrames deliberately does **not** reinvent robotics middleware (use
 [Zenoh](https://github.com/eclipse-zenoh/zenoh) / [dora-rs](https://github.com/dora-rs/dora))
 or the dataset format (it reads LeRobot's). It targets the **training data feed**, especially
-on Apple Silicon. Full analysis in [`docs/COMPARISON.md`](./docs/COMPARISON.md).
+on Apple Silicon. The libraries below overlap with that job from different angles. Full write-up
+in [`docs/COMPARISON.md`](./docs/COMPARISON.md).
 
-| | PyRoboFrames | LeRobot built-in | torchcodec | NVIDIA DALI |
-|---|---|---|---|---|
-| Apple Silicon hardware decode | ✅ (target) | ❌ | ❌ | ❌ |
-| Zero-copy to **MLX** | ✅ (target) | ❌ | ❌ | ❌ |
-| NVIDIA CUDA/NVDEC | ✅ (target) | ✅ | ✅ | ✅ |
-| Reads LeRobot format natively | ✅ | ✅ | n/a | ❌ |
-| Temporal windows (`delta_timestamps`) | ✅ | ✅ | ❌ | ❌ |
-| Decoded-frame cache | ✅ | ❌ | ❌ | partial |
-| Rust core, no-GIL prefetch | ✅ | ❌ | ❌ | ❌ |
+Legend: ✅ yes · ⚠️ partial / with caveats · ❌ no · *(t)* = PyRoboFrames target, in progress.
+
+| Library | Primary use | LeRobot-native | Apple HW decode + MLX | NVIDIA CUDA/NVDEC | Temporal windows | Frame cache | Core |
+|---|---|:--:|:--:|:--:|:--:|:--:|---|
+| **PyRoboFrames** | Robot-learning dataloader | ✅ | ✅ *(t)* | ✅ *(t)* | ✅ | ✅ | Rust |
+| [LeRobot](https://github.com/huggingface/lerobot) (built-in loader) | Robot-learning stack + loader | ✅ | ❌ | ✅ | ✅ | ❌ | Python |
+| [Robo-DM](https://github.com/BerkeleyAutomation/fog_x) | Robot dataset mgmt + loading | ❌ (own EBML) | ❌ | ✅ | ⚠️ | ✅ (mmap) | C++/Python |
+| [torchcodec](https://github.com/pytorch/torchcodec) | Video decode for PyTorch | n/a | ❌ | ✅ | ❌ | ❌ | C++/Rust |
+| [NVIDIA DALI](https://github.com/NVIDIA/DALI) | GPU data loading (vision) | ❌ | ❌ | ✅ | ❌ | ⚠️ | C++/CUDA |
+| [FFCV](https://github.com/libffcv/ffcv) | Fast vision dataloader | ❌ (own format) | ❌ | ✅ | ❌ | ✅ (RAM) | Python/C |
+| [WebDataset](https://github.com/webdataset/webdataset) | Sharded streaming format | ❌ | ❌ | n/a | ❌ | ❌ | Python |
+| [decord](https://github.com/dmlc/decord) | Video reading for DL | n/a | ❌ | ✅ | ❌ | ❌ | C++ |
+
+### Which should I use?
+
+- **Training a LeRobot policy on a Mac (or want MLX):** PyRoboFrames — it's the only one
+  targeting Apple Silicon hardware decode + zero-copy MLX.
+- **Training a LeRobot policy on NVIDIA today:** LeRobot's built-in loader (uses torchcodec) is
+  the mature path; PyRoboFrames' CUDA backend is in progress.
+- **Huge robot datasets, framework-agnostic, max raw loading speed:** Robo-DM.
+- **General (non-robot) GPU vision pipelines on NVIDIA:** DALI or FFCV.
+- **Just decoding video frames into PyTorch tensors:** torchcodec.
+
+The gap PyRoboFrames fills: a LeRobot-native dataloader that treats **Apple Silicon as a
+first-class target** (hardware decode + MLX), which none of the others do.
 
 *"(target)" = designed and scaffolded; video-decode backends are in progress (see status above).*
 
