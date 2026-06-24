@@ -59,16 +59,20 @@ plan.
   `Frame { IOSurface }`. **Frame pool** recycles buffers (avoid per-frame alloc).
 - `FfmpegDecoder` (Linux) — **in v0.1** (Linux is a first-class target): VAAPI/NVDEC hwaccel
   where available, software fallback otherwise. Same `Decoder` trait, selected by `cfg`.
+- **Adopted (see `docs/COMPARISON.md`):** `Decoder::decode_batch(file, &[ts])` for batched
+  seeks (torchcodec); hardware decoder **auto-detect + software fallback** (DALI/avio); an LRU
+  **decoded-frame cache** keyed by `(camera, file, timestamp)` (Robo-DM's biggest lever).
 - Tests: decode known frames from a fixture mp4, compare to a PyAV reference within tolerance;
-  assert pool reuse.
+  assert pool reuse and cache hits.
 
 ## Phase 3 — Sampling & windowing
 
 `sampler.rs`, `window.rs`
 
-- `Sampler`: per-epoch sample plans; shuffle; **group by `(camera_key, video_file)`** so each
-  worker decodes runs of nearby frames (the biggest throughput lever after HW decode). Expose
-  a `shuffle_locality` knob trading shuffle randomness for seek cost.
+- `Sampler`: per-epoch sample plans grouped by `(camera_key, video_file)` so each worker
+  decodes runs of nearby frames (the biggest throughput lever after HW decode). Use a
+  **buffered / quasi-random shuffle** (DALI/FFCV/WebDataset): read sequentially within a shard,
+  shuffle within a bounded `shuffle_buffer` — near-random order, decode locality preserved.
 - `Window`: assemble `(frames per camera, state, action)` for a batch into contiguous buffers,
   with `window` frames of temporal context.
 - Tests: every frame covered once per epoch; locality ordering reduces seek count
@@ -94,6 +98,9 @@ plan.
   next-batch wait (`Python::allow_threads`). Output adapters: MLX (Spike A path) / NumPy.
 - Python layer: `from_hub(repo_id)` (via `huggingface_hub` download), `from_path`, `.loader(...)`,
   `.validate()`; thin, ergonomic, notebook-friendly.
+- **Adopted from LeRobot (see `docs/COMPARISON.md`):** `delta_timestamps`-style temporal window
+  API and `tolerance_s` nearest-frame matching — same conventions as LeRobot so its users
+  migrate with one import change.
 - Tests: pytest end-to-end on a tiny dataset — iterate a loader, assert batch dtype/shape and
   that MLX arrays are on-device.
 

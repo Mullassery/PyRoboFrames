@@ -144,6 +144,10 @@ and the benchmark harness.
 
 ## Prior art & acknowledgements
 
+[`docs/COMPARISON.md`](./docs/COMPARISON.md) compares PyRoboFrames against LeRobot, torchcodec,
+Robo-DM, DALI, FFCV and others, and records which of their techniques we adopt (a decoded-frame
+cache, buffered shuffle, batched seeks, and LeRobot's `delta_timestamps`/`tolerance_s` API).
+
 PyRoboFrames stands on [LeRobot](https://github.com/huggingface/lerobot),
 [MLX](https://github.com/ml-explore/mlx), Apple VideoToolbox, [PyO3](https://pyo3.rs), and the
 Rust FFmpeg ecosystem. It deliberately does **not** reinvent robotics middleware — that space
