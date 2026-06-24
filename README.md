@@ -8,9 +8,29 @@ video on the Apple **Media Engine** via VideoToolbox, and hands the frames to **
 PyTorch-MPS) as arrays **without a single CPU copy** — turning the data path from the
 training bottleneck into a non-event.
 
-> Status: **pre-alpha / scaffolding.** The architecture is designed and the gap is
-> validated (see [`ARCHITECTURE.md`](./ARCHITECTURE.md)); the v0.1 implementation is in
-> progress. APIs will change. Not yet published to PyPI.
+> **Status: pre-alpha, under active construction.** APIs will change and it is not yet on
+> PyPI. The sections below describe the v0.1 **goal** — see **[What works today](#what-works-today)**
+> for the current state.
+
+---
+
+## What works today
+
+Implemented and tested in the Rust core:
+
+- ✅ **LeRobotDataset v3.0 readers** — schema / cameras / fps; a per-episode index that resolves
+  a global frame to `(camera, video file, timestamp)`; and tabular state/action reading.
+- ✅ **Decode scaffolding** — the `Decoder` trait (with batched seeks), a decoded-frame LRU
+  cache, and a frame-buffer pool.
+
+Not usable yet (in progress):
+
+- 🚧 VideoToolbox / FFmpeg **hardware decode** (currently a feature-gated stub).
+- 🚧 **Zero-copy MLX** output and the **dataloader** API.
+- 🚧 **Windowing** and the **validation** pass.
+
+The Python package installs and reports its version today; the dataloader API shown below is the
+target, not yet shipped.
 
 ---
 
@@ -30,6 +50,8 @@ unified-memory machine. Meanwhile the compute side (MLX, M5 Neural Accelerators)
 underfed.
 
 ## What PyRoboFrames does
+
+*This is the v0.1 design; see [What works today](#what-works-today) for what's currently built.*
 
 ```
 LeRobotDataset / MCAP        PyRoboFrames (Rust core)              your training loop
@@ -54,9 +76,9 @@ LeRobotDataset / MCAP        PyRoboFrames (Rust core)              your training
 The audience is ML researchers, so the product is a `pip`-installable Python package — the
 Rust is invisible. Rust is the implementation because the hot path (HW decode, IOSurface
 lifetime management, off-GIL prefetch, zero-copy buffer hand-off) is exactly where a safe
-systems language with no GIL earns its keep. Same pattern as the author's other engines:
-fast Rust core, ergonomic Python shell, one codebase via [PyO3](https://pyo3.rs) +
-[maturin](https://www.maturin.rs).
+systems language with no GIL earns its keep. The result: a fast, safe core with an ergonomic
+Python shell — and **no Rust toolchain needed** to `pip install` it — via
+[PyO3](https://pyo3.rs) + [maturin](https://www.maturin.rs).
 
 ## Installation
 
@@ -84,8 +106,9 @@ report.raise_if_errors()        # missing frames, timestamp gaps, cam/state mism
 # Build a dataloader that yields MLX arrays, zero-copy, decoded on the Media Engine
 loader = ds.loader(
     batch_size=64,
-    cameras=["top", "wrist"],
-    window=1,                   # frames of temporal context per sample
+    cameras=["observation.images.top", "observation.images.wrist"],
+    delta_timestamps={"observation.images.top": [-0.1, 0.0]},  # temporal context (LeRobot-style)
+    tolerance_s=1e-4,           # snap to the nearest frame within this tolerance
     shuffle=True,
     num_workers=4,              # Rust worker pool, runs off the GIL
     output="mlx",               # or "numpy" / "torch" (MPS)
@@ -131,7 +154,7 @@ Numbers will be published here with a reproducible harness once v0.1 lands.
 
 See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full design and decisions.
 
-- **v0.1** — LeRobotDataset v3.0 → VideoToolbox decode → zero-copy MLX loader + validation + benchmark harness.
+- **v0.1** — LeRobotDataset v3.0 → hardware decode (VideoToolbox on macOS, FFmpeg on Linux) → dataloader with zero-copy MLX (macOS) / NumPy (Linux), validation, and a benchmark harness.
 - **v0.2** — MCAP ingest, PyTorch-MPS output via DLPack.
 - **v0.3** — RLDS / HDF5 ingest, multi-Mac distributed loading.
 
