@@ -20,7 +20,14 @@ All notable changes to this project are documented here. The format follows
 - **Decode architecture (Phase 2):** `decode` module with `Decoder` trait (incl. batched
   `decode_batch` seeks), `Frame`/`FrameBuffer`, `Backend` selection, a frame-buffer pool, and a
   decoded-frame `FrameCache` (LRU, the Robo-DM lever). Real VideoToolbox/FFmpeg backends are
-  feature-gated stubs pending the Phase 0 spikes. 17 tests total; clippy clean with features on/off.
+  feature-gated stubs pending the Phase 0 spikes. Clippy clean with features on/off.
+- **Sampler (Phase 3):** buffered / quasi-random shuffle (DALI/FFCV) — sequential read with a
+  bounded shuffle window; deterministic and seedable, per-epoch reproducible.
+- **Functional tabular dataloader:** `TabularLoader` (Rust) resolves a global frame to its
+  episode + data-shard row and reads float features; **Python `RoboFrameDataset` + `Loader`**
+  iterate NumPy batches of `observation.state` / `action` with shuffle, `drop_last`, and seeding.
+  End-to-end tested from Python against a generated dataset (25 Rust + 7 Python tests).
+- Pre-release version `0.1.0a0` (not yet published).
 
 ### Changed
 - **Cross-platform target:** macOS *and* Linux are both first-class in v0.1. Decode is two

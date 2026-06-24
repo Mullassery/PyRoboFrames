@@ -1,18 +1,190 @@
-//! PyO3 bindings exposing the PyRoboFrames engine as the `pyroboframes._core` extension
-//! module. This crate is intentionally thin: all logic lives in `pyroboframes-core`. The
-//! ergonomic, user-facing API is layered on top in `python/pyroboframes/`.
+//! PyO3 bindings exposing the PyRoboFrames engine as the `pyroboframes._core` extension module.
+//!
+//! v0.1 (functional) surface: open a LeRobotDataset v3.0 and iterate a dataloader that yields
+//! batches of tabular features (state, action, …) as NumPy arrays. Video frames / MLX output
+//! layer on once a decode backend lands. All logic lives in `pyroboframes-core`.
 
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use numpy::ndarray::Array2;
+use numpy::IntoPyArray;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
+
+use pyroboframes_core::dataset::Dataset;
+use pyroboframes_core::loader::{Sample, TabularLoader};
+use pyroboframes_core::sampler::Sampler;
+
+fn core_err(e: pyroboframes_core::Error) -> PyErr {
+    PyRuntimeError::new_err(e.to_string())
+}
+
+/// An opened LeRobotDataset v3.0.
+#[pyclass]
+struct RoboFrameDataset {
+    dataset: Arc<Dataset>,
+}
+
+#[pymethods]
+impl RoboFrameDataset {
+    /// Open a dataset from a local path (the directory holding `meta/`, `data/`, `videos/`).
+    #[staticmethod]
+    fn from_path(path: PathBuf) -> PyResult<Self> {
+        let dataset = Dataset::open(&path).map_err(core_err)?;
+        Ok(Self {
+            dataset: Arc::new(dataset),
+        })
+    }
+
+    #[getter]
+    fn num_frames(&self) -> usize {
+        self.dataset.num_frames()
+    }
+
+    #[getter]
+    fn num_episodes(&self) -> usize {
+        self.dataset.num_episodes()
+    }
+
+    #[getter]
+    fn fps(&self) -> f64 {
+        self.dataset.fps()
+    }
+
+    #[getter]
+    fn cameras(&self) -> Vec<String> {
+        self.dataset.cameras()
+    }
+
+    /// Build a dataloader over the tabular (state/action) features.
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false))]
+    fn loader(
+        &self,
+        batch_size: usize,
+        shuffle: bool,
+        shuffle_buffer: usize,
+        seed: u64,
+        drop_last: bool,
+    ) -> PyResult<Loader> {
+        if batch_size == 0 {
+            return Err(PyValueError::new_err("batch_size must be >= 1"));
+        }
+        let inner = TabularLoader::open(self.dataset.clone()).map_err(core_err)?;
+        let order = Sampler::new(shuffle, shuffle_buffer, seed).order(inner.total_frames(), 0);
+        Ok(Loader {
+            inner,
+            order,
+            cursor: 0,
+            batch_size,
+            drop_last,
+        })
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "RoboFrameDataset(episodes={}, frames={}, cameras={:?})",
+            self.dataset.num_episodes(),
+            self.dataset.num_frames(),
+            self.dataset.cameras(),
+        )
+    }
+}
+
+/// Iterable dataloader yielding dict batches of NumPy arrays, one entry per tabular feature
+/// (shape `[batch, feature_dim]`) plus an `episode_index` vector.
+#[pyclass]
+struct Loader {
+    inner: TabularLoader,
+    order: Vec<usize>,
+    cursor: usize,
+    batch_size: usize,
+    drop_last: bool,
+}
+
+#[pymethods]
+impl Loader {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
+        if self.cursor >= self.order.len() {
+            return Ok(None);
+        }
+        let end = (self.cursor + self.batch_size).min(self.order.len());
+        if self.drop_last && end - self.cursor < self.batch_size {
+            return Ok(None);
+        }
+        let indices = self.order[self.cursor..end].to_vec();
+        self.cursor = end;
+
+        let samples = self.inner.batch(&indices).map_err(core_err)?;
+        Ok(Some(batch_to_dict(py, &samples)?))
+    }
+
+    /// Number of batches in one epoch.
+    fn __len__(&self) -> usize {
+        if self.batch_size == 0 {
+            return 0;
+        }
+        if self.drop_last {
+            self.order.len() / self.batch_size
+        } else {
+            self.order.len().div_ceil(self.batch_size)
+        }
+    }
+}
+
+/// Stack a batch of samples into a dict of NumPy arrays.
+fn batch_to_dict(py: Python<'_>, samples: &[Sample]) -> PyResult<Py<PyDict>> {
+    let dict = PyDict::new_bound(py);
+    if samples.is_empty() {
+        return Ok(dict.unbind());
+    }
+    let n = samples.len();
+
+    // One [n, dim] float32 array per feature.
+    for name in samples[0].features.keys() {
+        let dim = samples[0].features[name].len();
+        let mut data = Vec::with_capacity(n * dim);
+        for s in samples {
+            let v = s
+                .features
+                .get(name)
+                .ok_or_else(|| PyValueError::new_err(format!("sample missing feature `{name}`")))?;
+            if v.len() != dim {
+                return Err(PyValueError::new_err(format!(
+                    "feature `{name}` has inconsistent dim ({} vs {dim})",
+                    v.len()
+                )));
+            }
+            data.extend_from_slice(v);
+        }
+        let arr = Array2::from_shape_vec((n, dim), data)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        dict.set_item(name, arr.into_pyarray_bound(py))?;
+    }
+
+    // Provenance: episode index per row.
+    let episodes: Vec<i64> = samples.iter().map(|s| s.episode_index as i64).collect();
+    dict.set_item("episode_index", episodes.into_pyarray_bound(py))?;
+
+    Ok(dict.unbind())
+}
 
 /// `pyroboframes._core` — the compiled extension module.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", pyroboframes_core::VERSION)?;
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
+    m.add_class::<RoboFrameDataset>()?;
+    m.add_class::<Loader>()?;
     Ok(())
 }
 
-/// Return the Rust engine version. Smoke-test entry point until the dataset/loader bindings land.
+/// Return the Rust engine version.
 #[pyfunction]
 fn engine_version() -> &'static str {
     pyroboframes_core::VERSION

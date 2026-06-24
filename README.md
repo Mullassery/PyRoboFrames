@@ -16,21 +16,38 @@ training bottleneck into a non-event.
 
 ## What works today
 
-Implemented and tested in the Rust core:
+Implemented and tested (Rust core + Python):
 
 - ✅ **LeRobotDataset v3.0 readers** — schema / cameras / fps; a per-episode index that resolves
   a global frame to `(camera, video file, timestamp)`; and tabular state/action reading.
+- ✅ **Working dataloader (tabular)** — `RoboFrameDataset.from_path(...).loader(...)` iterates
+  **NumPy batches of `observation.state` / `action`** with a buffered/quasi-random shuffle,
+  `drop_last`, and seeded reproducibility. Works today on any LeRobotDataset v3.0.
 - ✅ **Decode scaffolding** — the `Decoder` trait (with batched seeks), a decoded-frame LRU
   cache, and a frame-buffer pool.
 
 Not usable yet (in progress):
 
-- 🚧 VideoToolbox / FFmpeg **hardware decode** (currently a feature-gated stub).
-- 🚧 **Zero-copy MLX** output and the **dataloader** API.
-- 🚧 **Windowing** and the **validation** pass.
+- 🚧 **Video frames** — VideoToolbox (macOS) / FFmpeg (Linux) hardware decode (feature-gated stubs).
+- 🚧 **Zero-copy MLX** output (the Apple-Silicon differentiator).
+- 🚧 Temporal **windowing** and the **validation** pass.
 
-The Python package installs and reports its version today; the dataloader API shown below is the
-target, not yet shipped.
+### Try the working part now (state / action → NumPy)
+
+```python
+import pyroboframes as prf
+
+ds = prf.RoboFrameDataset.from_path("/path/to/lerobot_dataset")
+print(ds)                                   # episodes / frames / cameras
+loader = ds.loader(batch_size=64, shuffle=True)
+
+for batch in loader:                        # dict of NumPy arrays
+    state  = batch["observation.state"]     # [64, state_dim], float32
+    action = batch["action"]                # [64, action_dim], float32
+    ...                                      # your training step
+```
+
+The video/MLX dataloader shown further below is the **v0.1 target**, not yet shipped.
 
 ---
 

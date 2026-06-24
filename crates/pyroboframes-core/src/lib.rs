@@ -12,6 +12,8 @@ pub mod dataset;
 pub mod decode;
 pub mod episodes;
 pub mod info;
+pub mod loader;
+pub mod sampler;
 
 pub use decode::{Decoder, Frame};
 
@@ -38,6 +40,11 @@ pub struct LoaderConfig {
     /// Frames of temporal context per sample.
     pub window: usize,
     pub shuffle: bool,
+    /// Window size for the buffered / quasi-random shuffle (frames). Larger = more random,
+    /// less decode locality. `<= 1` falls back to sequential order.
+    pub shuffle_buffer: usize,
+    /// RNG seed for reproducible shuffles.
+    pub seed: u64,
     pub num_workers: usize,
     /// Bounded prefetch depth (backpressure).
     pub prefetch: usize,
@@ -50,6 +57,8 @@ impl Default for LoaderConfig {
             cameras: Vec::new(),
             window: 1,
             shuffle: true,
+            shuffle_buffer: 1024,
+            seed: 0,
             num_workers: 4,
             prefetch: 4,
         }

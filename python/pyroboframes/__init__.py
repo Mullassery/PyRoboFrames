@@ -11,8 +11,9 @@ engine version so wheels and the build can be smoke-tested end to end.
 from __future__ import annotations
 
 from . import _core
+from ._core import Loader, RoboFrameDataset
 
-__all__ = ["__version__", "engine_version"]
+__all__ = ["__version__", "engine_version", "RoboFrameDataset", "Loader"]
 
 __version__: str = _core.__version__
 
