@@ -21,9 +21,10 @@ idle *waiting for video to be decoded*. It's the single biggest bottleneck in ro
 training pipelines.
 
 **PyRoboFrames is the piece that makes that data feed fast.** It reads your robot dataset,
-decodes the video on dedicated hardware, and hands batches straight to your training loop —
-with special care for **Apple Silicon Macs**, where the usual tools waste the Mac's video
-engine and run everything on the CPU.
+decodes the video, and hands batches straight to your training loop as **NumPy, MLX, or
+PyTorch** arrays — with a focus on **Apple Silicon Macs**, where the usual CUDA-centric tools
+serve you poorly. (Today it decodes with FFmpeg; the Apple Media-Engine fast path is in
+progress — see [What works today](#what-works-today).)
 
 ### When would I use it?
 
@@ -36,11 +37,12 @@ engine and run everything on the CPU.
 
 ### Why it's different
 
-- **Apple Silicon first.** It uses the Mac's hardware video engine (VideoToolbox) and Apple's
-  ML framework (MLX) with zero-copy hand-off — a path no other robot dataloader targets.
+- **Apple Silicon first.** **MLX** (and PyTorch) output works today. The headline goal —
+  decoding on the Mac's hardware video engine (VideoToolbox) straight into MLX with **zero
+  copies** — is in progress; no other robot dataloader even targets it.
 - **Fast core, simple Python.** The engine is Rust (no GIL, hardware access); you just
   `pip install` and `import` it.
-- **Runs on Linux too**, including NVIDIA CUDA/NVDEC when present.
+- **Runs on Linux too** (NVIDIA CUDA/NVDEC support is planned).
 
 > ## Status: early (`0.1.2`, `0.x` — expect API changes)
 > Works today on any LeRobotDataset v3.0: the **dataloader** (state/action **and camera
@@ -168,11 +170,12 @@ print(report.ok, report.warnings)
 ```
 LeRobotDataset            PyRoboFrames (Rust core)                 your training loop
 ┌──────────────┐   ┌──────────────────────────────────────┐   ┌────────────────────┐
-│ parquet      │   │ episode index → sampler → per-camera   │   │  MLX  (Apple) /     │
-│ (state/action)│──▶│ hardware decode → frame cache →        │──▶│  NumPy / PyTorch    │
-│ + mp4 video  │   │ time-synced windows                    │   │                     │
+│ parquet      │   │ episode index → sampler → per-camera   │   │  NumPy / MLX /      │
+│ (state/action)│──▶│ decode → frame cache → time-synced     │──▶│  PyTorch            │
+│ + mp4 video  │   │ windows                                │   │                     │
 └──────────────┘   └──────────────────────────────────────┘   └────────────────────┘
 ```
+Decode today uses FFmpeg; the Apple VideoToolbox / NVIDIA NVDEC hardware paths are planned.
 
 The engine is Rust (crate `pyroboframes-core`); the Python package is a thin
 [PyO3](https://pyo3.rs)/[maturin](https://www.maturin.rs) binding. Full design,
@@ -180,11 +183,11 @@ decisions, and trade-offs are in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ### Cross-platform
 
-| Platform | Decode | Output |
-|---|---|---|
-| macOS (Apple Silicon) | VideoToolbox (Media Engine) | MLX (zero-copy), NumPy |
-| Linux | FFmpeg (VAAPI / software) | NumPy, PyTorch |
-| Linux + CUDA (`--features cuda`) | NVIDIA NVDEC | PyTorch (CUDA) |
+| Platform | Decode (today) | Output (today) | Planned |
+|---|---|---|---|
+| macOS (Apple Silicon) | FFmpeg | NumPy · MLX · PyTorch | VideoToolbox → **zero-copy MLX** |
+| Linux | FFmpeg (VAAPI / software) | NumPy · PyTorch · MLX | — |
+| Linux + CUDA | FFmpeg | NumPy · PyTorch | NVDEC decode + CUDA output (`--features cuda`) |
 
 ---
 
@@ -196,11 +199,11 @@ or the dataset format (it reads LeRobot's). It targets the **training data feed*
 on Apple Silicon. The libraries below overlap with that job from different angles. Full write-up
 in [`docs/COMPARISON.md`](./docs/COMPARISON.md).
 
-Legend: ✅ yes · ⚠️ partial / with caveats · ❌ no · *(t)* = PyRoboFrames target, in progress.
+Legend: ✅ works today · ⏳ planned / in progress · ⚠️ partial · ❌ no.
 
-| Library | Primary use | LeRobot-native | Apple HW decode + MLX | NVIDIA CUDA/NVDEC | Temporal windows | Frame cache | Core |
+| Library | Primary use | LeRobot-native | Apple HW decode | NVIDIA CUDA/NVDEC | Temporal windows | Frame cache | Core |
 |---|---|:--:|:--:|:--:|:--:|:--:|---|
-| **PyRoboFrames** | Robot-learning dataloader | ✅ | ✅ *(t)* | ✅ *(t)* | ✅ | ✅ | Rust |
+| **PyRoboFrames** | Robot-learning dataloader | ✅ | ⏳ | ⏳ | ✅ | ✅ | Rust |
 | [LeRobot](https://github.com/huggingface/lerobot) (built-in loader) | Robot-learning stack + loader | ✅ | ❌ | ✅ | ✅ | ❌ | Python |
 | [Robo-DM](https://github.com/BerkeleyAutomation/fog_x) | Robot dataset mgmt + loading | ❌ (own EBML) | ❌ | ✅ | ⚠️ | ✅ (mmap) | C++/Python |
 | [torchcodec](https://github.com/pytorch/torchcodec) | Video decode for PyTorch | n/a | ❌ | ✅ | ❌ | ❌ | C++/Rust |
@@ -211,8 +214,9 @@ Legend: ✅ yes · ⚠️ partial / with caveats · ❌ no · *(t)* = PyRoboFram
 
 ### Which should I use?
 
-- **Training a LeRobot policy on a Mac (or want MLX):** PyRoboFrames — it's the only one
-  targeting Apple Silicon hardware decode + zero-copy MLX.
+- **Training a LeRobot policy on a Mac (or want MLX output):** PyRoboFrames — it runs today
+  (FFmpeg decode, MLX/PyTorch output) and is the only one targeting Apple-Silicon *hardware*
+  decode + zero-copy MLX next.
 - **Training a LeRobot policy on NVIDIA today:** LeRobot's built-in loader (uses torchcodec) is
   the mature path; PyRoboFrames' CUDA backend is in progress.
 - **Huge robot datasets, framework-agnostic, max raw loading speed:** Robo-DM.
@@ -222,7 +226,9 @@ Legend: ✅ yes · ⚠️ partial / with caveats · ❌ no · *(t)* = PyRoboFram
 The gap PyRoboFrames fills: a LeRobot-native dataloader that treats **Apple Silicon as a
 first-class target** (hardware decode + MLX), which none of the others do.
 
-*"(target)" = designed and scaffolded; video-decode backends are in progress (see status above).*
+*⏳ = designed and scaffolded but not yet functional (see [What works today](#what-works-today)).
+PyRoboFrames already runs on a Mac with **MLX/PyTorch output today** via FFmpeg decode; the
+remaining piece is the hardware decode path.*
 
 ---
 
