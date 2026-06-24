@@ -1,0 +1,17 @@
+[package]
+name = "pyroboframes-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Python bindings for PyRoboFrames (PyO3)"
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyroboframes-core = { path = "../pyroboframes-core" }
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }

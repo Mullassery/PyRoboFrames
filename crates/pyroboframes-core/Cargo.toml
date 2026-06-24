@@ -1,0 +1,21 @@
+[package]
+name = "pyroboframes-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Core engine for PyRoboFrames: dataset reading, hardware video decode, and zero-copy windowing"
+
+[dependencies]
+thiserror.workspace = true
+crossbeam-channel.workspace = true
+
+# Decode + dataset dependencies are introduced as backends land:
+#   videotoolbox  — Apple Media Engine HW decode (primary, macOS)
+#   ff-decode     — FFmpeg-based portable fallback
+#   arrow / parquet — LeRobotDataset v3.0 tabular + metadata index
+
+[lints.clippy]
+all = "warn"

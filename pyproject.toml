@@ -1,0 +1,36 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "pyroboframes"
+description = "Zero-copy, hardware-accelerated robot-learning dataloader for Apple Silicon (MLX)"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Georgi Mammen Mullassery", email = "mullassery@gmail.com" }]
+keywords = ["robotics", "robot-learning", "lerobot", "mlx", "apple-silicon", "dataloader", "videotoolbox"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/Mullassery/PyRoboFrames"
+Repository = "https://github.com/Mullassery/PyRoboFrames"
+Issues = "https://github.com/Mullassery/PyRoboFrames/issues"
+
+[project.optional-dependencies]
+mlx = ["mlx>=0.20"]
+dev = ["pytest>=8", "numpy>=1.24", "maturin>=1.7"]
+
+[tool.maturin]
+manifest-path = "crates/pyroboframes-py/Cargo.toml"
+module-name = "pyroboframes._core"
+python-source = "python"
+features = ["pyo3/extension-module"]

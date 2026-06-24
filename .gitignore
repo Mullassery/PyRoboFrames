@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Rust / maturin
+/target
+**/target
+Cargo.lock.orig
+*.so
+*.dylib
