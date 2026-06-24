@@ -1,203 +1,232 @@
 # PyRoboFrames
 
-**Zero-copy, hardware-accelerated robot-learning dataloader for Apple Silicon.**
+[![PyPI](https://img.shields.io/pypi/v/pyroboframes)](https://pypi.org/project/pyroboframes/)
+[![Python](https://img.shields.io/pypi/pyversions/pyroboframes)](https://pypi.org/project/pyroboframes/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-PyRoboFrames feeds robot-learning training loops on Apple Silicon at hardware speed. It
-reads robot datasets (LeRobotDataset v3.0, with MCAP planned), decodes their multi-camera
-video on the Apple **Media Engine** via VideoToolbox, and hands the frames to **MLX** (and
-PyTorch-MPS) as arrays **without a single CPU copy** — turning the data path from the
-training bottleneck into a non-event.
+**A fast dataloader for training robots from recorded demonstrations — built for Apple Silicon, and Linux too.**
 
-> **Status: pre-alpha, under active construction.** APIs will change and it is not yet on
-> PyPI. The sections below describe the v0.1 **goal** — see **[What works today](#what-works-today)**
-> for the current state.
+---
+
+## What is this, in plain terms?
+
+Modern robots are increasingly trained the way large language models are: you record lots of
+demonstrations (a robot arm doing a task, teleoperated or scripted), then train a neural
+network to imitate them. Each demonstration is mostly **camera video** (often several cameras)
+plus **sensor readings** (joint positions, the actions taken).
+
+When you train on that data, the computer has to constantly **pull frames out of the videos
+and feed them to the model**. This step is slow — so slow that the expensive GPU often sits
+idle *waiting for video to be decoded*. It's the single biggest bottleneck in robot-learning
+training pipelines.
+
+**PyRoboFrames is the piece that makes that data feed fast.** It reads your robot dataset,
+decodes the video on dedicated hardware, and hands batches straight to your training loop —
+with special care for **Apple Silicon Macs**, where the usual tools waste the Mac's video
+engine and run everything on the CPU.
+
+### When would I use it?
+
+- You're training (or fine-tuning) a robot policy / VLA model from demonstration data.
+- Your dataset is in the **LeRobot format** — the open standard from Hugging Face's
+  [LeRobot](https://github.com/huggingface/lerobot) project, now used by tens of thousands of
+  shared robot datasets. (Support for other formats is on the roadmap.)
+- Your data loading is slow, **or** you're developing on a **Mac** and the usual CUDA-centric
+  tools don't serve you well.
+
+### Why it's different
+
+- **Apple Silicon first.** It uses the Mac's hardware video engine (VideoToolbox) and Apple's
+  ML framework (MLX) with zero-copy hand-off — a path no other robot dataloader targets.
+- **Fast core, simple Python.** The engine is Rust (no GIL, hardware access); you just
+  `pip install` and `import` it.
+- **Runs on Linux too**, including NVIDIA CUDA/NVDEC when present.
+
+> ## Status: pre-alpha (`0.1.0a0`)
+> The **tabular dataloader** (joint states / actions, with shuffling and temporal windows)
+> **works today** on any LeRobotDataset v3.0. **Video-frame decoding is still in progress** —
+> the architecture, caching, and pipeline are in place, but the hardware decoders
+> (VideoToolbox / FFmpeg / NVDEC) are not implemented yet. See
+> [What works today](#what-works-today). APIs will change.
+
+---
+
+## Installation
+
+Requires Python ≥ 3.10. It's a pre-release, so pass the pre-release flag:
+
+```bash
+# pip
+pip install --pre pyroboframes
+
+# uv
+uv pip install --prerelease=allow pyroboframes
+#   or, in a uv project:
+uv add pyroboframes --prerelease=allow
+
+# one-line installer (uses uv if present, else pip)
+curl -LsSf https://raw.githubusercontent.com/Mullassery/PyRoboFrames/main/install.sh | sh
+```
+
+Prebuilt wheels are published for **macOS (Apple Silicon)**; on other platforms pip builds
+from the source distribution (a Rust toolchain is required for that until more wheels ship).
+
+> The `curl` one-liner fetches [`install.sh`](./install.sh) from this repo; it needs the
+> repository to be public.
+
+---
+
+## Quickstart
+
+### Load states & actions (works today)
+
+```python
+import pyroboframes as prf
+
+# Open a LeRobot dataset on disk (the folder containing meta/, data/, videos/)
+ds = prf.RoboFrameDataset.from_path("/path/to/lerobot_dataset")
+print(ds)                 # RoboFrameDataset(episodes=…, frames=…, cameras=[…])
+
+loader = ds.loader(
+    batch_size=64,
+    shuffle=True,         # buffered/quasi-random shuffle (keeps decode locality)
+    seed=0,               # reproducible
+    drop_last=False,
+)
+
+for batch in loader:                       # dict of NumPy arrays
+    state  = batch["observation.state"]    # shape [64, state_dim], float32
+    action = batch["action"]               # shape [64, action_dim], float32
+    episodes = batch["episode_index"]      # which episode each row came from
+    ...                                    # your training step
+```
+
+### Temporal windows (works today)
+
+Ask for several timesteps per sample with LeRobot-style `delta_timestamps` (seconds relative
+to the current frame):
+
+```python
+loader = ds.loader(
+    batch_size=64,
+    delta_timestamps={"observation.state": [-0.1, 0.0]},  # one step of history + current
+    tolerance_s=1e-4,                                      # nearest-frame match tolerance
+)
+
+for batch in loader:
+    state = batch["observation.state"]   # shape [64, 2, state_dim]  (2 = num timesteps)
+    ...
+```
+
+### Camera frames → MLX (planned, not yet functional)
+
+```python
+# Target API once hardware decode + MLX output land — shown for direction only.
+loader = ds.loader(batch_size=64, cameras=["observation.images.top"], output="mlx")
+for batch in loader:
+    frames = batch["observation.images.top"]   # mlx.core.array, decoded on the Media Engine
+```
 
 ---
 
 ## What works today
 
-Implemented and tested (Rust core + Python):
-
-- ✅ **LeRobotDataset v3.0 readers** — schema / cameras / fps; a per-episode index that resolves
-  a global frame to `(camera, video file, timestamp)`; and tabular state/action reading.
-- ✅ **Working dataloader (tabular)** — `RoboFrameDataset.from_path(...).loader(...)` iterates
-  **NumPy batches of `observation.state` / `action`** with a buffered/quasi-random shuffle,
-  `drop_last`, and seeded reproducibility. Works today on any LeRobotDataset v3.0.
-- ✅ **Temporal windows** — LeRobot-style `delta_timestamps` return `[batch, steps, dim]` arrays.
-- ✅ **Decode scaffolding** — the `Decoder` trait (batched seeks), a decoded-frame LRU cache, a
-  frame-buffer pool, and per-platform backend selection (VideoToolbox / FFmpeg / **CUDA NVDEC**).
-
-Not usable yet (in progress):
-
-- 🚧 **Video frames** — VideoToolbox (macOS) / FFmpeg / CUDA-NVDEC (Linux) decode are
-  feature-gated stubs (the decode *integration* into the pipeline is done and tested).
-- 🚧 **Zero-copy MLX** output (the Apple-Silicon differentiator).
-- 🚧 The **validation** pass (`ds.validate()`).
-
-### Try the working part now (state / action → NumPy)
-
-```python
-import pyroboframes as prf
-
-ds = prf.RoboFrameDataset.from_path("/path/to/lerobot_dataset")
-print(ds)                                   # episodes / frames / cameras
-loader = ds.loader(batch_size=64, shuffle=True)
-
-for batch in loader:                        # dict of NumPy arrays
-    state  = batch["observation.state"]     # [64, state_dim], float32
-    action = batch["action"]                # [64, action_dim], float32
-    ...                                      # your training step
-```
-
-The video/MLX dataloader shown further below is the **v0.1 target**, not yet shipped.
+| Capability | Status |
+|---|---|
+| Read LeRobotDataset v3.0 (schema, episodes, state/action) | ✅ |
+| Dataloader: batches of state/action as NumPy | ✅ |
+| Shuffling (buffered/quasi-random), `drop_last`, seeding | ✅ |
+| Temporal windows (`delta_timestamps`, `tolerance_s`) | ✅ |
+| macOS **and** Linux | ✅ |
+| Decoded-frame cache, batched-seek API, backend selection | ✅ (infra) |
+| **Video frame decoding** (VideoToolbox / FFmpeg / NVDEC) | 🚧 stubbed |
+| **Zero-copy MLX** output | 🚧 |
+| **PyTorch / CUDA** output | 🚧 |
+| Dataset **validation** (`ds.validate()`) | 🚧 |
 
 ---
 
-## The problem
-
-Robot-learning datasets store observations as **MP4 video** (often several cameras per
-episode). During training, every sample requires seeking into those videos and decoding the
-right frames. This decode step is the dominant cost of the data pipeline — Hugging Face's
-own LeRobot tracker reports training that is *"completely bottlenecked by video decoding even
-on servers with hundreds of cores,"* spending more time waiting on the dataloader than on
-backprop ([lerobot#1623](https://github.com/huggingface/lerobot/issues/1623)).
-
-On **Apple Silicon** the problem is worse, and avoidably so: the standard Python stack
-(torchvision / PyAV / FFmpeg software decode) runs on the CPU and leaves the dedicated
-**Media Engine idle**, then copies frames across to the GPU — copies that are pure waste on a
-unified-memory machine. Meanwhile the compute side (MLX, M5 Neural Accelerators) is fast and
-underfed.
-
-## What PyRoboFrames does
-
-*This is the v0.1 design; see [What works today](#what-works-today) for what's currently built.*
+## How it works
 
 ```
-LeRobotDataset / MCAP        PyRoboFrames (Rust core)              your training loop
-┌───────────────────┐   ┌──────────────────────────────────┐   ┌────────────────────┐
-│ parquet (state /  │   │ index → sample → VideoToolbox HW   │   │  MLX  (Neural       │
-│ action) + mp4     │──▶│ decode → IOSurface (shared mem) →  │──▶│  Accelerators) or  │
-│ video shards      │   │ time-synced windows, no copy       │   │  PyTorch-MPS        │
-└───────────────────┘   └──────────────────────────────────┘   └────────────────────┘
+LeRobotDataset            PyRoboFrames (Rust core)                 your training loop
+┌──────────────┐   ┌──────────────────────────────────────┐   ┌────────────────────┐
+│ parquet      │   │ episode index → sampler → per-camera   │   │  MLX  (Apple) /     │
+│ (state/action)│──▶│ hardware decode → frame cache →        │──▶│  NumPy / PyTorch    │
+│ + mp4 video  │   │ time-synced windows                    │   │                     │
+└──────────────┘   └──────────────────────────────────────┘   └────────────────────┘
 ```
 
-- **Hardware decode** via Apple VideoToolbox — uses the Media Engine, not the CPU.
-- **Zero-copy** — decoded frames live in IOSurface-backed unified memory and are wrapped as
-  MLX arrays without a host→device transfer (there is no "device transfer" on unified memory;
-  we stop pretending there is).
-- **Time-synced windows** — assembles `(multi-camera frames, joint state, action)` windows by
-  joining the parquet tabular data with the decoded video at matching timestamps.
-- **Built-in validation** — flags missing frames, non-monotonic timestamps, and
-  camera/state misalignment before they silently corrupt a training run.
+The engine is Rust (crate `pyroboframes-core`); the Python package is a thin
+[PyO3](https://pyo3.rs)/[maturin](https://www.maturin.rs) binding. Full design,
+decisions, and trade-offs are in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
-## Why a Rust core with a Python API
+### Cross-platform
 
-The audience is ML researchers, so the product is a `pip`-installable Python package — the
-Rust is invisible. Rust is the implementation because the hot path (HW decode, IOSurface
-lifetime management, off-GIL prefetch, zero-copy buffer hand-off) is exactly where a safe
-systems language with no GIL earns its keep. The result: a fast, safe core with an ergonomic
-Python shell — and **no Rust toolchain needed** to `pip install` it — via
-[PyO3](https://pyo3.rs) + [maturin](https://www.maturin.rs).
-
-## Installation
-
-> Not yet released. When v0.1 ships:
-
-```bash
-pip install pyroboframes        # macOS / Apple Silicon wheels, no Rust toolchain needed
-```
-
-Wheels are built for Apple Silicon (primary target) with a portable FFmpeg fallback for
-other platforms.
-
-## Quickstart (planned v0.1 API)
-
-```python
-import pyroboframes as prf
-
-# Open a LeRobot dataset (local path or Hugging Face Hub repo id)
-ds = prf.RoboFrameDataset.from_hub("lerobot/aloha_sim_insertion_human")
-
-# Validate before training
-report = ds.validate()
-report.raise_if_errors()        # missing frames, timestamp gaps, cam/state mismatch
-
-# Build a dataloader that yields MLX arrays, zero-copy, decoded on the Media Engine
-loader = ds.loader(
-    batch_size=64,
-    cameras=["observation.images.top", "observation.images.wrist"],
-    delta_timestamps={"observation.images.top": [-0.1, 0.0]},  # temporal context (LeRobot-style)
-    tolerance_s=1e-4,           # snap to the nearest frame within this tolerance
-    shuffle=True,
-    num_workers=4,              # Rust worker pool, runs off the GIL
-    output="mlx",               # or "numpy" / "torch" (MPS)
-)
-
-for batch in loader:
-    frames = batch["observation.images.top"]   # mlx.core.array, already on GPU
-    state  = batch["observation.state"]
-    action = batch["action"]
-    ...                                          # your MLX training step
-```
-
-## Cross-platform
-
-PyRoboFrames runs on **both macOS and Linux** from the same API and the same Rust core.
-The platform-specific part is decode and output, selected behind a single `Decoder` trait:
-
-- **macOS (Apple Silicon)** — the optimized path: VideoToolbox hardware decode → IOSurface →
-  **zero-copy MLX**. This is the differentiator.
-- **Linux** — the same engine, decoding via FFmpeg (VAAPI where available, software otherwise)
-  and outputting **NumPy / PyTorch**.
-- **Linux + CUDA** — when CUDA libraries are present (build with `--features cuda`), NVIDIA
-  **NVDEC** hardware decode with CUDA output for PyTorch.
-
-## Supported (target matrix)
-
-| | v0.1 | Planned |
+| Platform | Decode | Output |
 |---|---|---|
-| Datasets | LeRobotDataset v3.0 | MCAP, RLDS, HDF5 |
-| Decode (HW) | macOS: VideoToolbox · Linux: FFmpeg (VAAPI) + software · Linux+CUDA: NVDEC | ProRes, AV1 (M3+) |
-| Output | macOS: MLX · all: NumPy | PyTorch (MPS/CUDA) via DLPack |
-| Platform | macOS (Apple Silicon) · Linux (x86_64, aarch64) · Linux+CUDA | CUDA zero-copy output |
+| macOS (Apple Silicon) | VideoToolbox (Media Engine) | MLX (zero-copy), NumPy |
+| Linux | FFmpeg (VAAPI / software) | NumPy, PyTorch |
+| Linux + CUDA (`--features cuda`) | NVIDIA NVDEC | PyTorch (CUDA) |
 
-## Benchmarks
+---
 
-The headline metric is decode+load throughput on Apple Silicon vs. the PyAV/CPU path.
-Numbers will be published here with a reproducible harness once v0.1 lands.
+## How it compares
 
-| Pipeline | Frames/s (M-series) | Notes |
-|---|---|---|
-| PyAV / CPU (baseline) | _TBD_ | torchvision default backend |
-| PyRoboFrames (VideoToolbox, zero-copy) | _TBD_ | target: multiple× baseline |
+PyRoboFrames deliberately does **not** reinvent robotics middleware (use
+[Zenoh](https://github.com/eclipse-zenoh/zenoh) / [dora-rs](https://github.com/dora-rs/dora))
+or the dataset format (it reads LeRobot's). It targets the **training data feed**, especially
+on Apple Silicon. Full analysis in [`docs/COMPARISON.md`](./docs/COMPARISON.md).
+
+| | PyRoboFrames | LeRobot built-in | torchcodec | NVIDIA DALI |
+|---|---|---|---|---|
+| Apple Silicon hardware decode | ✅ (target) | ❌ | ❌ | ❌ |
+| Zero-copy to **MLX** | ✅ (target) | ❌ | ❌ | ❌ |
+| NVIDIA CUDA/NVDEC | ✅ (target) | ✅ | ✅ | ✅ |
+| Reads LeRobot format natively | ✅ | ✅ | n/a | ❌ |
+| Temporal windows (`delta_timestamps`) | ✅ | ✅ | ❌ | ❌ |
+| Decoded-frame cache | ✅ | ❌ | ❌ | partial |
+| Rust core, no-GIL prefetch | ✅ | ❌ | ❌ | ❌ |
+
+*"(target)" = designed and scaffolded; video-decode backends are in progress (see status above).*
+
+---
 
 ## Roadmap
 
-See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full design and decisions.
+Direction is informed by where robot learning is heading — Vision-Language-Action (VLA) models
+trained on ever-larger, multimodal, increasingly **streamed** datasets, with a growing need for
+**data-quality curation**.
 
-- **v0.1** — LeRobotDataset v3.0 → hardware decode (VideoToolbox on macOS, FFmpeg on Linux) → dataloader with zero-copy MLX (macOS) / NumPy (Linux), validation, and a benchmark harness.
-- **v0.2** — MCAP ingest, PyTorch-MPS output via DLPack.
-- **v0.3** — RLDS / HDF5 ingest, multi-Mac distributed loading.
+- **0.1.x — Make frames real.** VideoToolbox (macOS) and FFmpeg (Linux) decode; zero-copy MLX
+  output; a published decode-throughput benchmark vs. the PyAV/CPU baseline.
+- **0.2 — Streaming & PyTorch.** Stream datasets directly from the Hugging Face Hub without a
+  full download (à la LeRobot's `StreamingLeRobotDataset`); PyTorch-MPS/CUDA output via DLPack.
+- **0.3 — More formats.** MCAP, RLDS / Open X-Embodiment, and HDF5 ingestion behind the same
+  loader API.
+- **0.4 — Data quality.** `ds.validate()` plus trajectory **scoring/curation** (jitter,
+  diversity, sharpness, state-variance) to filter low-quality segments before training —
+  increasingly essential as datasets scale.
+- **0.5+ — Scale.** Multi-GPU / multi-Mac distributed loading, on-the-fly augmentation, and
+  interop with synthetic-data / world-model pipelines.
+
+See [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) for the near-term build plan.
+
+---
+
+## Documentation
+
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — design, the gap, and decisions.
+- [`docs/COMPARISON.md`](./docs/COMPARISON.md) — alternatives and adopted techniques.
+- [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) — phased build plan.
+- [`AGENTS.md`](./AGENTS.md) — orientation for contributors and AI coding agents.
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) · [`CHANGELOG.md`](./CHANGELOG.md)
 
 ## Contributing
 
-Contributions welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). The Rust core lives in
-`crates/`, the Python package in `python/`. The most valuable early contributions are around
-the MLX zero-copy init path (see [mlx#2855](https://github.com/ml-explore/mlx/issues/2855))
-and the benchmark harness.
-
-## Prior art & acknowledgements
-
-[`docs/COMPARISON.md`](./docs/COMPARISON.md) compares PyRoboFrames against LeRobot, torchcodec,
-Robo-DM, DALI, FFCV and others, and records which of their techniques we adopt (a decoded-frame
-cache, buffered shuffle, batched seeks, and LeRobot's `delta_timestamps`/`tolerance_s` API).
-
-PyRoboFrames stands on [LeRobot](https://github.com/huggingface/lerobot),
-[MLX](https://github.com/ml-explore/mlx), Apple VideoToolbox, [PyO3](https://pyo3.rs), and the
-Rust FFmpeg ecosystem. It deliberately does **not** reinvent robotics middleware — that space
-is well served by [Zenoh](https://github.com/eclipse-zenoh/zenoh) and
-[dora-rs](https://github.com/dora-rs/dora). It targets the one layer they leave unsolved on
-Apple Silicon: the training data feed.
+Contributions welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). The highest-impact work
+right now is the video-decode backends and the MLX zero-copy path
+([mlx#2855](https://github.com/ml-explore/mlx/issues/2855)).
 
 ## License
 
