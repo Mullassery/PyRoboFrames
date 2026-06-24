@@ -5,14 +5,15 @@
 //! The Python bindings live in the `pyroboframes-py` crate; this crate is independently
 //! unit-testable. See `ARCHITECTURE.md` for the full design.
 
-use std::path::Path;
-
 use thiserror::Error;
 
 pub mod data;
 pub mod dataset;
+pub mod decode;
 pub mod episodes;
 pub mod info;
+
+pub use decode::{Decoder, Frame};
 
 /// Errors surfaced by the engine.
 #[derive(Debug, Error)]
@@ -53,27 +54,6 @@ impl Default for LoaderConfig {
             prefetch: 4,
         }
     }
-}
-
-/// A hardware (or software) video decoder, selected per platform behind this trait:
-/// **VideoToolbox** on macOS (Apple Media Engine, IOSurface output, zero-copy to MLX/Metal)
-/// and **FFmpeg** on Linux (VAAPI / NVDEC hardware acceleration where available, software
-/// fallback otherwise). See `decode.rs`.
-pub trait Decoder: Send {
-    /// Decode the frame of `camera` located in `file` at `timestamp` (seconds).
-    /// Implementations return a frame backed by the lowest-copy buffer the platform allows.
-    fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame>;
-}
-
-/// A decoded frame. The backing buffer is platform-specific: an IOSurface in unified memory on
-/// macOS (handed to MLX/Metal without a copy), or an FFmpeg-owned buffer on Linux. Its lifetime
-/// is tracked so it is not recycled while a consumer (GPU or training loop) still reads it.
-pub struct Frame {
-    pub width: u32,
-    pub height: u32,
-    pub camera: String,
-    pub timestamp: f64,
-    // backing buffer handle added with the buffer module
 }
 
 /// Outcome of a dataset validation pass.

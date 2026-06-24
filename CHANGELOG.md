@@ -17,6 +17,10 @@ All notable changes to this project are documented here. The format follows
   `EpisodeIndex` that resolves a global frame to `(camera, video file, timestamp)` via
   `locate()`; read `data/*.parquet` state/action vectors via `DataShard` (fixed-size / list
   float32). Backed by arrow/parquet, with self-contained parquet round-trip tests (12 total).
+- **Decode architecture (Phase 2):** `decode` module with `Decoder` trait (incl. batched
+  `decode_batch` seeks), `Frame`/`FrameBuffer`, `Backend` selection, a frame-buffer pool, and a
+  decoded-frame `FrameCache` (LRU, the Robo-DM lever). Real VideoToolbox/FFmpeg backends are
+  feature-gated stubs pending the Phase 0 spikes. 17 tests total; clippy clean with features on/off.
 
 ### Changed
 - **Cross-platform target:** macOS *and* Linux are both first-class in v0.1. Decode is two
