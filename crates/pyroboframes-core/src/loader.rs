@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use crate::data::DataShard;
 use crate::dataset::Dataset;
-use crate::episodes::EpisodeIndex;
+use crate::decode::{Decoder, Frame, FrameCache};
+use crate::episodes::{EpisodeIndex, FrameLocation};
+use crate::window::{resolve_offsets, WindowSpec};
 use crate::{Error, Result};
 
 /// One frame's tabular features plus its provenance.
@@ -23,11 +25,22 @@ pub struct Sample {
     pub features: BTreeMap<String, Vec<f32>>,
 }
 
+/// A sample with temporal context: each feature carries one value vector per requested delta
+/// (shape `[num_deltas][feature_dim]`), assembled per [`WindowSpec`].
+#[derive(Debug, Clone)]
+pub struct WindowedSample {
+    pub global_index: usize,
+    pub episode_index: usize,
+    pub frame_in_episode: usize,
+    pub features: BTreeMap<String, Vec<Vec<f32>>>,
+}
+
 /// Builds [`Sample`]s for tabular (non-video) float features. Holds opened data shards so
 /// repeated access to the same shard doesn't reopen the parquet file.
 pub struct TabularLoader {
     dataset: Arc<Dataset>,
     index: EpisodeIndex,
+    fps: f64,
     /// (data_chunk, data_file) -> global frame index of the shard's first row.
     shard_start: HashMap<(usize, usize), usize>,
     features: Vec<String>,
@@ -64,9 +77,11 @@ impl TabularLoader {
                 .collect()
         });
 
+        let fps = dataset.fps();
         Ok(Self {
             dataset,
             index,
+            fps,
             shard_start,
             features,
             open: HashMap::new(),
@@ -81,7 +96,16 @@ impl TabularLoader {
         &self.features
     }
 
-    /// Build the sample for a global frame index.
+    /// Ensure a data shard is open (cached) so subsequent reads don't reopen the file.
+    fn ensure_open(&mut self, key: (usize, usize)) -> Result<()> {
+        if !self.open.contains_key(&key) {
+            let shard = self.dataset.data_shard(key.0, key.1)?;
+            self.open.insert(key, shard);
+        }
+        Ok(())
+    }
+
+    /// Build the sample (current frame only) for a global frame index.
     pub fn sample(&mut self, global_index: usize) -> Result<Sample> {
         let loc = self
             .index
@@ -94,12 +118,8 @@ impl TabularLoader {
             .ok_or_else(|| Error::Dataset(format!("no data shard for frame {global_index}")))?;
         let row = global_index - start;
 
-        if !self.open.contains_key(&key) {
-            let shard = self.dataset.data_shard(key.0, key.1)?;
-            self.open.insert(key, shard);
-        }
+        self.ensure_open(key)?;
         let shard = &self.open[&key];
-
         let mut features = BTreeMap::new();
         for name in &self.features {
             features.insert(name.clone(), shard.feature_f32(name, row)?);
@@ -112,10 +132,73 @@ impl TabularLoader {
         })
     }
 
+    /// Build a windowed sample: each feature gets one value vector per delta in `spec`
+    /// (the current frame if a feature has no entry). All offsets stay within the episode.
+    pub fn windowed_sample(
+        &mut self,
+        global_index: usize,
+        spec: &WindowSpec,
+    ) -> Result<WindowedSample> {
+        let loc = self
+            .index
+            .locate(global_index)
+            .ok_or_else(|| Error::Dataset(format!("frame {global_index} out of range")))?;
+        let key = (loc.data_chunk_index, loc.data_file_index);
+        let start = *self
+            .shard_start
+            .get(&key)
+            .ok_or_else(|| Error::Dataset(format!("no data shard for frame {global_index}")))?;
+        let episode_from_global = loc.global_index - loc.frame_in_episode;
+
+        self.ensure_open(key)?;
+        let shard = &self.open[&key];
+        let mut features = BTreeMap::new();
+        for name in &self.features {
+            let offsets = resolve_offsets(
+                spec.deltas_for(name),
+                loc.frame_in_episode,
+                loc.episode_len,
+                self.fps,
+                spec.tolerance_s,
+            )?;
+            let mut steps = Vec::with_capacity(offsets.len());
+            for off in offsets {
+                let row = (episode_from_global + off) - start;
+                steps.push(shard.feature_f32(name, row)?);
+            }
+            features.insert(name.clone(), steps);
+        }
+        Ok(WindowedSample {
+            global_index,
+            episode_index: loc.episode_index,
+            frame_in_episode: loc.frame_in_episode,
+            features,
+        })
+    }
+
     /// Build samples for a batch of global frame indices.
     pub fn batch(&mut self, indices: &[usize]) -> Result<Vec<Sample>> {
         indices.iter().map(|&i| self.sample(i)).collect()
     }
+}
+
+/// Decode each camera's frame for a resolved frame location, going through `cache` (so repeated
+/// frames aren't re-decoded). This is the video half of the pipeline: it resolves the per-camera
+/// video shard path + timestamp and hands them to the `Decoder`. Works with any backend —
+/// VideoToolbox / FFmpeg once implemented, or a test decoder today.
+pub fn decode_frames(
+    dataset: &Dataset,
+    loc: &FrameLocation,
+    decoder: &mut dyn Decoder,
+    cache: &mut FrameCache,
+) -> Result<BTreeMap<String, Frame>> {
+    let mut frames = BTreeMap::new();
+    for (camera, &(chunk, file, timestamp)) in &loc.videos {
+        let path = dataset.video_file(camera, chunk, file);
+        let frame = cache.get_or_decode(decoder, camera, &path, timestamp)?;
+        frames.insert(camera.clone(), frame);
+    }
+    Ok(frames)
 }
 
 #[cfg(test)]
@@ -265,5 +348,87 @@ mod tests {
         assert_eq!(batch[2].episode_index, 1); // frame 50 is first of episode 1
         assert_eq!(batch[3].features["action"], vec![99.0, 99.0, 99.0]);
         assert!(loader.sample(100).is_err()); // out of range
+    }
+
+    use crate::decode::{FrameBuffer, FrameCache};
+
+    struct MockDecoder;
+    impl Decoder for MockDecoder {
+        fn decode(&mut self, camera: &str, _file: &Path, timestamp: f64) -> Result<Frame> {
+            Ok(Frame {
+                width: 1,
+                height: 1,
+                camera: camera.to_string(),
+                timestamp,
+                pixels: FrameBuffer::Owned {
+                    data: Arc::new(vec![0, 0, 0]),
+                    channels: 3,
+                },
+            })
+        }
+    }
+
+    fn window_spec(deltas: Vec<f64>) -> WindowSpec {
+        let mut spec = WindowSpec {
+            tolerance_s: 1e-3,
+            ..Default::default()
+        };
+        spec.delta_timestamps
+            .insert("observation.state".into(), deltas);
+        spec
+    }
+
+    #[test]
+    fn windowed_sample_gathers_temporal_context() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_dataset(tmp.path());
+        let ds = Dataset::open(tmp.path()).unwrap();
+        let mut loader = TabularLoader::open(Arc::new(ds)).unwrap();
+
+        // frame 10 of episode 0, deltas [-0.1, 0.0] -> history at frame 7 and current frame 10
+        let w = loader
+            .windowed_sample(10, &window_spec(vec![-0.1, 0.0]))
+            .unwrap();
+        let state = &w.features["observation.state"];
+        assert_eq!(state.len(), 2);
+        assert_eq!(state[0], vec![7.0, 0.0, 0.0]);
+        assert_eq!(state[1], vec![10.0, 0.0, 0.0]);
+        // `action` has no delta entry -> current frame only
+        assert_eq!(w.features["action"], vec![vec![10.0, 10.0, 10.0]]);
+    }
+
+    #[test]
+    fn windowed_sample_clamps_at_episode_boundary() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_dataset(tmp.path());
+        let ds = Dataset::open(tmp.path()).unwrap();
+        let mut loader = TabularLoader::open(Arc::new(ds)).unwrap();
+
+        // global 50 = first frame of episode 1; history clamps to that frame (edge repeat)
+        let w = loader
+            .windowed_sample(50, &window_spec(vec![-0.1, 0.0]))
+            .unwrap();
+        let state = &w.features["observation.state"];
+        assert_eq!(state[0], vec![50.0, 0.0, 0.0]);
+        assert_eq!(state[1], vec![50.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn decode_frames_resolves_each_camera() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_dataset(tmp.path());
+        let ds = Dataset::open(tmp.path()).unwrap();
+        let idx = ds.episodes().unwrap();
+        let loc = idx.locate(60).unwrap();
+
+        let mut decoder = MockDecoder;
+        let mut cache = FrameCache::new(8);
+        let frames = decode_frames(&ds, &loc, &mut decoder, &mut cache).unwrap();
+
+        assert_eq!(frames.len(), 1);
+        let f = &frames[CAM];
+        assert_eq!(f.camera, CAM);
+        // timestamp = episode-1 offset (50/30) + 10 frames at 30 fps
+        assert!((f.timestamp - (50.0 / 30.0 + 10.0 / 30.0)).abs() < 1e-9);
     }
 }

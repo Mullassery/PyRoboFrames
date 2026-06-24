@@ -122,6 +122,26 @@ def test_drop_last(tmp_path):
     assert all(b["observation.state"].shape[0] == 30 for b in loader)
 
 
+def test_windowed_loader_returns_3d(tmp_path):
+    make_dataset(str(tmp_path))
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    loader = ds.loader(
+        batch_size=10,
+        shuffle=False,
+        delta_timestamps={"observation.state": [-0.1, 0.0]},  # -3 frames, current
+        tolerance_s=1e-3,
+    )
+    b0 = next(iter(loader))
+    # windowed feature -> [batch, num_deltas, dim]; un-windowed feature -> [batch, 1, dim]
+    assert b0["observation.state"].shape == (10, 2, 3)
+    assert b0["action"].shape == (10, 1, 3)
+    # row 5 == global frame 5 (episode 0): history at frame 2, current at frame 5
+    np.testing.assert_array_equal(
+        b0["observation.state"][5], [[2.0, 0.0, 0.0], [5.0, 0.0, 0.0]]
+    )
+    np.testing.assert_array_equal(b0["action"][5], [[5.0, 5.0, 5.0]])
+
+
 def test_bad_path_raises(tmp_path):
     with pytest.raises(Exception):
         prf.RoboFrameDataset.from_path(str(tmp_path / "nope"))

@@ -72,18 +72,26 @@ pub trait Decoder: Send {
 /// The decode backends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
+    /// Apple Media Engine (macOS).
     VideoToolbox,
+    /// NVIDIA NVDEC + CUDA (Linux with CUDA libraries present).
+    Cuda,
+    /// FFmpeg — VAAPI/NVDEC where available, software otherwise (Linux default).
     Ffmpeg,
+    /// Pure software decode (portable fallback).
     Software,
 }
 
 impl Backend {
-    /// The preferred backend for the current platform. Real auto-detection — probing whether the
-    /// hardware path is actually available and falling back to [`Backend::Software`] otherwise —
-    /// lands with the backend implementations after the spikes.
+    /// The preferred backend for the current build target. On Linux, [`Backend::Cuda`] is chosen
+    /// when compiled with the `cuda` feature (i.e. CUDA libraries are present); otherwise FFmpeg.
+    /// Real *runtime* auto-detection (probe the GPU, fall back to [`Backend::Software`]) lands with
+    /// the backend implementations after the spikes.
     pub fn preferred() -> Backend {
         if cfg!(target_os = "macos") {
             Backend::VideoToolbox
+        } else if cfg!(feature = "cuda") {
+            Backend::Cuda
         } else {
             Backend::Ffmpeg
         }
@@ -209,6 +217,27 @@ mod macos {
     }
 }
 
+#[cfg(feature = "cuda")]
+pub use cuda::CudaDecoder;
+
+#[cfg(feature = "cuda")]
+mod cuda {
+    use super::*;
+
+    /// NVIDIA NVDEC + CUDA decoder for Linux (zero-copy into CUDA device memory for PyTorch).
+    /// Stub pending CUDA toolkit integration; selected on Linux when built with `--features cuda`.
+    #[derive(Default)]
+    pub struct CudaDecoder;
+
+    impl Decoder for CudaDecoder {
+        fn decode(&mut self, _camera: &str, _file: &Path, _timestamp: f64) -> Result<Frame> {
+            Err(crate::Error::Decode(
+                "CUDA/NVDEC backend not yet implemented (pending CUDA toolkit integration)".into(),
+            ))
+        }
+    }
+}
+
 #[cfg(feature = "ffmpeg")]
 pub use linux::FfmpegDecoder;
 
@@ -316,6 +345,8 @@ mod tests {
         let b = Backend::preferred();
         if cfg!(target_os = "macos") {
             assert_eq!(b, Backend::VideoToolbox);
+        } else if cfg!(feature = "cuda") {
+            assert_eq!(b, Backend::Cuda);
         } else {
             assert_eq!(b, Backend::Ffmpeg);
         }

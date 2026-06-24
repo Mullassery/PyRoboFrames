@@ -13,15 +13,16 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use numpy::ndarray::Array2;
+use numpy::ndarray::{Array2, Array3};
 use numpy::IntoPyArray;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use pyroboframes_core::dataset::Dataset;
-use pyroboframes_core::loader::{Sample, TabularLoader};
+use pyroboframes_core::loader::{Sample, TabularLoader, WindowedSample};
 use pyroboframes_core::sampler::Sampler;
+use pyroboframes_core::window::WindowSpec;
 
 fn core_err(e: pyroboframes_core::Error) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
@@ -67,7 +68,12 @@ impl RoboFrameDataset {
     }
 
     /// Build a dataloader over the tabular (state/action) features.
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false))]
+    ///
+    /// `delta_timestamps` (optional) maps a feature to a list of time offsets in seconds, e.g.
+    /// `{"observation.state": [-0.1, 0.0]}`, producing a temporal window per sample; matching is
+    /// validated against `tolerance_s`.
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4))]
+    #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
         batch_size: usize,
@@ -75,10 +81,27 @@ impl RoboFrameDataset {
         shuffle_buffer: usize,
         seed: u64,
         drop_last: bool,
+        delta_timestamps: Option<Bound<'_, PyDict>>,
+        tolerance_s: f64,
     ) -> PyResult<Loader> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
         }
+        let window = match delta_timestamps {
+            None => None,
+            Some(dict) => {
+                let mut spec = WindowSpec {
+                    tolerance_s,
+                    ..Default::default()
+                };
+                for (k, v) in dict.iter() {
+                    let key: String = k.extract()?;
+                    let deltas: Vec<f64> = v.extract()?;
+                    spec.delta_timestamps.insert(key, deltas);
+                }
+                Some(spec)
+            }
+        };
         let inner = match TabularLoader::open(self.dataset.clone()) {
             Ok(inner) => inner,
             Err(e) => return Err(core_err(e)),
@@ -90,6 +113,7 @@ impl RoboFrameDataset {
             cursor: 0,
             batch_size,
             drop_last,
+            window,
         })
     }
 
@@ -112,6 +136,8 @@ struct Loader {
     cursor: usize,
     batch_size: usize,
     drop_last: bool,
+    /// When set, each feature is returned as a `[batch, num_deltas, dim]` temporal window.
+    window: Option<WindowSpec>,
 }
 
 #[pymethods]
@@ -131,11 +157,26 @@ impl Loader {
         let indices = self.order[self.cursor..end].to_vec();
         self.cursor = end;
 
-        let samples = match self.inner.batch(&indices) {
-            Ok(samples) => samples,
-            Err(e) => return Err(core_err(e)),
-        };
-        Ok(Some(batch_to_dict(py, &samples)?))
+        // Clone the spec so we don't hold a borrow of `self` while calling `&mut self.inner`.
+        match self.window.clone() {
+            None => {
+                let samples = match self.inner.batch(&indices) {
+                    Ok(samples) => samples,
+                    Err(e) => return Err(core_err(e)),
+                };
+                Ok(Some(batch_to_dict(py, &samples)?))
+            }
+            Some(spec) => {
+                let mut samples = Vec::with_capacity(indices.len());
+                for i in indices {
+                    match self.inner.windowed_sample(i, &spec) {
+                        Ok(s) => samples.push(s),
+                        Err(e) => return Err(core_err(e)),
+                    }
+                }
+                Ok(Some(windowed_batch_to_dict(py, &samples)?))
+            }
+        }
     }
 
     /// Number of batches in one epoch.
@@ -182,6 +223,51 @@ fn batch_to_dict(py: Python<'_>, samples: &[Sample]) -> PyResult<Py<PyDict>> {
     }
 
     // Provenance: episode index per row.
+    let episodes: Vec<i64> = samples.iter().map(|s| s.episode_index as i64).collect();
+    dict.set_item("episode_index", episodes.into_pyarray_bound(py))?;
+
+    Ok(dict.unbind())
+}
+
+/// Stack windowed samples into `[batch, num_deltas, dim]` arrays per feature.
+fn windowed_batch_to_dict(py: Python<'_>, samples: &[WindowedSample]) -> PyResult<Py<PyDict>> {
+    let dict = PyDict::new_bound(py);
+    if samples.is_empty() {
+        return Ok(dict.unbind());
+    }
+    let n = samples.len();
+
+    for name in samples[0].features.keys() {
+        let steps = &samples[0].features[name];
+        let nd = steps.len();
+        let dim = steps.first().map(|v| v.len()).unwrap_or(0);
+        let mut data = Vec::with_capacity(n * nd * dim);
+        for s in samples {
+            let feat = s
+                .features
+                .get(name)
+                .ok_or_else(|| PyValueError::new_err(format!("sample missing feature `{name}`")))?;
+            if feat.len() != nd {
+                return Err(PyValueError::new_err(format!(
+                    "feature `{name}` has inconsistent window length ({} vs {nd})",
+                    feat.len()
+                )));
+            }
+            for step in feat {
+                if step.len() != dim {
+                    return Err(PyValueError::new_err(format!(
+                        "feature `{name}` has inconsistent dim ({} vs {dim})",
+                        step.len()
+                    )));
+                }
+                data.extend_from_slice(step);
+            }
+        }
+        let arr = Array3::from_shape_vec((n, nd, dim), data)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        dict.set_item(name, arr.into_pyarray_bound(py))?;
+    }
+
     let episodes: Vec<i64> = samples.iter().map(|s| s.episode_index as i64).collect();
     dict.set_item("episode_index", episodes.into_pyarray_bound(py))?;
 

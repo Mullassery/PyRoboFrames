@@ -14,6 +14,7 @@ pub mod episodes;
 pub mod info;
 pub mod loader;
 pub mod sampler;
+pub mod window;
 
 pub use decode::{Decoder, Frame};
 

@@ -48,10 +48,12 @@ Other formats: **MCAP** (the rosbag successor, multimodal log container), **RLDS
 | `videotoolbox` crate (Rust) | ✅ Media Engine, IOSurface I/O | ✅ IOSurface → Metal | **primary backend** |
 | `ff-decode` / `video-rs` / `avio` (Rust, FFmpeg) | via `videotoolbox` hwaccel | partial | **portable fallback** + non-Apple |
 
-Decision: **two `cfg`-gated backends behind one `Decoder` trait**, both shipped in v0.1.
+Decision: **`cfg`/feature-gated backends behind one `Decoder` trait**, selected by
+`Backend::preferred()`.
 - macOS: the `videotoolbox` crate — HW decode, IOSurface output, the zero-copy MLX path.
-- Linux: an FFmpeg-based crate (`ff-decode`/`video-rs`) — VAAPI / NVDEC hardware acceleration
-  where available, software decode otherwise.
+- Linux: an FFmpeg-based crate (`ff-decode`/`video-rs`) — VAAPI where available, software otherwise.
+- Linux + CUDA (`--features cuda`): NVIDIA **NVDEC** decode with CUDA output for PyTorch,
+  selected automatically on Linux when CUDA libraries are present.
 
 The `videotoolbox` dependency is `cfg(target_os = "macos")`-gated so Linux builds never pull
 Apple frameworks, and the FFmpeg backend is gated off macOS (or behind a feature). Output is
@@ -87,13 +89,15 @@ PyRoboFrames/
 ├── crates/
 │   ├── pyroboframes-core/      # pure-Rust engine, no Python — unit-testable standalone
 │   │   └── src/
-│   │       ├── dataset.rs      # LeRobotDataset v3.0 reader: parquet index + tabular + video locator
-│   │       ├── decode.rs       # Decoder trait; VideoToolbox + FFmpeg backends; frame pool
-│   │       ├── sampler.rs      # episode/window sampling, shuffle, video-locality ordering
-│   │       ├── window.rs       # assemble time-synced (frames, state, action) windows
-│   │       ├── pipeline.rs     # async prefetch: bounded queue + worker pool, backpressure
-│   │       ├── buffer.rs       # zero-copy buffer (IOSurface-backed); numpy/MLX views
-│   │       └── validate.rs     # missing frames, timestamp monotonicity, cam/state alignment
+│   │       ├── info.rs         # meta/info.json: schema, cameras, fps, path templates
+│   │       ├── dataset.rs      # Dataset facade over info/episodes/data
+│   │       ├── episodes.rs     # meta/episodes/*.parquet index; locate(frame) -> (cam, file, ts)
+│   │       ├── data.rs         # data/*.parquet tabular reader (state/action float vectors)
+│   │       ├── decode.rs       # Decoder trait; VideoToolbox / FFmpeg / CUDA backends; cache; pool
+│   │       ├── sampler.rs      # buffered/quasi-random shuffle ordering
+│   │       ├── window.rs       # delta_timestamps -> in-episode frame offsets
+│   │       ├── loader.rs       # TabularLoader (state/action) + decode_frames integration
+│   │       └── validate.rs     # (planned) missing frames, timestamp monotonicity, alignment
 │   └── pyroboframes-py/        # thin PyO3 cdylib → module `pyroboframes._core`
 ├── python/pyroboframes/        # ergonomic Python API + MLX/torch adapters; HF/lerobot glue
 ├── tests/                      # Python integration tests

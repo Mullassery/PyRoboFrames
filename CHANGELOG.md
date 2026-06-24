@@ -27,7 +27,15 @@ All notable changes to this project are documented here. The format follows
   episode + data-shard row and reads float features; **Python `RoboFrameDataset` + `Loader`**
   iterate NumPy batches of `observation.state` / `action` with shuffle, `drop_last`, and seeding.
   End-to-end tested from Python against a generated dataset (25 Rust + 7 Python tests).
-- Pre-release version `0.1.0a0` (not yet published).
+- **Temporal windowing (Phase 3):** `window` module (`delta_timestamps` → in-episode frame
+  offsets, nearest-frame snap with `tolerance_s`, edge-clamp); `TabularLoader::windowed_sample`
+  and the Python `loader(delta_timestamps=..., tolerance_s=...)` returning `[batch, steps, dim]`.
+- **Decode integration (Phase 2):** `decode_frames` resolves each camera's video shard + timestamp
+  and decodes via the `Decoder` + `FrameCache` (tested with a mock decoder; real codecs drop in).
+- **Linux + CUDA backend:** `Backend::Cuda` (NVIDIA NVDEC) + `cuda` cargo feature; selected on
+  Linux when built `--features cuda`. Stub pending CUDA toolkit integration.
+- Pre-release version `0.1.0a0` (not yet published). 32 Rust + 8 Python tests; clippy clean
+  across default and all backend features (`videotoolbox`, `ffmpeg`, `cuda`).
 
 ### Changed
 - **Cross-platform target:** macOS *and* Linux are both first-class in v0.1. Decode is two

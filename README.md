@@ -23,14 +23,16 @@ Implemented and tested (Rust core + Python):
 - ✅ **Working dataloader (tabular)** — `RoboFrameDataset.from_path(...).loader(...)` iterates
   **NumPy batches of `observation.state` / `action`** with a buffered/quasi-random shuffle,
   `drop_last`, and seeded reproducibility. Works today on any LeRobotDataset v3.0.
-- ✅ **Decode scaffolding** — the `Decoder` trait (with batched seeks), a decoded-frame LRU
-  cache, and a frame-buffer pool.
+- ✅ **Temporal windows** — LeRobot-style `delta_timestamps` return `[batch, steps, dim]` arrays.
+- ✅ **Decode scaffolding** — the `Decoder` trait (batched seeks), a decoded-frame LRU cache, a
+  frame-buffer pool, and per-platform backend selection (VideoToolbox / FFmpeg / **CUDA NVDEC**).
 
 Not usable yet (in progress):
 
-- 🚧 **Video frames** — VideoToolbox (macOS) / FFmpeg (Linux) hardware decode (feature-gated stubs).
+- 🚧 **Video frames** — VideoToolbox (macOS) / FFmpeg / CUDA-NVDEC (Linux) decode are
+  feature-gated stubs (the decode *integration* into the pipeline is done and tested).
 - 🚧 **Zero-copy MLX** output (the Apple-Silicon differentiator).
-- 🚧 Temporal **windowing** and the **validation** pass.
+- 🚧 The **validation** pass (`ds.validate()`).
 
 ### Try the working part now (state / action → NumPy)
 
@@ -145,17 +147,19 @@ The platform-specific part is decode and output, selected behind a single `Decod
 
 - **macOS (Apple Silicon)** — the optimized path: VideoToolbox hardware decode → IOSurface →
   **zero-copy MLX**. This is the differentiator.
-- **Linux** — the same engine, decoding via FFmpeg (VAAPI / NVDEC hardware acceleration where
-  available, software fallback otherwise) and outputting **NumPy / PyTorch**.
+- **Linux** — the same engine, decoding via FFmpeg (VAAPI where available, software otherwise)
+  and outputting **NumPy / PyTorch**.
+- **Linux + CUDA** — when CUDA libraries are present (build with `--features cuda`), NVIDIA
+  **NVDEC** hardware decode with CUDA output for PyTorch.
 
 ## Supported (target matrix)
 
 | | v0.1 | Planned |
 |---|---|---|
 | Datasets | LeRobotDataset v3.0 | MCAP, RLDS, HDF5 |
-| Decode (HW) | macOS: H.264/HEVC (VideoToolbox) · Linux: VAAPI/NVDEC (FFmpeg) + software fallback | ProRes, AV1 (M3+) |
+| Decode (HW) | macOS: VideoToolbox · Linux: FFmpeg (VAAPI) + software · Linux+CUDA: NVDEC | ProRes, AV1 (M3+) |
 | Output | macOS: MLX · all: NumPy | PyTorch (MPS/CUDA) via DLPack |
-| Platform | macOS (Apple Silicon) · Linux (x86_64, aarch64) | CUDA zero-copy |
+| Platform | macOS (Apple Silicon) · Linux (x86_64, aarch64) · Linux+CUDA | CUDA zero-copy output |
 
 ## Benchmarks
 

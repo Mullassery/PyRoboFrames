@@ -50,6 +50,8 @@ pub struct FrameLocation {
     pub global_index: usize,
     pub episode_index: usize,
     pub frame_in_episode: usize,
+    /// Number of frames in this episode (for window clamping).
+    pub episode_len: usize,
     pub data_chunk_index: usize,
     pub data_file_index: usize,
     /// camera key -> (chunk_index, file_index, timestamp_seconds within that mp4 shard).
@@ -129,6 +131,7 @@ impl EpisodeIndex {
             global_index,
             episode_index: ep.episode_index,
             frame_in_episode,
+            episode_len: ep.to_index - ep.from_index,
             data_chunk_index: ep.data_chunk_index,
             data_file_index: ep.data_file_index,
             videos,

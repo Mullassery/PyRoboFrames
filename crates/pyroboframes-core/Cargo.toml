@@ -20,9 +20,11 @@ lru = "0.12"
 [features]
 # Real hardware decode backends — stubbed today, pending the Phase 0 spikes:
 #   videotoolbox — Apple Media Engine HW decode (macOS); will pull the `videotoolbox` crate
-#   ffmpeg       — FFmpeg decode (Linux VAAPI/NVDEC + software); will pull an ffmpeg crate
+#   ffmpeg       — FFmpeg decode (Linux VAAPI + software); will pull an ffmpeg crate
+#   cuda         — NVIDIA NVDEC + CUDA decode/output (Linux with CUDA libraries present)
 videotoolbox = []
 ffmpeg = []
+cuda = []
 
 [dev-dependencies]
 tempfile = "3"
