@@ -9,7 +9,9 @@ use std::path::Path;
 
 use thiserror::Error;
 
+pub mod data;
 pub mod dataset;
+pub mod episodes;
 pub mod info;
 
 /// Errors surfaced by the engine.

@@ -7,6 +7,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::data::DataShard;
+use crate::episodes::EpisodeIndex;
 use crate::info::Info;
 use crate::{Error, Result};
 
@@ -73,6 +75,18 @@ impl Dataset {
     /// Timestamp (seconds) of frame `frame_in_episode` within an episode, from the frame rate.
     pub fn frame_timestamp(&self, frame_in_episode: usize) -> f64 {
         frame_in_episode as f64 / self.info.fps
+    }
+
+    /// Load the per-episode index (`meta/episodes/*.parquet`), enabling global frame -> decode
+    /// location resolution. Reads from disk on each call.
+    pub fn episodes(&self) -> Result<EpisodeIndex> {
+        EpisodeIndex::load(&self.root, &self.info)
+    }
+
+    /// Open a tabular data shard (`data/chunk-XXX/file-YYY.parquet`) holding the state/action
+    /// rows for the episodes assigned to it.
+    pub fn data_shard(&self, chunk_index: usize, file_index: usize) -> Result<DataShard> {
+        DataShard::open(&self.data_file(chunk_index, file_index))
     }
 }
 

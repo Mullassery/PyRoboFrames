@@ -13,11 +13,12 @@ thiserror.workspace = true
 crossbeam-channel.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+arrow = "55"
+parquet = "55"
 
-# Decode + tabular dependencies are introduced as backends land:
+# Decode dependencies are introduced as backends land:
 #   videotoolbox    — Apple Media Engine HW decode (macOS), behind cfg(target_os = "macos")
 #   ff-decode       — FFmpeg decode (Linux: VAAPI/NVDEC hwaccel + software fallback)
-#   arrow / parquet — LeRobotDataset v3.0 tabular + per-episode index (Phase 1b)
 
 [dev-dependencies]
 tempfile = "3"

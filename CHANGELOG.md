@@ -13,6 +13,10 @@ All notable changes to this project are documented here. The format follows
   and the spike-first phased build plan).
 - **Dataset reader (Phase 1a):** `info.json` parsing, schema/camera detection, shard-path
   resolution, and frame timestamps for LeRobotDataset v3.0 — platform-agnostic, with tests.
+- **Episode index + tabular reader (Phase 1b):** read `meta/episodes/*.parquet` into an
+  `EpisodeIndex` that resolves a global frame to `(camera, video file, timestamp)` via
+  `locate()`; read `data/*.parquet` state/action vectors via `DataShard` (fixed-size / list
+  float32). Backed by arrow/parquet, with self-contained parquet round-trip tests (12 total).
 
 ### Changed
 - **Cross-platform target:** macOS *and* Linux are both first-class in v0.1. Decode is two
@@ -20,7 +24,7 @@ All notable changes to this project are documented here. The format follows
   VAAPI/NVDEC + software fallback).
 
 ### In progress (v0.1)
-- Per-episode index + tabular parquet reading (Phase 1b) for exact frame location.
+- Spike A (MLX zero-copy) and Spike B (VideoToolbox→IOSurface) — gate the decode design.
 - VideoToolbox / FFmpeg decode backends; zero-copy MLX (macOS) and NumPy/PyTorch (Linux) output.
 - Sampling/windowing, prefetch pipeline, validation pass, and the benchmark harness.
 
