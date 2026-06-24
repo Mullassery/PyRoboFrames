@@ -3,21 +3,20 @@
 #
 #   curl -LsSf https://raw.githubusercontent.com/Mullassery/PyRoboFrames/main/install.sh | sh
 #
-# Installs the (pre-release) package via uv when available, otherwise pip. Because the current
-# release is a pre-release (0.1.0a0), the pre-release flag is passed automatically.
+# Installs the package via uv when available, otherwise pip.
 set -eu
 
 PKG="pyroboframes"
 
 if command -v uv >/dev/null 2>&1; then
     echo "Installing $PKG via uv..."
-    uv pip install --prerelease=allow "$PKG"
+    uv pip install "$PKG"
 elif command -v pip3 >/dev/null 2>&1; then
     echo "Installing $PKG via pip3..."
-    pip3 install --pre "$PKG"
+    pip3 install "$PKG"
 elif command -v pip >/dev/null 2>&1; then
     echo "Installing $PKG via pip..."
-    pip install --pre "$PKG"
+    pip install "$PKG"
 else
     echo "error: need 'uv' or 'pip' installed first" >&2
     exit 1

@@ -42,27 +42,27 @@ engine and run everything on the CPU.
   `pip install` and `import` it.
 - **Runs on Linux too**, including NVIDIA CUDA/NVDEC when present.
 
-> ## Status: pre-alpha (`0.1.0a0`)
+> ## Status: early (`0.1.0`, `0.x` — expect API changes)
 > The **tabular dataloader** (joint states / actions, with shuffling and temporal windows)
 > **works today** on any LeRobotDataset v3.0. **Video-frame decoding is still in progress** —
 > the architecture, caching, and pipeline are in place, but the hardware decoders
 > (VideoToolbox / FFmpeg / NVDEC) are not implemented yet. See
-> [What works today](#what-works-today). APIs will change.
+> [What works today](#what-works-today).
 
 ---
 
 ## Installation
 
-Requires Python ≥ 3.10. It's a pre-release, so pass the pre-release flag:
+Requires Python ≥ 3.10.
 
 ```bash
 # pip
-pip install --pre pyroboframes
+pip install pyroboframes
 
 # uv
-uv pip install --prerelease=allow pyroboframes
+uv pip install pyroboframes
 #   or, in a uv project:
-uv add pyroboframes --prerelease=allow
+uv add pyroboframes
 
 # one-line installer (uses uv if present, else pip)
 curl -LsSf https://raw.githubusercontent.com/Mullassery/PyRoboFrames/main/install.sh | sh

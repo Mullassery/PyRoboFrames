@@ -4,7 +4,10 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-06-25
+
+First public PyPI release (`pip install pyroboframes`). Functional tabular dataloader; video
+decode in progress. `0.x` — API may change.
 
 ### Added
 - Project scaffolding: Rust workspace (`pyroboframes-core`, `pyroboframes-py`), maturin/PyO3
@@ -34,8 +37,8 @@ All notable changes to this project are documented here. The format follows
   and decodes via the `Decoder` + `FrameCache` (tested with a mock decoder; real codecs drop in).
 - **Linux + CUDA backend:** `Backend::Cuda` (NVIDIA NVDEC) + `cuda` cargo feature; selected on
   Linux when built `--features cuda`. Stub pending CUDA toolkit integration.
-- Pre-release version `0.1.0a0` (not yet published). 32 Rust + 8 Python tests; clippy clean
-  across default and all backend features (`videotoolbox`, `ffmpeg`, `cuda`).
+- Released as **0.1.0** (stable scheme, no `--pre` needed). 32 Rust + 8 Python tests; clippy
+  clean across default and all backend features (`videotoolbox`, `ffmpeg`, `cuda`).
 
 ### Changed
 - **Cross-platform target:** macOS *and* Linux are both first-class in v0.1. Decode is two
