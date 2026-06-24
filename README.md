@@ -238,15 +238,20 @@ Direction is informed by where robot learning is heading — Vision-Language-Act
 trained on ever-larger, multimodal, increasingly **streamed** datasets, with a growing need for
 **data-quality curation**.
 
-- **0.1.x — Make frames real.** VideoToolbox (macOS) and FFmpeg (Linux) decode; zero-copy MLX
-  output; a published decode-throughput benchmark vs. the PyAV/CPU baseline.
-- **0.2 — Streaming & PyTorch.** Stream datasets directly from the Hugging Face Hub without a
-  full download (à la LeRobot's `StreamingLeRobotDataset`); PyTorch-MPS/CUDA output via DLPack.
+**Shipped so far (0.1.0 → 0.1.2):** dataloader (state/action + camera frames), buffered shuffle,
+temporal windows, `ds.validate()`, FFmpeg decode, and NumPy / MLX / PyTorch output — macOS & Linux.
+
+**Next up:**
+
+- **0.1.x — The Apple fast path.** Native **VideoToolbox** (macOS) hardware decode → **zero-copy
+  MLX** (no NumPy hop, gated on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and
+  NVIDIA **NVDEC** on Linux; a published decode-throughput benchmark vs. the FFmpeg/CPU baseline.
+- **0.2 — Streaming.** Stream datasets directly from the Hugging Face Hub without a full download
+  (à la LeRobot's `StreamingLeRobotDataset`).
 - **0.3 — More formats.** MCAP, RLDS / Open X-Embodiment, and HDF5 ingestion behind the same
   loader API.
-- **0.4 — Data quality.** `ds.validate()` plus trajectory **scoring/curation** (jitter,
-  diversity, sharpness, state-variance) to filter low-quality segments before training —
-  increasingly essential as datasets scale.
+- **0.4 — Data-quality curation.** Beyond `validate()`: trajectory **scoring** (jitter, diversity,
+  sharpness, state-variance) to filter low-quality segments before training.
 - **0.5+ — Scale.** Multi-GPU / multi-Mac distributed loading, on-the-fly augmentation, and
   interop with synthetic-data / world-model pipelines.
 
