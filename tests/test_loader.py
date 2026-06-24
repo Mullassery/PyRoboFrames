@@ -4,6 +4,8 @@ Rust engine, and iterate the dataloader — verifying real state/action batches 
 
 import json
 import os
+import shutil
+import subprocess
 
 import numpy as np
 import pyarrow as pa
@@ -13,9 +15,10 @@ import pytest
 import pyroboframes as prf
 
 CAM = "observation.images.top"
+VID_W, VID_H = 32, 24
 
 
-def make_dataset(root: str, episodes=2, length=50):
+def make_dataset(root: str, episodes=2, length=50, with_video=False):
     total = episodes * length
     os.makedirs(f"{root}/meta/episodes/chunk-000")
     os.makedirs(f"{root}/data/chunk-000")
@@ -66,6 +69,19 @@ def make_dataset(root: str, episodes=2, length=50):
         }
     )
     pq.write_table(data, f"{root}/data/chunk-000/file-000.parquet")
+
+    if with_video:
+        vdir = f"{root}/videos/{CAM}/chunk-000"
+        os.makedirs(vdir)
+        subprocess.run(
+            [
+                "ffmpeg", "-v", "error", "-f", "lavfi",
+                "-i", f"testsrc=size={VID_W}x{VID_H}:rate=30",
+                "-frames:v", str(total), "-pix_fmt", "yuv420p",
+                f"{vdir}/file-000.mp4",
+            ],
+            check=True,
+        )
     return total
 
 
@@ -140,6 +156,29 @@ def test_windowed_loader_returns_3d(tmp_path):
         b0["observation.state"][5], [[2.0, 0.0, 0.0], [5.0, 0.0, 0.0]]
     )
     np.testing.assert_array_equal(b0["action"][5], [[5.0, 5.0, 5.0]])
+
+
+def test_validate_clean_dataset(tmp_path):
+    make_dataset(str(tmp_path))
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    report = ds.validate()
+    assert report.ok
+    assert report.errors == []
+    report.raise_if_errors()  # no-op when clean
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_frame_loader_returns_image_batches(tmp_path):
+    make_dataset(str(tmp_path), with_video=True)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    loader = ds.loader(batch_size=4, shuffle=False, cameras=[CAM])
+
+    b0 = next(iter(loader))
+    frames = b0[CAM]
+    assert frames.shape == (4, VID_H, VID_W, 3)   # [batch, H, W, 3]
+    assert frames.dtype == np.uint8
+    # tabular features still come along
+    assert b0["observation.state"].shape == (4, 3)
 
 
 def test_bad_path_raises(tmp_path):

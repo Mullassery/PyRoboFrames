@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-06-25
+
+### Added
+- **Camera frame decoding (FFmpeg).** Real `FfmpegDecoder` (drives the `ffmpeg` CLI; works on
+  macOS + Linux, uses platform hwaccel where the ffmpeg build supports it). `loader(cameras=[...])`
+  now yields `[batch, H, W, 3]` `uint8` frame arrays alongside state/action. Requires
+  `ffmpeg`/`ffprobe` on `PATH`; built into the wheel via the `ffmpeg` feature.
+- **`ds.validate()`** — metadata integrity checks (frame-range contiguity, episode lengths,
+  per-camera timestamp bounds, totals vs `info.json`) returning a `ValidationReport`.
+- Core APIs: `TabularLoader::frames_for/locate/dataset`, `decode::FfmpegDecoder`,
+  `validate` module, `Dataset::validate`.
+
+### Notes
+- Still in progress: native VideoToolbox/NVDEC backends and **zero-copy MLX** output (frames are
+  NumPy today; convert to MLX/PyTorch in one line).
+
 ## [0.1.0] - 2026-06-25
 
 First public PyPI release (`pip install pyroboframes`). Functional tabular dataloader; video

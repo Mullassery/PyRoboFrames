@@ -88,6 +88,12 @@ impl Dataset {
     pub fn data_shard(&self, chunk_index: usize, file_index: usize) -> Result<DataShard> {
         DataShard::open(&self.data_file(chunk_index, file_index))
     }
+
+    /// Validate dataset metadata integrity (contiguous frame ranges, lengths, timestamps,
+    /// totals). See [`crate::validate`].
+    pub fn validate(&self) -> Result<crate::ValidationReport> {
+        crate::validate::validate(self)
+    }
 }
 
 #[cfg(test)]

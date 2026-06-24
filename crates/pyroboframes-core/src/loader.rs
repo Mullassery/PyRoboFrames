@@ -180,6 +180,39 @@ impl TabularLoader {
     pub fn batch(&mut self, indices: &[usize]) -> Result<Vec<Sample>> {
         indices.iter().map(|&i| self.sample(i)).collect()
     }
+
+    /// The underlying dataset (for video-path resolution).
+    pub fn dataset(&self) -> &Dataset {
+        &self.dataset
+    }
+
+    /// Resolve a global frame to its decode location.
+    pub fn locate(&self, global_index: usize) -> Option<FrameLocation> {
+        self.index.locate(global_index)
+    }
+
+    /// Decode the requested cameras' frames for a global frame index, via `decoder` + `cache`.
+    pub fn frames_for(
+        &self,
+        global_index: usize,
+        cameras: &[String],
+        decoder: &mut dyn Decoder,
+        cache: &mut FrameCache,
+    ) -> Result<Vec<(String, Frame)>> {
+        let loc = self
+            .index
+            .locate(global_index)
+            .ok_or_else(|| Error::Dataset(format!("frame {global_index} out of range")))?;
+        let mut out = Vec::with_capacity(cameras.len());
+        for cam in cameras {
+            let &(chunk, file, ts) = loc.videos.get(cam).ok_or_else(|| {
+                Error::Dataset(format!("camera `{cam}` not found for frame {global_index}"))
+            })?;
+            let path = self.dataset.video_file(cam, chunk, file);
+            out.push((cam.clone(), cache.get_or_decode(decoder, cam, &path, ts)?));
+        }
+        Ok(out)
+    }
 }
 
 /// Decode each camera's frame for a resolved frame location, going through `cache` (so repeated

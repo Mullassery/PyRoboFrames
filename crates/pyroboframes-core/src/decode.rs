@@ -244,17 +244,91 @@ pub use linux::FfmpegDecoder;
 #[cfg(feature = "ffmpeg")]
 mod linux {
     use super::*;
+    use std::collections::HashMap;
+    use std::process::Command;
 
-    /// FFmpeg decoder for Linux (VAAPI/NVDEC + software fallback). Stub pending system-FFmpeg
-    /// integration.
+    /// Video decoder driving the `ffmpeg` CLI (cross-platform: uses the platform's hwaccel —
+    /// VAAPI/NVDEC on Linux, VideoToolbox on macOS — when the ffmpeg build supports it, software
+    /// otherwise). Requires `ffmpeg` and `ffprobe` on `PATH`. Decodes a single RGB24 frame per
+    /// call; the [`FrameCache`] avoids repeated work. A libav-linked path is a future optimization.
     #[derive(Default)]
-    pub struct FfmpegDecoder;
+    pub struct FfmpegDecoder {
+        dims: HashMap<PathBuf, (u32, u32)>,
+    }
+
+    impl FfmpegDecoder {
+        /// Video stream width/height (cached per file), via `ffprobe`.
+        fn dimensions(&mut self, file: &Path) -> Result<(u32, u32)> {
+            if let Some(&d) = self.dims.get(file) {
+                return Ok(d);
+            }
+            let out = Command::new("ffprobe")
+                .args([
+                    "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0",
+                ])
+                .arg(file)
+                .output()
+                .map_err(|e| crate::Error::Decode(format!("ffprobe not runnable: {e}")))?;
+            if !out.status.success() {
+                return Err(crate::Error::Decode(format!(
+                    "ffprobe failed for {}",
+                    file.display()
+                )));
+            }
+            let s = String::from_utf8_lossy(&out.stdout);
+            let (w, h) = s.trim().split_once('x').ok_or_else(|| {
+                crate::Error::Decode(format!("unexpected ffprobe output: {:?}", s.trim()))
+            })?;
+            let parse = |v: &str| {
+                v.trim()
+                    .parse::<u32>()
+                    .map_err(|_| crate::Error::Decode(format!("bad dimension {v:?}")))
+            };
+            let dims = (parse(w)?, parse(h)?);
+            self.dims.insert(file.to_path_buf(), dims);
+            Ok(dims)
+        }
+    }
 
     impl Decoder for FfmpegDecoder {
-        fn decode(&mut self, _camera: &str, _file: &Path, _timestamp: f64) -> Result<Frame> {
-            Err(crate::Error::Decode(
-                "FFmpeg backend not yet implemented (pending system FFmpeg integration)".into(),
-            ))
+        fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
+            let (width, height) = self.dimensions(file)?;
+            // Accurate (output) seek: `-ss` after `-i` decodes to the exact timestamp.
+            let out = Command::new("ffmpeg")
+                .args(["-nostdin", "-v", "error", "-i"])
+                .arg(file)
+                .args(["-ss"])
+                .arg(format!("{timestamp}"))
+                .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+                .output()
+                .map_err(|e| crate::Error::Decode(format!("ffmpeg not runnable: {e}")))?;
+            if !out.status.success() {
+                return Err(crate::Error::Decode(format!(
+                    "ffmpeg failed to decode {} @ {timestamp}s",
+                    file.display()
+                )));
+            }
+            let expected = width as usize * height as usize * 3;
+            if out.stdout.len() < expected {
+                return Err(crate::Error::Decode(format!(
+                    "short frame from {}: got {} bytes, expected {expected}",
+                    file.display(),
+                    out.stdout.len()
+                )));
+            }
+            let mut data = out.stdout;
+            data.truncate(expected);
+            Ok(Frame {
+                width,
+                height,
+                camera: camera.to_string(),
+                timestamp,
+                pixels: FrameBuffer::Owned {
+                    data: Arc::new(data),
+                    channels: 3,
+                },
+            })
         }
     }
 }
@@ -338,6 +412,30 @@ mod tests {
         assert_eq!(pool.free_count(), 1);
         let _b2 = pool.take();
         assert_eq!(pool.free_count(), 0);
+    }
+
+    #[cfg(feature = "ffmpeg")]
+    #[test]
+    fn ffmpeg_decoder_decodes_a_real_frame() {
+        use std::process::Command;
+        let tmp = tempfile::tempdir().unwrap();
+        let mp4 = tmp.path().join("v.mp4");
+        // Generate a 64x48 @ 30fps, 2s test clip.
+        let status = Command::new("ffmpeg")
+            .args([
+                "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x48:rate=30",
+                "-frames:v", "60", "-pix_fmt", "yuv420p",
+            ])
+            .arg(&mp4)
+            .status()
+            .expect("ffmpeg must be installed to run this test");
+        assert!(status.success());
+
+        let mut dec = FfmpegDecoder::default();
+        let frame = dec.decode("top", &mp4, 0.5).unwrap();
+        assert_eq!((frame.width, frame.height), (64, 48));
+        assert_eq!(frame.pixels.as_bytes().len(), 64 * 48 * 3);
+        assert_eq!(frame.pixels.channels(), 3);
     }
 
     #[test]

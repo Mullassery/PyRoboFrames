@@ -22,3 +22,5 @@ numpy = "0.22"
 # `cargo build`/`cargo test` so the crate links against the local Python instead of
 # requiring maturin's dynamic-lookup linker flags.
 extension-module = ["pyo3/extension-module"]
+# Enable the FFmpeg-CLI frame decoder (requires ffmpeg/ffprobe on PATH at runtime).
+ffmpeg = ["pyroboframes-core/ffmpeg"]

@@ -10,22 +10,76 @@
 // thin binding shell (all real logic lives in `pyroboframes-core`).
 #![allow(clippy::useless_conversion)]
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use numpy::ndarray::{Array2, Array3};
+use numpy::ndarray::{Array2, Array3, Array4};
 use numpy::IntoPyArray;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use pyroboframes_core::dataset::Dataset;
+use pyroboframes_core::decode::{Decoder, FrameCache};
 use pyroboframes_core::loader::{Sample, TabularLoader, WindowedSample};
 use pyroboframes_core::sampler::Sampler;
 use pyroboframes_core::window::WindowSpec;
 
+/// Construct the frame decoder. FFmpeg-CLI based; available when built with the `ffmpeg` feature.
+#[cfg(feature = "ffmpeg")]
+fn new_frame_decoder() -> PyResult<Box<dyn Decoder + Send>> {
+    Ok(Box::new(pyroboframes_core::decode::FfmpegDecoder::default()))
+}
+
+#[cfg(not(feature = "ffmpeg"))]
+fn new_frame_decoder() -> PyResult<Box<dyn Decoder + Send>> {
+    Err(PyRuntimeError::new_err(
+        "frame decoding requires the 'ffmpeg' build feature (and ffmpeg/ffprobe on PATH)",
+    ))
+}
+
 fn core_err(e: pyroboframes_core::Error) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
+}
+
+/// Result of [`RoboFrameDataset.validate`]: integrity `errors` and non-fatal `warnings`.
+#[pyclass]
+struct ValidationReport {
+    #[pyo3(get)]
+    errors: Vec<String>,
+    #[pyo3(get)]
+    warnings: Vec<String>,
+}
+
+#[pymethods]
+impl ValidationReport {
+    /// True when there are no errors (warnings are allowed).
+    #[getter]
+    fn ok(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    /// Raise if validation found errors.
+    fn raise_if_errors(&self) -> PyResult<()> {
+        if self.errors.is_empty() {
+            Ok(())
+        } else {
+            Err(PyValueError::new_err(format!(
+                "dataset validation failed: {}",
+                self.errors.join("; ")
+            )))
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "ValidationReport(ok={}, errors={}, warnings={})",
+            self.errors.is_empty(),
+            self.errors.len(),
+            self.warnings.len()
+        )
+    }
 }
 
 /// An opened LeRobotDataset v3.0.
@@ -67,12 +121,26 @@ impl RoboFrameDataset {
         self.dataset.cameras()
     }
 
+    /// Validate dataset metadata integrity (frame-range contiguity, lengths, timestamps, totals).
+    fn validate(&self) -> PyResult<ValidationReport> {
+        match self.dataset.validate() {
+            Ok(r) => Ok(ValidationReport {
+                errors: r.errors,
+                warnings: r.warnings,
+            }),
+            Err(e) => Err(core_err(e)),
+        }
+    }
+
     /// Build a dataloader over the tabular (state/action) features.
     ///
     /// `delta_timestamps` (optional) maps a feature to a list of time offsets in seconds, e.g.
     /// `{"observation.state": [-0.1, 0.0]}`, producing a temporal window per sample; matching is
     /// validated against `tolerance_s`.
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4))]
+    ///
+    /// `cameras` (optional) names the video streams to decode and include as `[batch, H, W, 3]`
+    /// `uint8` arrays (requires an ffmpeg-enabled build with `ffmpeg`/`ffprobe` on `PATH`).
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None))]
     #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
@@ -83,6 +151,7 @@ impl RoboFrameDataset {
         drop_last: bool,
         delta_timestamps: Option<Bound<'_, PyDict>>,
         tolerance_s: f64,
+        cameras: Option<Vec<String>>,
     ) -> PyResult<Loader> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
@@ -107,6 +176,15 @@ impl RoboFrameDataset {
             Err(e) => return Err(core_err(e)),
         };
         let order = Sampler::new(shuffle, shuffle_buffer, seed).order(inner.total_frames(), 0);
+
+        let cameras = cameras.unwrap_or_default();
+        let (frame_decoder, frame_cache) = if cameras.is_empty() {
+            (None, FrameCache::new(1))
+        } else {
+            let cap = (batch_size * cameras.len() * 8).max(256);
+            (Some(new_frame_decoder()?), FrameCache::new(cap))
+        };
+
         Ok(Loader {
             inner,
             order,
@@ -114,6 +192,9 @@ impl RoboFrameDataset {
             batch_size,
             drop_last,
             window,
+            cameras,
+            frame_decoder,
+            frame_cache,
         })
     }
 
@@ -138,6 +219,10 @@ struct Loader {
     drop_last: bool,
     /// When set, each feature is returned as a `[batch, num_deltas, dim]` temporal window.
     window: Option<WindowSpec>,
+    /// Camera streams to decode into frame arrays (empty = tabular only).
+    cameras: Vec<String>,
+    frame_decoder: Option<Box<dyn Decoder + Send>>,
+    frame_cache: FrameCache,
 }
 
 #[pymethods]
@@ -157,26 +242,61 @@ impl Loader {
         let indices = self.order[self.cursor..end].to_vec();
         self.cursor = end;
 
-        // Clone the spec so we don't hold a borrow of `self` while calling `&mut self.inner`.
-        match self.window.clone() {
+        // Tabular features (clone the spec so we don't hold a borrow of `self` across `&mut`).
+        let batch: Py<PyDict> = match self.window.clone() {
             None => {
                 let samples = match self.inner.batch(&indices) {
                     Ok(samples) => samples,
                     Err(e) => return Err(core_err(e)),
                 };
-                Ok(Some(batch_to_dict(py, &samples)?))
+                batch_to_dict(py, &samples)?
             }
             Some(spec) => {
                 let mut samples = Vec::with_capacity(indices.len());
-                for i in indices {
+                for &i in &indices {
                     match self.inner.windowed_sample(i, &spec) {
                         Ok(s) => samples.push(s),
                         Err(e) => return Err(core_err(e)),
                     }
                 }
-                Ok(Some(windowed_batch_to_dict(py, &samples)?))
+                windowed_batch_to_dict(py, &samples)?
+            }
+        };
+
+        // Camera frames -> [batch, H, W, 3] uint8 per camera.
+        if !self.cameras.is_empty() {
+            let cameras = self.cameras.clone();
+            let decoder = self.frame_decoder.as_deref_mut().expect("decoder set");
+            // camera -> (width, height, concatenated RGB bytes)
+            let mut acc: BTreeMap<String, (u32, u32, Vec<u8>)> = BTreeMap::new();
+            for &i in &indices {
+                let frames = match self.inner.frames_for(i, &cameras, decoder, &mut self.frame_cache)
+                {
+                    Ok(f) => f,
+                    Err(e) => return Err(core_err(e)),
+                };
+                for (cam, frame) in frames {
+                    let entry = acc
+                        .entry(cam)
+                        .or_insert((frame.width, frame.height, Vec::new()));
+                    if entry.0 != frame.width || entry.1 != frame.height {
+                        return Err(PyValueError::new_err(
+                            "frames in a batch have inconsistent dimensions",
+                        ));
+                    }
+                    entry.2.extend_from_slice(frame.pixels.as_bytes());
+                }
+            }
+            let n = indices.len();
+            let dict = batch.bind(py);
+            for (cam, (w, h, data)) in acc {
+                let arr = Array4::from_shape_vec((n, h as usize, w as usize, 3), data)
+                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                dict.set_item(cam, arr.into_pyarray_bound(py))?;
             }
         }
+
+        Ok(Some(batch))
     }
 
     /// Number of batches in one epoch.
@@ -281,6 +401,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
     m.add_class::<RoboFrameDataset>()?;
     m.add_class::<Loader>()?;
+    m.add_class::<ValidationReport>()?;
     Ok(())
 }
 

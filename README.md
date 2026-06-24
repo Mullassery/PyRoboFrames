@@ -42,12 +42,11 @@ engine and run everything on the CPU.
   `pip install` and `import` it.
 - **Runs on Linux too**, including NVIDIA CUDA/NVDEC when present.
 
-> ## Status: early (`0.1.0`, `0.x` — expect API changes)
-> The **tabular dataloader** (joint states / actions, with shuffling and temporal windows)
-> **works today** on any LeRobotDataset v3.0. **Video-frame decoding is still in progress** —
-> the architecture, caching, and pipeline are in place, but the hardware decoders
-> (VideoToolbox / FFmpeg / NVDEC) are not implemented yet. See
-> [What works today](#what-works-today).
+> ## Status: early (`0.1.1`, `0.x` — expect API changes)
+> Works today on any LeRobotDataset v3.0: the **dataloader** (state/action **and camera
+> frames**), shuffling, temporal windows, and **`validate()`**. Camera frames decode via
+> **FFmpeg** and return as NumPy. Still in progress: the Apple-Silicon **zero-copy MLX** path
+> and the native VideoToolbox / NVDEC backends. See [What works today](#what-works-today).
 
 ---
 
@@ -118,13 +117,30 @@ for batch in loader:
     ...
 ```
 
-### Camera frames → MLX (planned, not yet functional)
+### Camera frames (works via FFmpeg → NumPy)
+
+Requires `ffmpeg` and `ffprobe` on your `PATH`. Frames come back as `uint8` arrays
+shaped `[batch, H, W, 3]`:
 
 ```python
-# Target API once hardware decode + MLX output land — shown for direction only.
-loader = ds.loader(batch_size=64, cameras=["observation.images.top"], output="mlx")
+loader = ds.loader(batch_size=64, cameras=["observation.images.top"])
 for batch in loader:
-    frames = batch["observation.images.top"]   # mlx.core.array, decoded on the Media Engine
+    frames = batch["observation.images.top"]   # np.uint8, [64, H, W, 3]
+    state  = batch["observation.state"]
+    # one line to your framework:
+    #   torch.from_numpy(frames)   # PyTorch
+    #   mlx.core.array(frames)     # MLX
+```
+
+> Decoding straight into MLX on the Apple Media Engine with **zero copies** is the next
+> milestone (see [Roadmap](#roadmap)); today frames are FFmpeg-decoded and returned as NumPy.
+
+### Validate a dataset before training
+
+```python
+report = ds.validate()          # checks frame-range contiguity, lengths, timestamps, totals
+report.raise_if_errors()        # raises if integrity errors were found
+print(report.ok, report.warnings)
 ```
 
 ---
@@ -138,11 +154,12 @@ for batch in loader:
 | Shuffling (buffered/quasi-random), `drop_last`, seeding | ✅ |
 | Temporal windows (`delta_timestamps`, `tolerance_s`) | ✅ |
 | macOS **and** Linux | ✅ |
-| Decoded-frame cache, batched-seek API, backend selection | ✅ (infra) |
-| **Video frame decoding** (VideoToolbox / FFmpeg / NVDEC) | 🚧 stubbed |
-| **Zero-copy MLX** output | 🚧 |
-| **PyTorch / CUDA** output | 🚧 |
-| Dataset **validation** (`ds.validate()`) | 🚧 |
+| Decoded-frame cache, batched-seek API, backend selection | ✅ |
+| **Camera frame decoding** (FFmpeg → NumPy) | ✅ (needs `ffmpeg` on `PATH`) |
+| Dataset **validation** (`ds.validate()`) | ✅ |
+| Native **VideoToolbox / NVDEC** decode | 🚧 |
+| **Zero-copy MLX** output | 🚧 (NumPy → `mlx.core.array` in one line) |
+| **PyTorch / CUDA** output | 🚧 (NumPy → `torch.from_numpy` in one line) |
 
 ---
 
