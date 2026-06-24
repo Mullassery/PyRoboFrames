@@ -4,6 +4,12 @@
 //! batches of tabular features (state, action, …) as NumPy arrays. Video frames / MLX output
 //! layer on once a decode backend lands. All logic lives in `pyroboframes-core`.
 
+// PyO3 0.22's `#[pymethods]` codegen emits an identity `.into()` on the return value of
+// `#[staticmethod]` / `#[pyo3(signature = ...)]` methods, which clippy flags as
+// useless_conversion in code we don't control. Silenced crate-wide as this crate is only the
+// thin binding shell (all real logic lives in `pyroboframes-core`).
+#![allow(clippy::useless_conversion)]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -32,10 +38,12 @@ impl RoboFrameDataset {
     /// Open a dataset from a local path (the directory holding `meta/`, `data/`, `videos/`).
     #[staticmethod]
     fn from_path(path: PathBuf) -> PyResult<Self> {
-        let dataset = Dataset::open(&path).map_err(core_err)?;
-        Ok(Self {
-            dataset: Arc::new(dataset),
-        })
+        match Dataset::open(&path) {
+            Ok(dataset) => Ok(Self {
+                dataset: Arc::new(dataset),
+            }),
+            Err(e) => Err(core_err(e)),
+        }
     }
 
     #[getter]
@@ -71,7 +79,10 @@ impl RoboFrameDataset {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
         }
-        let inner = TabularLoader::open(self.dataset.clone()).map_err(core_err)?;
+        let inner = match TabularLoader::open(self.dataset.clone()) {
+            Ok(inner) => inner,
+            Err(e) => return Err(core_err(e)),
+        };
         let order = Sampler::new(shuffle, shuffle_buffer, seed).order(inner.total_frames(), 0);
         Ok(Loader {
             inner,
@@ -120,7 +131,10 @@ impl Loader {
         let indices = self.order[self.cursor..end].to_vec();
         self.cursor = end;
 
-        let samples = self.inner.batch(&indices).map_err(core_err)?;
+        let samples = match self.inner.batch(&indices) {
+            Ok(samples) => samples,
+            Err(e) => return Err(core_err(e)),
+        };
         Ok(Some(batch_to_dict(py, &samples)?))
     }
 
