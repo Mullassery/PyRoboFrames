@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.3] - 2026-06-25
 
 ### Added
 - **`ds.stats()`** — per-feature statistics from `meta/stats.json` (`mean`/`std`/`min`/`max`/
