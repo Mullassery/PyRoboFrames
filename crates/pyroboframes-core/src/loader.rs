@@ -45,6 +45,8 @@ pub struct TabularLoader {
     shard_start: HashMap<(usize, usize), usize>,
     features: Vec<String>,
     open: HashMap<(usize, usize), DataShard>,
+    /// Feature -> (mean, std) for optional `(x - mean) / std` normalization. Empty = off.
+    norm: HashMap<String, (Vec<f32>, Vec<f32>)>,
 }
 
 impl TabularLoader {
@@ -85,7 +87,43 @@ impl TabularLoader {
             shard_start,
             features,
             open: HashMap::new(),
+            norm: HashMap::new(),
         })
+    }
+
+    /// Enable `(x - mean) / std` normalization for the given features, using `meta/stats.json`.
+    /// Errors if the dataset has no stats or a requested feature lacks (valid) stats. A zero std
+    /// is treated as 1 (leaves that component mean-centered) to avoid division by zero.
+    pub fn enable_normalization(&mut self, features: &[String]) -> Result<()> {
+        let stats = self.dataset.stats()?.ok_or_else(|| {
+            Error::Dataset("normalization requested but dataset has no meta/stats.json".into())
+        })?;
+        for name in features {
+            let fs = stats.get(name).ok_or_else(|| {
+                Error::Dataset(format!("no stats for feature `{name}` (needed for normalization)"))
+            })?;
+            if fs.mean.is_empty() || fs.mean.len() != fs.std.len() {
+                return Err(Error::Dataset(format!(
+                    "stats for `{name}` have missing or mismatched mean/std"
+                )));
+            }
+            let mean = fs.mean.iter().map(|&x| x as f32).collect();
+            let std = fs.std.iter().map(|&x| x as f32).collect();
+            self.norm.insert(name.clone(), (mean, std));
+        }
+        Ok(())
+    }
+
+    /// Apply normalization in place if `name` is configured (no-op otherwise).
+    fn apply_norm(&self, name: &str, v: &mut [f32]) {
+        if let Some((mean, std)) = self.norm.get(name) {
+            for (i, x) in v.iter_mut().enumerate() {
+                let m = mean.get(i).copied().unwrap_or(0.0);
+                let s = std.get(i).copied().unwrap_or(1.0);
+                let s = if s == 0.0 { 1.0 } else { s };
+                *x = (*x - m) / s;
+            }
+        }
     }
 
     pub fn total_frames(&self) -> usize {
@@ -137,7 +175,9 @@ impl TabularLoader {
         let shard = &self.open[&key];
         let mut features = BTreeMap::new();
         for name in &self.features {
-            features.insert(name.clone(), shard.feature_f32(name, row)?);
+            let mut v = shard.feature_f32(name, row)?;
+            self.apply_norm(name, &mut v);
+            features.insert(name.clone(), v);
         }
         Ok(Sample {
             global_index,
@@ -179,7 +219,9 @@ impl TabularLoader {
             let mut steps = Vec::with_capacity(offsets.len());
             for off in offsets {
                 let row = (episode_from_global + off) - start;
-                steps.push(shard.feature_f32(name, row)?);
+                let mut v = shard.feature_f32(name, row)?;
+                self.apply_norm(name, &mut v);
+                steps.push(v);
             }
             features.insert(name.clone(), steps);
         }
@@ -416,6 +458,39 @@ mod tests {
             (0..100).collect::<Vec<_>>()
         );
         assert!(loader.frame_indices_for_episodes(&[]).is_empty());
+    }
+
+    #[test]
+    fn normalization_applies_mean_std() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_dataset(tmp.path());
+        fs::write(
+            tmp.path().join("meta/stats.json"),
+            r#"{"observation.state":{"mean":[10.0,0.0,0.0],"std":[2.0,1.0,1.0]},
+                "action":{"mean":[0.0,0.0,0.0],"std":[1.0,1.0,1.0]}}"#,
+        )
+        .unwrap();
+        let ds = Dataset::open(tmp.path()).unwrap();
+        let mut loader = TabularLoader::open(Arc::new(ds)).unwrap();
+        loader
+            .enable_normalization(&["observation.state".to_string()])
+            .unwrap();
+
+        // frame 60: state [60,0,0] -> ((60-10)/2, 0, 0) = [25, 0, 0]; action untouched.
+        let s = loader.sample(60).unwrap();
+        assert_eq!(s.features["observation.state"], vec![25.0, 0.0, 0.0]);
+        assert_eq!(s.features["action"], vec![60.0, 60.0, 60.0]);
+    }
+
+    #[test]
+    fn normalization_requires_stats() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_dataset(tmp.path()); // no stats.json written
+        let ds = Dataset::open(tmp.path()).unwrap();
+        let mut loader = TabularLoader::open(Arc::new(ds)).unwrap();
+        assert!(loader
+            .enable_normalization(&["observation.state".to_string()])
+            .is_err());
     }
 
     use crate::decode::{FrameBuffer, FrameCache};

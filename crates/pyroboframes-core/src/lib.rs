@@ -13,6 +13,7 @@ pub mod decode;
 pub mod episodes;
 pub mod info;
 pub mod loader;
+pub mod pipeline;
 pub mod rng;
 pub mod sampler;
 pub mod split;

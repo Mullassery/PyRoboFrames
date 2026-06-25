@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use numpy::ndarray::{Array2, Array3, Array4};
+use numpy::ndarray::{Array2, Array3, Array4, ArrayD, IxDyn};
 use numpy::IntoPyArray;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -23,8 +23,22 @@ use pyo3::types::PyDict;
 use pyroboframes_core::dataset::Dataset;
 use pyroboframes_core::decode::{Decoder, FrameCache};
 use pyroboframes_core::loader::{Sample, TabularLoader, WindowedSample};
+use pyroboframes_core::pipeline::{AssemblerConfig, Prefetcher, RustBatch};
 use pyroboframes_core::sampler::Sampler;
 use pyroboframes_core::window::WindowSpec;
+
+/// Core-typed decoder factory handed to prefetch workers (each builds its own decoder).
+#[cfg(feature = "ffmpeg")]
+fn core_decoder_factory() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
+    Ok(Box::new(pyroboframes_core::decode::FfmpegDecoder::default()))
+}
+
+#[cfg(not(feature = "ffmpeg"))]
+fn core_decoder_factory() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
+    Err(pyroboframes_core::Error::Decode(
+        "frame decoding requires the 'ffmpeg' build feature (and ffmpeg/ffprobe on PATH)".into(),
+    ))
+}
 
 /// Construct the frame decoder. FFmpeg-CLI based; available when built with the `ffmpeg` feature.
 #[cfg(feature = "ffmpeg")]
@@ -159,6 +173,23 @@ impl RoboFrameDataset {
         self.dataset.train_val_split(val_fraction, seed)
     }
 
+    /// Per-episode metadata, ordered by start frame: a list of dicts with `episode_index`,
+    /// `length`, and the global frame range `[from_index, to_index)`. Iterate these and pass an
+    /// index to `loader(episodes=[i])` to load a single episode.
+    fn episodes(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let index = self.dataset.episodes().map_err(core_err)?;
+        let out = pyo3::types::PyList::empty_bound(py);
+        for ep in index.episodes() {
+            let d = PyDict::new_bound(py);
+            d.set_item("episode_index", ep.episode_index)?;
+            d.set_item("length", ep.length)?;
+            d.set_item("from_index", ep.from_index)?;
+            d.set_item("to_index", ep.to_index)?;
+            out.append(d)?;
+        }
+        Ok(out.unbind().into_any())
+    }
+
     /// Build a dataloader over the tabular (state/action) features.
     ///
     /// `delta_timestamps` (optional) maps a feature to a list of time offsets in seconds, e.g.
@@ -173,10 +204,18 @@ impl RoboFrameDataset {
     ///
     /// `episodes` (optional) restricts iteration to the given episode indices — pass one half of
     /// `ds.train_val_split(...)` to build a train- or validation-only loader.
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None))]
+    ///
+    /// `normalize` (optional) lists features to standardize as `(x - mean) / std` using the
+    /// dataset's `meta/stats.json`.
+    ///
+    /// `num_workers` > 0 runs an **off-GIL prefetch pipeline** (that many background assembler
+    /// threads, up to `prefetch` batches in flight); `0` (default) assembles synchronously on the
+    /// calling thread. The prefetched loader supports `position` but not `seek`.
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4))]
     #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
+        py: Python<'_>,
         batch_size: usize,
         shuffle: bool,
         shuffle_buffer: usize,
@@ -187,7 +226,10 @@ impl RoboFrameDataset {
         cameras: Option<Vec<String>>,
         output: String,
         episodes: Option<Vec<usize>>,
-    ) -> PyResult<Loader> {
+        normalize: Option<Vec<String>>,
+        num_workers: usize,
+        prefetch: usize,
+    ) -> PyResult<Py<PyAny>> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
         }
@@ -211,10 +253,13 @@ impl RoboFrameDataset {
                 Some(spec)
             }
         };
-        let inner = match TabularLoader::open(self.dataset.clone()) {
-            Ok(inner) => inner,
-            Err(e) => return Err(core_err(e)),
-        };
+        let cameras = cameras.unwrap_or_default();
+        let normalize = normalize.unwrap_or_default();
+
+        let mut inner = TabularLoader::open(self.dataset.clone()).map_err(core_err)?;
+        if !normalize.is_empty() {
+            inner.enable_normalization(&normalize).map_err(core_err)?;
+        }
         // Population of global frame indices to draw from: all frames, or just the chosen episodes.
         let base: Vec<usize> = match episodes {
             Some(eps) => inner.frame_indices_for_episodes(&eps),
@@ -227,7 +272,33 @@ impl RoboFrameDataset {
             .map(|i| base[i])
             .collect();
 
-        let cameras = cameras.unwrap_or_default();
+        // Prefetched (off-GIL) path: background workers assemble ahead of consumption.
+        if num_workers >= 1 {
+            let cfg = AssemblerConfig {
+                dataset: self.dataset.clone(),
+                features: None,
+                normalize,
+                window,
+                cameras: cameras.clone(),
+                batch_size,
+                decoder_factory: if cameras.is_empty() {
+                    None
+                } else {
+                    Some(core_decoder_factory)
+                },
+            };
+            let prefetcher =
+                Prefetcher::start(cfg, order, batch_size, drop_last, num_workers, prefetch)
+                    .map_err(core_err)?;
+            let loader = PrefetchLoader {
+                prefetcher,
+                output,
+                consumed_rows: 0,
+            };
+            return Ok(Py::new(py, loader)?.into_any());
+        }
+
+        // Synchronous path (default).
         let (frame_decoder, frame_cache) = if cameras.is_empty() {
             (None, FrameCache::new(1))
         } else {
@@ -235,7 +306,7 @@ impl RoboFrameDataset {
             (Some(new_frame_decoder()?), FrameCache::new(cap))
         };
 
-        Ok(Loader {
+        let loader = Loader {
             inner,
             order,
             cursor: 0,
@@ -246,7 +317,8 @@ impl RoboFrameDataset {
             frame_decoder,
             frame_cache,
             output,
-        })
+        };
+        Ok(Py::new(py, loader)?.into_any())
     }
 
     fn __repr__(&self) -> String {
@@ -491,6 +563,67 @@ fn convert_batch(py: Python<'_>, dict: &Bound<'_, PyDict>, output: &str) -> PyRe
     Ok(())
 }
 
+/// Convert a Python-free [`RustBatch`] (raw buffers + shapes) into a dict of NumPy arrays.
+fn rustbatch_to_dict(py: Python<'_>, batch: RustBatch) -> PyResult<Py<PyDict>> {
+    let dict = PyDict::new_bound(py);
+    for (name, (data, shape)) in batch.features {
+        let arr = ArrayD::from_shape_vec(IxDyn(&shape), data)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        dict.set_item(name, arr.into_pyarray_bound(py))?;
+    }
+    for (cam, (data, shape)) in batch.frames {
+        let arr = ArrayD::from_shape_vec(IxDyn(&shape), data)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        dict.set_item(cam, arr.into_pyarray_bound(py))?;
+    }
+    dict.set_item("episode_index", batch.episode_index.into_pyarray_bound(py))?;
+    Ok(dict.unbind())
+}
+
+/// Iterable dataloader backed by the off-GIL prefetch pipeline (`num_workers > 0`). Yields the
+/// same batch dicts as [`Loader`], but background threads assemble them ahead of consumption and
+/// the blocking wait releases the GIL.
+#[pyclass]
+struct PrefetchLoader {
+    prefetcher: Prefetcher,
+    output: String,
+    consumed_rows: usize,
+}
+
+#[pymethods]
+impl PrefetchLoader {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
+        // Wait for the next assembled batch with the GIL released.
+        let batch = py
+            .allow_threads(|| self.prefetcher.next_batch())
+            .map_err(core_err)?;
+        let Some(batch) = batch else {
+            return Ok(None);
+        };
+        self.consumed_rows += batch.episode_index.len();
+        let dict = rustbatch_to_dict(py, batch)?;
+        if self.output != "numpy" {
+            convert_batch(py, dict.bind(py), &self.output)?;
+        }
+        Ok(Some(dict))
+    }
+
+    /// Number of batches in one epoch.
+    fn __len__(&self) -> usize {
+        self.prefetcher.num_batches()
+    }
+
+    /// Rows consumed so far this epoch (for progress/checkpointing).
+    #[getter]
+    fn position(&self) -> usize {
+        self.consumed_rows
+    }
+}
+
 /// `pyroboframes._core` — the compiled extension module.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -498,6 +631,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
     m.add_class::<RoboFrameDataset>()?;
     m.add_class::<Loader>()?;
+    m.add_class::<PrefetchLoader>()?;
     m.add_class::<ValidationReport>()?;
     Ok(())
 }

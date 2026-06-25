@@ -29,10 +29,11 @@ to make it fast. It reads your robot dataset, decodes the video, and hands batch
 your training loop as **NumPy, MLX, or PyTorch** arrays — with a focus on **Apple Silicon Macs**,
 where the usual CUDA-centric tools serve you poorly.
 
-> **Honest status on speed:** today it decodes with FFmpeg and the loader runs **single-threaded**.
-> The pieces that actually deliver throughput — the Apple Media-Engine hardware decode and the
-> off-GIL **parallel prefetch pipeline** — are still in progress, and **throughput has not been
-> benchmarked yet**. So treat "fast" as the design goal, not a measured claim. See
+> **Honest status on speed:** decode today is **FFmpeg** (the Apple Media-Engine hardware path is
+> still in progress). The **off-GIL prefetch pipeline** now works (`num_workers=`): on synthetic
+> data it scales the FFmpeg camera-decode epoch **~2.7× with 4 workers** vs synchronous
+> ([`benches/throughput.py`](./benches/throughput.py)) — a relative sync-vs-prefetch signal on one
+> machine, not yet an absolute benchmark vs other libraries. See
 > [What works today](#what-works-today).
 
 ### When would I use it?
@@ -172,14 +173,15 @@ print(report.ok, report.warnings)
 | Decoded-frame cache, batched-seek API, backend selection | ✅ |
 | **Camera frame decoding** (FFmpeg → NumPy) | ✅ (needs `ffmpeg` on `PATH`) |
 | Dataset **validation** (`ds.validate()`) | ✅ |
-| Dataset **statistics** (`ds.stats()` for normalization) | ✅ (reads `meta/stats.json`) |
+| Dataset **statistics** (`ds.stats()`) + **normalization** (`loader(normalize=…)`) | ✅ |
 | **Train/val split** (`ds.train_val_split()` + `loader(episodes=…)`) | ✅ |
+| **Episode iteration** (`ds.episodes()`) | ✅ |
 | Loader **checkpoint/resume** (`loader.position` / `seek()`) | ✅ |
+| **Off-GIL prefetch pipeline** (`loader(num_workers=…)`) | ✅ |
+| **Throughput benchmark** harness (`benches/throughput.py`) | ✅ |
 | **NumPy / MLX / PyTorch output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
 | Native **VideoToolbox / NVDEC** decode | 🚧 |
 | **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 (upstream `mlx#2855`) |
-| **Parallel prefetch / multiprocess workers** | 🚧 (loader is single-threaded today) |
-| Published **throughput benchmarks** (vs FFmpeg/CPU baseline) | 🚧 (no numbers yet) |
 | **CUDA / CV-CUDA** compute · **MPS** output · **HF Hub streaming** | 🚧 |
 
 The 🚧 rows are the honest gaps — see the [Roadmap](#roadmap) for sequencing.

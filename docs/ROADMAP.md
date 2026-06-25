@@ -117,7 +117,8 @@ status: 🟡 partial/not-wired · ⬜ not started.
 `XL` = multi-week / research / blocked.
 
 ### XS — quick wins (expose or wire what already exists)
-- [ ] `XS` P1.1 Episode iteration (wrap existing `EpisodeIndex`) — 🟡
+- [x] `XS` P1.1 Episode iteration (`ds.episodes()`) — ✅
+- [x] `S` P1.1 Normalization (`loader(normalize=…)` from `ds.stats()`) — ✅
 - [x] `XS` P1.1 Train / validation splits (`ds.train_val_split` + `loader(episodes=…)`) — ✅
 - [x] `XS` P1.1 Dataset statistics (`ds.stats()` ← `meta/stats.json`) — ✅
 - [x] `XS` P1.2 Checkpointed datasets (loader `position` + `seek`) — ✅
@@ -149,8 +150,8 @@ status: 🟡 partial/not-wired · ⬜ not started.
 ### M — new subsystem + integration
 - [ ] `M` P1.1 Lazy loading (true streaming reads, no full-shard load) — 🟡
 - [ ] `M` P1.2 Memory mapping (mmap parquet) — ⬜
-- [ ] `M` P1.2 Prefetching (wire the existing config) — 🟡
-- [ ] `M` P1.2 Async loading — 🟡
+- [x] `M` P1.2 Prefetching (`loader(num_workers=, prefetch=)`) — ✅
+- [x] `M` P1.2 Async loading (off-GIL, GIL released on wait) — ✅
 - [ ] `M` P1.2 Dataset profiling — ⬜
 - [ ] `M` P1.3 Multi-camera synchronization (windowed video, not just tabular) — 🟡
 - [ ] `M` P1.3 Curriculum sampling — ⬜
@@ -178,14 +179,14 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [ ] `M` P7 Checkpoint recovery — ⬜
 - [ ] `M` P7 Hyperparameter tuning — ⬜
 - [ ] `M` P7 Cluster monitoring — ⬜
-- [ ] `M` P2 Backend benchmarking — ⬜ Apple part now, NVIDIA `[C]`
+- [x] `M` P2 Backend benchmarking — ✅ sync-vs-prefetch harness (`benches/throughput.py`); NVIDIA `[C]` pending
 - [ ] `M` P2 Backend: CV-CUDA — ⬜ `[C]`
 - [ ] `M` P3 Benchmark suite + throughput metrics — ⬜ `[C]`
 - [ ] `M` P7 RunPod (templates / launch scripts) — ⬜ `[C]`
 - [ ] `M` P7 Slurm — ⬜ `[C]`
 
 ### L — large / architecture / native
-- [ ] `L` P1.2 Multiprocess workers (off-GIL worker pool) — 🟡
+- [x] `L` P1.2 Multiprocess workers (off-GIL worker pool, `num_workers`) — ✅
 - [ ] `L` P1.1 Streaming mode (HF Hub partial download) — ⬜
 - [ ] `L` P4 MLX inference — ⬜
 - [ ] `L` P5 Behavior Cloning — ⬜
@@ -210,6 +211,124 @@ status: 🟡 partial/not-wired · ⬜ not started.
 
 ### Already done ✅ (for reference)
 - [x] P1.1 Load LeRobotDataset v3.x · Frame extraction · Action/state extraction · Metadata · `validate()`
-- [x] P1.2 Caching (frame LRU + shard cache) · Batch assembly · Frame indexing · Sharding
+- [x] P1.1 `ds.stats()` · `train_val_split` + `loader(episodes=)` · `ds.episodes()` · normalization · checkpoint/resume
+- [x] P1.2 Caching (frame LRU + shard cache) · Batch assembly · Frame indexing · Sharding · **off-GIL prefetch pipeline** · throughput harness
 - [x] P1.3 Sequence windows · Future-prediction windows · State–action alignment · Temporal batching
 - [x] P2 Backends: CPU · Torch · MLX output
+
+---
+
+## Long-range vision (full product surface)
+
+A superset of the prioritized backlog above, capturing where PyRoboFrames could go as a complete
+robotics data platform. Status from the 2026-06-25 audit (✅ done · 🟡 partial · ⬜ not started).
+Most of this is **not yet scheduled** — it's the vision, not a commitment; the prioritized P0–P2
+plan and ease-sorted backlog above remain the near-term work.
+
+### Core data layer
+- [ ] Native Parquet-based robotics dataset format — ⬜
+- [ ] MCAP → PyRoboFrames converter — ⬜
+- [ ] ROS 2 bag → PyRoboFrames converter — ⬜
+- [ ] Hugging Face LeRobotDataset importer — 🟡 local path today; Hub download/stream ⬜
+- [ ] Dataset versioning and snapshots — ⬜
+- [ ] Time-synchronized multi-sensor indexing — 🟡 episode/camera ts sync exists
+- [ ] Lazy loading for large datasets — 🟡 per-shard
+- [ ] Memory-mapped dataset access — ⬜
+- [x] Dataset schema validation — ✅ (`ds.validate()`)
+- [ ] Automatic metadata generation — ⬜
+
+### Video & vision
+- [x] MP4-backed video storage — ✅ (reads LeRobot mp4)
+- [x] Frame-level random access — ✅
+- [x] Video timestamp synchronization — ✅
+- [x] Multi-camera dataset support — ✅
+- [ ] Video compression benchmarking — ⬜
+- [ ] Image augmentation pipeline — ⬜
+- [ ] Vision-language annotation support — ⬜
+- [ ] Object-detection label integration — ⬜
+- [ ] Segmentation mask support — ⬜
+- [ ] Depth camera support — ⬜
+
+### Sensor fusion
+- [ ] IMU frame abstraction — ⬜
+- [ ] GPS trajectory abstraction — ⬜
+- [ ] LiDAR point-cloud support — ⬜
+- [ ] Event-camera support — ⬜
+- [ ] Audio-stream support — ⬜
+- [ ] Sensor calibration registry — ⬜
+- [ ] Sensor health monitoring — ⬜
+- [ ] Missing-data interpolation — ⬜
+- [ ] Time-series resampling engine — ⬜
+- [ ] Multi-rate sensor alignment — ⬜
+
+### Streaming & edge
+- [ ] MQTT data-source connector — ⬜
+- [ ] Apache Kafka connector — ⬜
+- [ ] Apache Pulsar connector — ⬜
+- [ ] WebSocket stream connector — ⬜
+- [ ] PyFlink integration — ⬜
+- [ ] PySpark integration — ⬜
+- [ ] Real-time feature extraction — ⬜
+- [ ] Stream-to-dataset writer — ⬜
+- [ ] Edge buffering support — ⬜
+- [ ] Offline-first synchronization — ⬜
+
+### Storage
+- [ ] MinIO native backend — ⬜
+- [ ] S3-compatible backend — ⬜
+- [x] Local filesystem backend — ✅
+- [x] Dataset sharding support — ✅ (reads chunked shards)
+- [ ] Incremental dataset append — ⬜
+- [ ] Cold-storage archival mode — ⬜
+- [ ] Dataset compaction utilities — ⬜
+- [ ] Storage cost estimator — ⬜
+- [ ] Deduplication engine — ⬜
+- [ ] Compression benchmarking toolkit — ⬜
+
+### Data engineering
+- [ ] SQL-like robotics queries — ⬜
+- [ ] Pandas-compatible API — ⬜
+- [ ] Polars-compatible API — ⬜
+- [ ] Dataset joins across sensors — ⬜
+- [x] Temporal window operations — ✅ (`delta_timestamps`)
+- [ ] Rolling statistics engine — ⬜
+- [ ] Event-detection pipeline — ⬜
+- [ ] Feature-engineering toolkit — ⬜
+- [ ] Data-quality scoring — ⬜ (validate is integrity, not scoring)
+- [ ] Dataset lineage tracking — ⬜
+
+### ML & AI
+- [ ] PyTorch dataset adapter — 🟡 torch output today
+- [ ] MLX dataset adapter — 🟡 mlx output today
+- [ ] JAX dataset adapter — ⬜
+- [ ] TensorFlow dataset adapter — ⬜
+- [ ] RL replay-buffer export — ⬜
+- [ ] Imitation-learning dataset export — ⬜
+- [ ] VLA dataset export — ⬜
+- [ ] Foundation-model training support — ⬜
+- [ ] Dataset tokenization pipeline — ⬜
+- [ ] Distributed training dataloader — 🟡 off-GIL prefetch in-process; multi-node ⬜
+
+### Apple Silicon first
+- [ ] MLX-native training pipeline — ⬜
+- [ ] Unified-memory optimizations — ⬜
+- [ ] Metal GPU acceleration — ⬜
+- [ ] Zero-copy Arrow integration — ⬜
+- [ ] Apple Neural Engine experimentation — ⬜
+- [ ] MacBook dataset profiling tools — 🟡 throughput harness
+- [ ] Mac Studio optimization suite — ⬜
+- [ ] Local-first robotics workflows — 🟡 runs fully local today
+- [ ] Energy-efficient training benchmarks — ⬜
+- [ ] CUDA vs MLX comparison tooling — ⬜
+
+### Developer experience
+- [ ] One-line dataset creation API — ⬜
+- [ ] Interactive dataset explorer — ⬜
+- [ ] Jupyter notebook integration — 🟡 usable as a library
+- [ ] VS Code extension — ⬜
+- [ ] Dataset visualizer dashboard — ⬜
+- [ ] Automatic schema documentation — ⬜
+- [ ] CLI toolkit — ⬜
+- [ ] Dataset debugging tools — 🟡 `ds.validate()`
+- [x] Benchmark suite — ✅ (`benches/throughput.py`)
+- [ ] Project templates — ⬜

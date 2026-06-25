@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Off-GIL prefetch pipeline** — `loader(num_workers=N, prefetch=M)` assembles batches on N
+  background threads ahead of consumption (token-bounded in-flight count, reorder buffer keeps
+  epoch order; the blocking wait releases the GIL). `num_workers=0` (default) stays synchronous.
+  New core `pipeline` module (`RustBatch`, `BatchAssembler`, `Prefetcher`).
+- **Normalization** — `loader(normalize=["observation.state", ...])` applies `(x - mean) / std`
+  from `meta/stats.json` (zero std treated as 1).
+- **Episode iteration** — `ds.episodes()` returns per-episode metadata
+  (`episode_index`, `length`, `from_index`, `to_index`).
+- **Throughput benchmark harness** — `benches/throughput.py`: frames/s for a full epoch across
+  `num_workers`, tabular and (if `ffmpeg` present) camera-decode. On synthetic data (Apple
+  Silicon) the camera path scales ~2.7× with 4 workers vs synchronous.
+
 ## [0.1.4] - 2026-06-25
 
 ### Changed
