@@ -6,6 +6,10 @@
 
 **A fast dataloader for training robots from recorded demonstrations — built for Apple Silicon, and Linux too.**
 
+> ⚠️ **Early / experimental** (`0.x`, expect API changes). The LeRobot **dataloader works today**;
+> the hardware-decode / **zero-copy-MLX** fast path and the **parallel prefetch pipeline** are still
+> in progress, and throughput isn't benchmarked yet. See [What works today](#what-works-today).
+
 ---
 
 ## What is this, in plain terms?

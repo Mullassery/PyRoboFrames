@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyroboframes"
-description = "Zero-copy, hardware-accelerated robot-learning dataloader for Apple Silicon (MLX)"
+description = "Early/experimental LeRobot dataloader for Apple Silicon & Linux — FFmpeg decode, NumPy/MLX/PyTorch output (hardware decode, zero-copy MLX & parallel prefetch in progress)"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"

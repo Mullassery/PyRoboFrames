@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-06-25
+
+### Changed
+- **Honesty / metadata only (no code changes).** The PyPI summary and the top of the README now
+  lead with an **early / experimental** note, and the package description drops the
+  "zero-copy, hardware-accelerated" wording — those paths (HW decode, zero-copy MLX, parallel
+  prefetch) are still in progress and throughput is not yet benchmarked.
+
 ## [0.1.3] - 2026-06-25
 
 ### Added
