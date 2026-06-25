@@ -43,6 +43,58 @@ for batch in loader:        # tensors already on the right device, in the right 
 
 ---
 
+## Prioritized plan (current — 2026-06-25, after 0.1.6)
+
+This is the **authoritative ordering**. The sections below it (test-first P0–P2, ease-sorted
+backlog, Tier 1/2 lens, long-range vision) are kept as reference/detail. Effort: `S`≈1–2d ·
+`M`≈3–7d · `L`≈1–2wk+ · `XL`=research/blocked. `[C]` = needs NVIDIA hardware to verify.
+
+**Where we are (0.1.6):** the *fast LeRobot loader* is largely built — read v3.0, state/action +
+camera frames, windows, shuffle/balanced sampling, train/val split, stats + normalization,
+checkpoint/resume, off-GIL prefetch (~2.7× on decode), NumPy/MLX/PyTorch output, device seam
+(`resolve_device`/`DataLoader`), CPU image transforms, throughput harness. So the next priorities
+shift from *loader plumbing* to **(a) making the loader production-grade, then (b) the Tier-1
+"data platform" identity, then (c) Tier-2 vision intelligence.**
+
+### P1 — Make the loader production-grade (near-term, Mac/CPU-testable) — do next
+- [ ] `M` Real transform quality: bilinear/area **Resize** + **augmentations** (flip, crop jitter,
+      color) — current `transforms` are nearest-only. *Most-used path for vision policies.*
+- [ ] `M` Multi-camera batch transforms + **windowed video sync** (frames across the temporal
+      window, not just tabular).
+- [ ] `S` **JAX** output/loader adapter → completes Tier-1 "MLX/PyTorch/JAX loaders".
+- [ ] `M` **Curriculum** + **goal-conditioned** sampling → round out robotics sampling.
+- [ ] `M` **Lazy loading / mmap parquet** → scale to datasets bigger than RAM (Tier-1 storage).
+
+### P2 — Tier-1 "data platform" identity (the strategic bet: data-in) — largest leverage
+- [ ] `L` **MCAP → columnar (Parquet)** converter — *most identity-defining and self-contained;
+      recommended first Tier-1 step.*
+- [ ] `L` **Robotics DataFrame** abstraction (typed, time-indexed, multi-sensor).
+- [ ] `L` **LeRobot write-back + HF Hub streaming** (round-trip interop, no full download).
+- [ ] `L` **MQTT / Kafka ingestion** + stream-to-dataset writer.
+- [ ] `L` **Time-synchronized multi-sensor fusion** (multi-rate alignment, interpolation).
+
+### P3 — Tier-2 differentiators (vision intelligence)
+- [ ] `M` **CLIP embeddings** over frames — easiest entry (run a model, store vectors).
+- [ ] `L` **SAM/SAM2** masks + **Grounding DINO** open-vocab detection → auto-annotation pipeline.
+- [ ] `L` **Vision-language dataset generation**.
+
+### P4 — NVIDIA / GPU path (build now, verify on a GPU box) `[C]`
+- [ ] `S` CUDA/NVDEC decode (FFmpeg `-hwaccel cuda`) · [ ] `M` **CV-CUDA** transform backend ·
+      [ ] `M` NVIDIA throughput benchmark · [ ] `XL` GPU-resident zero-copy (Video Codec SDK→DLPack).
+
+### P5 — Scale & training (later; strong incumbents — LeRobot, Ray)
+- [ ] `M` Checkpointing/eval utils · [ ] `L` Behavior Cloning / fine-tuning · [ ] `L` distributed
+      dataloading / multi-GPU · [ ] `L` Ray / Slurm / RunPod.
+
+### Deferred / research
+- [ ] `XL` True **zero-copy MLX** (blocked on upstream `mlx#2855`) · [ ] `XL` MLX distributed ·
+      [ ] `XL` ACT / Diffusion / VLA policies.
+
+**Recommended next action:** finish **P1** (production-grade transforms + JAX + sampling) for quick
+user-visible wins, then commit to **P2 MCAP→columnar** as the first real "platform" milestone.
+
+---
+
 ## Prioritization principle: test-first
 
 Work is ordered by **how it can be verified**, not by how exciting it is. Anything we can prove
