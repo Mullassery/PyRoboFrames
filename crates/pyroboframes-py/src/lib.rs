@@ -200,7 +200,8 @@ impl RoboFrameDataset {
     /// `uint8` arrays (requires an ffmpeg-enabled build with `ffmpeg`/`ffprobe` on `PATH`).
     ///
     /// `output` selects the array type per batch: `"numpy"` (default), `"mlx"`
-    /// (`mlx.core.array`), or `"torch"` (`torch.from_numpy`, zero-copy from the NumPy buffers).
+    /// (`mlx.core.array`), `"torch"` (`torch.from_numpy`, zero-copy from the NumPy buffers), or
+    /// `"jax"` (`jax.numpy.asarray`).
     ///
     /// `episodes` (optional) restricts iteration to the given episode indices — pass one half of
     /// `ds.train_val_split(...)` to build a train- or validation-only loader.
@@ -237,9 +238,9 @@ impl RoboFrameDataset {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
         }
-        if !matches!(output.as_str(), "numpy" | "mlx" | "torch") {
+        if !matches!(output.as_str(), "numpy" | "mlx" | "torch" | "jax") {
             return Err(PyValueError::new_err(format!(
-                "output must be 'numpy', 'mlx', or 'torch' (got '{output}')"
+                "output must be 'numpy', 'mlx', 'torch', or 'jax' (got '{output}')"
             )));
         }
         let window = match delta_timestamps {
@@ -552,11 +553,12 @@ fn windowed_batch_to_dict(py: Python<'_>, samples: &[WindowedSample]) -> PyResul
 
 /// Convert every value in `dict` from a NumPy array to the requested framework's array type
 /// in place. `mlx` -> `mlx.core.array` (copy into unified memory); `torch` -> `torch.from_numpy`
-/// (zero-copy view of the NumPy buffer).
+/// (zero-copy view of the NumPy buffer); `jax` -> `jax.numpy.asarray`.
 fn convert_batch(py: Python<'_>, dict: &Bound<'_, PyDict>, output: &str) -> PyResult<()> {
     let (module_name, func_name) = match output {
         "mlx" => ("mlx.core", "array"),
         "torch" => ("torch", "from_numpy"),
+        "jax" => ("jax.numpy", "asarray"),
         other => return Err(PyValueError::new_err(format!("unknown output '{other}'"))),
     };
     let func = py

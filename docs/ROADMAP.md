@@ -61,12 +61,11 @@ GPU-only (`[C]`, can't verify here) and research/heavy items sink. Each line is 
 `effort · value · ✓test (or [C])`.
 
 ### P1 — Quick high-value wins (testable now, `S`/`XS`) — do first
-- [ ] **JAX** output/loader adapter — `S · high · ✓test` (completes MLX/PyTorch/JAX; small)
-- [ ] Bilinear/area **Resize** + **flip/crop-jitter/color** augments — `S · high · ✓test`
-      (replaces nearest-only; most-used vision path)
-- [ ] **Episode-chunking** sampler — `S · med-high · ✓test`
-- [ ] **MLX** sequence batching + MLX benchmarks — `S · med-high · ✓test` (Apple story)
-- [ ] **Performance reporting** (per-batch timings) + **profiling hooks** — `XS · med · ✓test`
+- [x] **JAX** output adapter (`output="jax"`) — ✅
+- [x] Bilinear **Resize** + **flip/crop/color** augments (`transforms.*`) — ✅
+- [x] **Performance reporting** + **profiling hooks** (`DataLoader.stats` / `on_batch`) — ✅
+- [ ] **Episode-chunking** sampler — `S · med-high · ✓test` (remaining)
+- [ ] **MLX** sequence batching + MLX benchmarks — `S · med-high · ✓test` (remaining)
 
 ### P2 — High-value, medium effort (testable now, `M`)
 - [ ] **Lazy loading / mmap parquet** — `M · high · ✓test` (datasets > RAM)

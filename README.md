@@ -179,10 +179,11 @@ print(report.ok, report.warnings)
 | Loader **checkpoint/resume** (`loader.position` / `seek()`) | ✅ |
 | **Off-GIL prefetch pipeline** (`loader(num_workers=…)`) | ✅ |
 | **Balanced sampling** (`loader(balanced=True)`, by episode) | ✅ |
-| **Image transforms** (`transforms.Resize/CenterCrop/Normalize`) | ✅ (NumPy; GPU later) |
+| **Image transforms + augments** (Resize bilinear, Flip/Crop/ColorJitter) | ✅ (NumPy; GPU later) |
 | **Device/backend selection** (`resolve_device`, `DataLoader`, MPS) | ✅ |
+| **Loader profiling** (`DataLoader(on_batch=…)`, `loader.stats`) | ✅ |
 | **Throughput benchmark** harness (`benches/throughput.py`) | ✅ |
-| **NumPy / MLX / PyTorch output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
+| **NumPy / MLX / PyTorch / JAX output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
 | Native **VideoToolbox / NVDEC** decode | 🚧 |
 | **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 (upstream `mlx#2855`) |
 | **CUDA / CV-CUDA** compute · **MPS** output · **HF Hub streaming** | 🚧 |

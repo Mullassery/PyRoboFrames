@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **JAX output** — `loader(output="jax")` returns `jax.numpy` arrays (alongside numpy/mlx/torch).
+- **Real transforms + augmentations** — `transforms.Resize` now defaults to **bilinear**
+  (`interpolation="nearest"` still available), plus `RandomHorizontalFlip`, `RandomCrop`,
+  `ColorJitter` (all seedable, per-sample).
+- **Loader profiling** — `DataLoader(on_batch=…)` callback per batch and `loader.stats`
+  (batches / frames / seconds / frames_per_s).
+
 ## [0.1.6] - 2026-06-25
 
 ### Added

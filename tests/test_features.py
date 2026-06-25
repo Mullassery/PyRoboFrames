@@ -137,6 +137,31 @@ def test_transforms_shapes_and_values():
     assert composed.shape == (2, 4, 4, 3) and composed.dtype == np.float32
 
 
+def test_bilinear_resize_and_augments():
+    from pyroboframes import transforms as T
+
+    x = np.zeros((2, 8, 6, 3), dtype=np.uint8)
+    x[:, :, :, 0] = 200
+
+    # Bilinear returns float32 and the requested shape; a flat image stays ~constant.
+    r = T.Resize(4, 3)(x)  # bilinear default
+    assert r.shape == (2, 4, 3, 3) and r.dtype == np.float32
+    np.testing.assert_allclose(r[..., 0], 200.0, atol=1e-3)
+    assert T.Resize(4, 3, interpolation="nearest")(x).dtype == np.uint8
+
+    # Flip: with a left/right-asymmetric image, flipping must change it; seeded -> deterministic.
+    g = np.tile(np.arange(6, dtype=np.uint8), (2, 8, 1))[..., None].repeat(3, axis=-1)
+    flipped = T.RandomHorizontalFlip(p=1.0, seed=0)(g)
+    np.testing.assert_array_equal(flipped, g[:, :, ::-1, :])
+    np.testing.assert_array_equal(T.RandomHorizontalFlip(p=0.0)(g), g)  # never flip
+
+    cropped = T.RandomCrop(4, 4, seed=1)(x)
+    assert cropped.shape == (2, 4, 4, 3) and cropped.dtype == np.uint8
+
+    jit = T.ColorJitter(brightness=0.5, seed=2)(x)
+    assert jit.dtype == np.uint8 and jit.max() <= 255
+
+
 def test_dataloader_applies_transforms_on_cpu():
     from pyroboframes import transforms as T
 
@@ -155,11 +180,30 @@ def test_dataloader_applies_transforms_on_cpu():
         def __len__(self):
             return 2
 
-    loader = prf.DataLoader(_Inner(), transforms=T.Resize(4, 4), device="cpu")
+    seen = []
+    loader = prf.DataLoader(
+        _Inner(),
+        transforms=T.Resize(4, 4, interpolation="nearest"),
+        device="cpu",
+        on_batch=lambda i, b, dt: seen.append((i, dt)),
+    )
     assert len(loader) == 2
     batches = list(loader)
     assert batches[0]["observation.images.top"].shape == (3, 4, 4, 3)  # transformed
     assert batches[0]["observation.state"].shape == (3, 4)  # untouched
+    # Profiling hook fired per batch; stats accumulated.
+    assert [i for i, _ in seen] == [0, 1]
+    assert loader.stats["batches"] == 2 and loader.stats["frames"] == 6
+    assert loader.stats["frames_per_s"] > 0
+
+
+def test_jax_output(tmp_path):
+    jax = pytest.importorskip("jax")  # skip cleanly if JAX isn't installed
+    make_dataset(str(tmp_path))
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    b = next(iter(ds.loader(batch_size=8, shuffle=False, output="jax")))
+    assert isinstance(b["observation.state"], jax.Array)
+    assert b["observation.state"].shape == (8, 3)
 
 
 def test_balanced_sampling_smoke(tmp_path):
