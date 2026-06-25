@@ -24,7 +24,7 @@ use pyroboframes_core::dataset::Dataset;
 use pyroboframes_core::decode::{Decoder, FrameCache};
 use pyroboframes_core::loader::{Sample, TabularLoader, WindowedSample};
 use pyroboframes_core::pipeline::{AssemblerConfig, Prefetcher, RustBatch};
-use pyroboframes_core::sampler::Sampler;
+use pyroboframes_core::sampler::{weighted_with_replacement, Sampler};
 use pyroboframes_core::window::WindowSpec;
 
 /// Core-typed decoder factory handed to prefetch workers (each builds its own decoder).
@@ -211,7 +211,10 @@ impl RoboFrameDataset {
     /// `num_workers` > 0 runs an **off-GIL prefetch pipeline** (that many background assembler
     /// threads, up to `prefetch` batches in flight); `0` (default) assembles synchronously on the
     /// calling thread. The prefetched loader supports `position` but not `seek`.
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4))]
+    ///
+    /// `balanced=True` draws frames so every episode is sampled equally regardless of its length
+    /// (weighted sampling with replacement) — useful for length-imbalanced demonstration sets.
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4, balanced=false))]
     #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
@@ -229,6 +232,7 @@ impl RoboFrameDataset {
         normalize: Option<Vec<String>>,
         num_workers: usize,
         prefetch: usize,
+        balanced: bool,
     ) -> PyResult<Py<PyAny>> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
@@ -265,12 +269,22 @@ impl RoboFrameDataset {
             Some(eps) => inner.frame_indices_for_episodes(&eps),
             None => (0..inner.total_frames()).collect(),
         };
-        // The sampler permutes positions 0..base.len(); map them back to global frame indices.
-        let order: Vec<usize> = Sampler::new(shuffle, shuffle_buffer, seed)
-            .order(base.len(), 0)
-            .into_iter()
-            .map(|i| base[i])
-            .collect();
+        // Build the per-epoch order over positions in `base`, then map to global frame indices.
+        // `balanced` weights each frame by 1/episode_len so episodes are drawn equally (with
+        // replacement); otherwise the sampler permutes the frames (optionally shuffled).
+        let positions: Vec<usize> = if balanced {
+            let weights: Vec<f64> = base
+                .iter()
+                .map(|&g| {
+                    let len = inner.locate(g).map(|l| l.episode_len).unwrap_or(1).max(1);
+                    1.0 / len as f64
+                })
+                .collect();
+            weighted_with_replacement(&weights, base.len(), seed)
+        } else {
+            Sampler::new(shuffle, shuffle_buffer, seed).order(base.len(), 0)
+        };
+        let order: Vec<usize> = positions.into_iter().map(|i| base[i]).collect();
 
         // Prefetched (off-GIL) path: background workers assemble ahead of consumption.
         if num_workers >= 1 {

@@ -5,6 +5,7 @@ deterministic train/val split, and loader checkpoint/resume (position + seek).
 import json
 
 import numpy as np
+import pytest
 
 import pyroboframes as prf
 
@@ -100,6 +101,79 @@ def test_prefetch_matches_sync(tmp_path):
     pre = frames(num_workers=3, prefetch=2)  # off-GIL prefetch pipeline
     assert sync == pre == list(range(total))  # same order, every frame once
     assert len(ds.loader(batch_size=8, num_workers=2)) == len(ds.loader(batch_size=8))
+
+
+def test_resolve_device(monkeypatch):
+    # Explicit device passes through; invalid raises.
+    assert prf.resolve_device("cpu") == "cpu"
+    with pytest.raises(ValueError):
+        prf.resolve_device("tpu")
+    # Env override is honored for "auto".
+    monkeypatch.setenv("PYROBOFRAMES_DEVICE", "cuda")
+    assert prf.resolve_device("auto") == "cuda"
+    monkeypatch.delenv("PYROBOFRAMES_DEVICE", raising=False)
+    # With nothing available, auto falls back to a valid backend.
+    assert prf.resolve_device("auto") in prf.backend.VALID_DEVICES
+
+
+def test_transforms_shapes_and_values():
+    from pyroboframes import transforms as T
+
+    x = np.zeros((2, 8, 6, 3), dtype=np.uint8)
+    x[:, :, :, 0] = 255  # red channel maxed
+
+    resized = T.Resize(4, 3)(x)
+    assert resized.shape == (2, 4, 3, 3)
+
+    cropped = T.CenterCrop(4, 4)(x)
+    assert cropped.shape == (2, 4, 4, 3)
+
+    norm = T.Normalize(mean=[0.5, 0.0, 0.0], std=[0.5, 1.0, 1.0])(x)
+    assert norm.dtype == np.float32
+    # red: (1.0 - 0.5)/0.5 = 1.0 ; green/blue: (0 - 0)/1 = 0
+    np.testing.assert_allclose(norm[0, 0, 0], [1.0, 0.0, 0.0])
+
+    composed = T.Compose([T.Resize(4, 4), T.Normalize(mean=[0, 0, 0], std=[1, 1, 1])])(x)
+    assert composed.shape == (2, 4, 4, 3) and composed.dtype == np.float32
+
+
+def test_dataloader_applies_transforms_on_cpu():
+    from pyroboframes import transforms as T
+
+    # Fake inner loader: two batches, each with an image + a state vector.
+    def fake_inner():
+        for _ in range(2):
+            yield {
+                "observation.images.top": np.zeros((3, 8, 6, 3), dtype=np.uint8),
+                "observation.state": np.ones((3, 4), dtype=np.float32),
+            }
+
+    class _Inner:
+        def __iter__(self):
+            return fake_inner()
+
+        def __len__(self):
+            return 2
+
+    loader = prf.DataLoader(_Inner(), transforms=T.Resize(4, 4), device="cpu")
+    assert len(loader) == 2
+    batches = list(loader)
+    assert batches[0]["observation.images.top"].shape == (3, 4, 4, 3)  # transformed
+    assert batches[0]["observation.state"].shape == (3, 4)  # untouched
+
+
+def test_balanced_sampling_smoke(tmp_path):
+    total = make_dataset(str(tmp_path), episodes=4, length=25)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    loader = ds.loader(batch_size=10, balanced=True, seed=0)
+    seen = []
+    for b in loader:
+        seen.extend(int(round(x)) for x in b["observation.state"][:, 0])
+    assert len(seen) == total  # one epoch's worth of draws
+    assert all(0 <= f < total for f in seen)
+    # Balanced sampling is with replacement, so it should touch every episode.
+    episodes_hit = {f // 25 for f in seen}
+    assert episodes_hit == {0, 1, 2, 3}
 
 
 def test_loader_filters_to_split_episodes(tmp_path):

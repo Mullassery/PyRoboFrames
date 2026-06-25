@@ -178,6 +178,9 @@ print(report.ok, report.warnings)
 | **Episode iteration** (`ds.episodes()`) | ✅ |
 | Loader **checkpoint/resume** (`loader.position` / `seek()`) | ✅ |
 | **Off-GIL prefetch pipeline** (`loader(num_workers=…)`) | ✅ |
+| **Balanced sampling** (`loader(balanced=True)`, by episode) | ✅ |
+| **Image transforms** (`transforms.Resize/CenterCrop/Normalize`) | ✅ (NumPy; GPU later) |
+| **Device/backend selection** (`resolve_device`, `DataLoader`, MPS) | ✅ |
 | **Throughput benchmark** harness (`benches/throughput.py`) | ✅ |
 | **NumPy / MLX / PyTorch output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
 | Native **VideoToolbox / NVDEC** decode | 🚧 |

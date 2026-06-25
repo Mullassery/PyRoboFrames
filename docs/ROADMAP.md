@@ -122,10 +122,10 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [x] `XS` P1.1 Train / validation splits (`ds.train_val_split` + `loader(episodes=…)`) — ✅
 - [x] `XS` P1.1 Dataset statistics (`ds.stats()` ← `meta/stats.json`) — ✅
 - [x] `XS` P1.2 Checkpointed datasets (loader `position` + `seek`) — ✅
-- [ ] `XS` P2 Backend capability detection (probe torch/mlx/cuda) — 🟡
-- [ ] `XS` P2 Automatic backend selection, Python-exposed (`device="auto"`) — 🟡
-- [ ] `XS` P2 Device movement (`.to(device)`) — ⬜
-- [ ] `XS` P2 Backend: MPS (Torch on `mps`) — ⬜
+- [x] `XS` P2 Backend capability detection (`available_backends()`) — ✅
+- [x] `XS` P2 Automatic backend selection, Python-exposed (`resolve_device("auto")`) — ✅
+- [x] `XS` P2 Device movement (`DataLoader(device=…)`) — ✅
+- [x] `XS` P2 Backend: MPS (Torch on `mps` via `DataLoader`) — ✅
 - [ ] `XS` P2 Performance reporting (per-batch timings) — ⬜
 - [ ] `XS` P2 Profiling hooks (callbacks) — ⬜
 
@@ -134,12 +134,12 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [ ] `S` P2 Fallback chain (CV-CUDA → Torch → NumPy) — 🟡
 - [ ] `S` P2 Mixed precision — ⬜
 - [ ] `S` P2 Memory monitoring — ⬜
-- [ ] `S` P3 Resize (CPU/Torch impl) — ⬜
-- [ ] `S` P3 Crop (CPU/Torch impl) — ⬜
-- [ ] `S` P3 Normalize (CPU/Torch impl) — ⬜
+- [x] `S` P3 Resize (NumPy impl; `transforms.Resize`) — ✅ GPU interp later
+- [x] `S` P3 Crop (NumPy impl; `transforms.CenterCrop`) — ✅
+- [x] `S` P3 Normalize (NumPy impl; `transforms.Normalize`) — ✅
 - [ ] `S` P3 Tensor conversion (DLPack / `__cuda_array_interface__`) — ⬜
 - [ ] `S` P1.3 Episode chunking (chunked sampler) — 🟡
-- [ ] `S` P1.3 Balanced sampling — ⬜
+- [x] `S` P1.3 Balanced sampling (`loader(balanced=True)`) — ✅
 - [ ] `S` P4 MLX sequence batching — 🟡
 - [ ] `S` P4 MLX mixed precision — ⬜
 - [ ] `S` P4 MLX benchmarks — ⬜
@@ -217,6 +217,32 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [x] P2 Backends: CPU · Torch · MLX output
 
 ---
+
+## Contributor & user priorities (what defines / differentiates PyRoboFrames)
+
+A priority lens (from a contributor/user view) over the vision below: what makes PyRoboFrames
+*itself*, then what makes it *compelling*. Status from the 2026-06-25 audit.
+
+### Tier 1 — Core identity (what PyRoboFrames *is*)
+- [ ] MCAP → columnar (Parquet) conversion — ⬜
+- [ ] Robotics DataFrame abstraction (typed, time-indexed, multi-sensor) — ⬜
+- [ ] Time-synchronized sensor fusion — 🟡 episode/camera ts sync today; general fusion ⬜
+- [ ] Parquet-backed storage — 🟡 reads LeRobot parquet; own write/format ⬜
+- [ ] MQTT / Kafka ingestion — ⬜
+- [ ] LeRobot interoperability — 🟡 read v3.0 (local); Hub + write-back ⬜
+- [ ] MLX / PyTorch / JAX data loaders — 🟡 MLX+Torch output & `DataLoader`; JAX ⬜
+
+### Tier 2 — Differentiators (what makes it *compelling*)
+- [ ] SAM / SAM2 segmentation integration — ⬜
+- [ ] Grounding DINO (open-vocab detection) integration — ⬜
+- [ ] CLIP embeddings — ⬜
+- [ ] Automatic annotation pipelines — ⬜
+- [ ] Vision-language dataset generation — ⬜
+
+> Read against the near-term plan: Tier 1's **Robotics DataFrame** + **MLX/PyTorch/JAX loaders**
+> extend work already underway (loaders, transforms, device seam); **MCAP/Kafka/MQTT** and the
+> Tier 2 **vision-model integrations** are larger, mostly-Python efforts that would each be their
+> own milestone. None are scheduled yet — they sharpen the "why" for the backlog above.
 
 ## Long-range vision (full product surface)
 

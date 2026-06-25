@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Backend / device selection** (`pyroboframes.backend`) — `resolve_device("auto")` picks
+  `cuda → mlx/mps (Apple) → cpu` at runtime, honoring the `PYROBOFRAMES_DEVICE` override;
+  `available_backends()` for diagnostics.
+- **Image transforms** (`pyroboframes.transforms`) — `Compose`, `Resize`, `CenterCrop`,
+  `Normalize` over `[N, H, W, C]` camera batches (NumPy; the op surface CV-CUDA/MLX will reuse).
+- **`DataLoader` wrapper** — wraps a loader, applies transforms to camera frames, and moves each
+  batch to the resolved device/framework (NumPy / Torch[cuda|mps] / MLX) — same loop everywhere.
+- **Balanced sampling** — `loader(balanced=True)` draws frames so every episode is sampled
+  equally regardless of length (weighted sampling with replacement). Core
+  `sampler::weighted_with_replacement`.
+
 ## [0.1.5] - 2026-06-25
 
 ### Added

@@ -56,6 +56,36 @@ impl Sampler {
     }
 }
 
+/// Sample `n` indices in `[0, weights.len())` **with replacement**, with probability ∝ `weights`
+/// (negative weights are clamped to 0). Deterministic for a given `seed`. Used for balanced /
+/// weighted sampling (e.g. draw episodes uniformly regardless of their length). If every weight is
+/// zero it falls back to a round-robin over the indices.
+pub fn weighted_with_replacement(weights: &[f64], n: usize, seed: u64) -> Vec<usize> {
+    let m = weights.len();
+    if m == 0 || n == 0 {
+        return Vec::new();
+    }
+    // Inclusive prefix sums -> binary search target.
+    let mut cumulative = Vec::with_capacity(m);
+    let mut total = 0.0;
+    for &w in weights {
+        total += w.max(0.0);
+        cumulative.push(total);
+    }
+    if total <= 0.0 {
+        return (0..n).map(|i| i % m).collect();
+    }
+    let mut rng = SplitMix64::new(seed);
+    let mut out = Vec::with_capacity(n);
+    for _ in 0..n {
+        // Uniform in [0, total): scale a u64 draw into the weight range.
+        let r = (rng.next_u64() as f64 / (u64::MAX as f64 + 1.0)) * total;
+        let idx = cumulative.partition_point(|&c| c <= r).min(m - 1);
+        out.push(idx);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +138,31 @@ mod tests {
     fn small_or_disabled_buffer_is_sequential() {
         assert_eq!(Sampler::new(true, 1, 9).order(4, 0), vec![0, 1, 2, 3]);
         assert_eq!(Sampler::new(true, 0, 9).order(4, 0), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn weighted_sampling_respects_weights() {
+        // Index 1 has 9x the weight of index 0 -> ~90% of draws.
+        let picks = weighted_with_replacement(&[1.0, 9.0], 10_000, 7);
+        let ones = picks.iter().filter(|&&i| i == 1).count();
+        assert!(picks.iter().all(|&i| i < 2));
+        assert!((0.80..0.97).contains(&(ones as f64 / 10_000.0)), "got {ones}");
+    }
+
+    #[test]
+    fn weighted_sampling_is_deterministic() {
+        let a = weighted_with_replacement(&[1.0, 2.0, 3.0], 100, 1);
+        assert_eq!(a, weighted_with_replacement(&[1.0, 2.0, 3.0], 100, 1));
+        assert_ne!(a, weighted_with_replacement(&[1.0, 2.0, 3.0], 100, 2));
+    }
+
+    #[test]
+    fn weighted_sampling_handles_degenerate_weights() {
+        assert!(weighted_with_replacement(&[], 5, 0).is_empty());
+        assert!(weighted_with_replacement(&[1.0], 0, 0).is_empty());
+        // all-zero weights -> round-robin fallback, still in range
+        let picks = weighted_with_replacement(&[0.0, 0.0, 0.0], 6, 0);
+        assert_eq!(picks.len(), 6);
+        assert!(picks.iter().all(|&i| i < 3));
     }
 }
