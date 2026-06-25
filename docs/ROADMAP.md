@@ -56,42 +56,50 @@ checkpoint/resume, off-GIL prefetch (~2.7× on decode), NumPy/MLX/PyTorch output
 shift from *loader plumbing* to **(a) making the loader production-grade, then (b) the Tier-1
 "data platform" identity, then (c) Tier-2 vision intelligence.**
 
-### P1 — Make the loader production-grade (near-term, Mac/CPU-testable) — do next
-- [ ] `M` Real transform quality: bilinear/area **Resize** + **augmentations** (flip, crop jitter,
-      color) — current `transforms` are nearest-only. *Most-used path for vision policies.*
-- [ ] `M` Multi-camera batch transforms + **windowed video sync** (frames across the temporal
-      window, not just tabular).
-- [ ] `S` **JAX** output/loader adapter → completes Tier-1 "MLX/PyTorch/JAX loaders".
-- [ ] `M` **Curriculum** + **goal-conditioned** sampling → round out robotics sampling.
-- [ ] `M` **Lazy loading / mmap parquet** → scale to datasets bigger than RAM (Tier-1 storage).
+**Ranking rule (per your call):** items float up by **testable-now + high-value + low-effort**;
+GPU-only (`[C]`, can't verify here) and research/heavy items sink. Each line is tagged
+`effort · value · ✓test (or [C])`.
 
-### P2 — Tier-1 "data platform" identity (the strategic bet: data-in) — largest leverage
-- [ ] `L` **MCAP → columnar (Parquet)** converter — *most identity-defining and self-contained;
-      recommended first Tier-1 step.*
-- [ ] `L` **Robotics DataFrame** abstraction (typed, time-indexed, multi-sensor).
-- [ ] `L` **LeRobot write-back + HF Hub streaming** (round-trip interop, no full download).
-- [ ] `L` **MQTT / Kafka ingestion** + stream-to-dataset writer.
-- [ ] `L` **Time-synchronized multi-sensor fusion** (multi-rate alignment, interpolation).
+### P1 — Quick high-value wins (testable now, `S`/`XS`) — do first
+- [ ] **JAX** output/loader adapter — `S · high · ✓test` (completes MLX/PyTorch/JAX; small)
+- [ ] Bilinear/area **Resize** + **flip/crop-jitter/color** augments — `S · high · ✓test`
+      (replaces nearest-only; most-used vision path)
+- [ ] **Episode-chunking** sampler — `S · med-high · ✓test`
+- [ ] **MLX** sequence batching + MLX benchmarks — `S · med-high · ✓test` (Apple story)
+- [ ] **Performance reporting** (per-batch timings) + **profiling hooks** — `XS · med · ✓test`
 
-### P3 — Tier-2 differentiators (vision intelligence)
-- [ ] `M` **CLIP embeddings** over frames — easiest entry (run a model, store vectors).
-- [ ] `L` **SAM/SAM2** masks + **Grounding DINO** open-vocab detection → auto-annotation pipeline.
-- [ ] `L` **Vision-language dataset generation**.
+### P2 — High-value, medium effort (testable now, `M`)
+- [ ] **Lazy loading / mmap parquet** — `M · high · ✓test` (datasets > RAM)
+- [ ] Multi-camera batch transforms + **windowed video sync** — `M · high · ✓test`
+- [ ] **Curriculum** + **goal-conditioned** sampling — `M · med-high · ✓test`
+- [ ] **CLIP embeddings** over frames — `M · high · ✓test` (Tier-2 entry: run model, store vectors)
 
-### P4 — NVIDIA / GPU path (build now, verify on a GPU box) `[C]`
-- [ ] `S` CUDA/NVDEC decode (FFmpeg `-hwaccel cuda`) · [ ] `M` **CV-CUDA** transform backend ·
-      [ ] `M` NVIDIA throughput benchmark · [ ] `XL` GPU-resident zero-copy (Video Codec SDK→DLPack).
+### P3 — Tier-1 platform identity (testable, high value, large `L`)
+*High strategic value but bigger builds, so they sit below the cheap wins.*
+- [ ] **MCAP → columnar (Parquet)** converter — `L · very-high · ✓test` (most identity-defining,
+      self-contained → recommended first big milestone)
+- [ ] **Robotics DataFrame** abstraction — `L · high · ✓test`
+- [ ] **LeRobot write-back** (+ HF Hub streaming) — `L · high · ✓test` (streaming part is network)
+- [ ] **Time-synchronized multi-sensor fusion** / multi-rate alignment — `L · high · ✓test`
+- [ ] **MQTT / Kafka ingestion** + stream-to-dataset writer — `L · high · ~test (needs broker)`
 
-### P5 — Scale & training (later; strong incumbents — LeRobot, Ray)
-- [ ] `M` Checkpointing/eval utils · [ ] `L` Behavior Cloning / fine-tuning · [ ] `L` distributed
-      dataloading / multi-GPU · [ ] `L` Ray / Slurm / RunPod.
+### P4 — Tier-2 vision intelligence (heavy models)
+- [ ] **SAM/SAM2** masks + **Grounding DINO** detection → auto-annotation — `L · high · ~test`
+- [ ] **Vision-language dataset generation** — `L · high · ~test`
 
-### Deferred / research
-- [ ] `XL` True **zero-copy MLX** (blocked on upstream `mlx#2855`) · [ ] `XL` MLX distributed ·
-      [ ] `XL` ACT / Diffusion / VLA policies.
+### P5 — NVIDIA / GPU path (can't verify here) `[C]`
+- [ ] CUDA/NVDEC decode (`-hwaccel cuda`) — `S · med · [C]`
+- [ ] **CV-CUDA** transform backend — `M · high · [C]`
+- [ ] NVIDIA throughput benchmark — `M · med · [C]`
+- [ ] GPU-resident zero-copy (Video Codec SDK → DLPack) — `XL · high · [C]`
 
-**Recommended next action:** finish **P1** (production-grade transforms + JAX + sampling) for quick
-user-visible wins, then commit to **P2 MCAP→columnar** as the first real "platform" milestone.
+### P6 — Scale, training & research (later)
+- [ ] Checkpointing/eval — `M` · BC/fine-tuning — `L` · distributed dataloading / multi-GPU — `L` ·
+      Ray/Slurm/RunPod — `L`
+- [ ] **Deferred/research:** zero-copy MLX (blocked `mlx#2855`) · MLX distributed · ACT/Diffusion/VLA — `XL`
+
+**Recommended next action:** clear **P1** (JAX + real transforms/augments + sampling — all cheap,
+testable, user-visible), then take **MCAP→columnar** (P3) as the first platform milestone.
 
 ---
 
