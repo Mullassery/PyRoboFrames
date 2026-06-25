@@ -13,7 +13,10 @@ pub mod decode;
 pub mod episodes;
 pub mod info;
 pub mod loader;
+pub mod rng;
 pub mod sampler;
+pub mod split;
+pub mod stats;
 pub mod validate;
 pub mod window;
 

@@ -159,6 +159,9 @@ print(report.ok, report.warnings)
 | Decoded-frame cache, batched-seek API, backend selection | ✅ |
 | **Camera frame decoding** (FFmpeg → NumPy) | ✅ (needs `ffmpeg` on `PATH`) |
 | Dataset **validation** (`ds.validate()`) | ✅ |
+| Dataset **statistics** (`ds.stats()` for normalization) | ✅ (reads `meta/stats.json`) |
+| **Train/val split** (`ds.train_val_split()`, by episode) | ✅ |
+| Loader **checkpoint/resume** (`loader.position` / `seek()`) | ✅ |
 | **NumPy / MLX / PyTorch output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
 | Native **VideoToolbox / NVDEC** decode | 🚧 |
 | **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 (upstream `mlx#2855`) |

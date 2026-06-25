@@ -118,9 +118,9 @@ status: 🟡 partial/not-wired · ⬜ not started.
 
 ### XS — quick wins (expose or wire what already exists)
 - [ ] `XS` P1.1 Episode iteration (wrap existing `EpisodeIndex`) — 🟡
-- [ ] `XS` P1.1 Train / validation splits (partition episode indices) — ⬜
-- [ ] `XS` P1.1 Dataset statistics (parse existing `stats.json`) — ⬜
-- [ ] `XS` P1.2 Checkpointed datasets (persist cursor + seed + epoch) — ⬜
+- [x] `XS` P1.1 Train / validation splits (`ds.train_val_split`) — ✅
+- [x] `XS` P1.1 Dataset statistics (`ds.stats()` ← `meta/stats.json`) — ✅
+- [x] `XS` P1.2 Checkpointed datasets (loader `position` + `seek`) — ✅
 - [ ] `XS` P2 Backend capability detection (probe torch/mlx/cuda) — 🟡
 - [ ] `XS` P2 Automatic backend selection, Python-exposed (`device="auto"`) — 🟡
 - [ ] `XS` P2 Device movement (`.to(device)`) — ⬜

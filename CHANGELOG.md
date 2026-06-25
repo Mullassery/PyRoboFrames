@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`ds.stats()`** — per-feature statistics from `meta/stats.json` (`mean`/`std`/`min`/`max`/
+  `count`) for normalization, returned as a dict; `None` when the file is absent. Tolerant parser
+  (flattens nested image-channel stats, ignores non-numeric fields).
+- **`ds.train_val_split(val_fraction, seed)`** — deterministic split over **episode** indices
+  (never by frame, to avoid temporal leakage), returning sorted `(train, val)` episode lists.
+- **Loader checkpoint/resume** — `loader.position` (frames consumed this epoch) and
+  `loader.seek(position)` to resume an interrupted epoch on a fresh, identically-seeded loader.
+- Core: `stats` + `split` modules, shared `rng` (SplitMix64) module; `Dataset::stats` /
+  `Dataset::train_val_split`. +11 tests (7 Rust, 4 Python).
+
 ## [0.1.2] - 2026-06-25
 
 ### Added

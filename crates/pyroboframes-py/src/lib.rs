@@ -132,6 +132,33 @@ impl RoboFrameDataset {
         }
     }
 
+    /// Per-feature statistics from `meta/stats.json` for normalization, as
+    /// `{feature: {"mean", "std", "min", "max", "count"}}`. Returns `None` if the dataset has no
+    /// stats file.
+    fn stats(&self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
+        let Some(stats) = self.dataset.stats().map_err(core_err)? else {
+            return Ok(None);
+        };
+        let out = PyDict::new_bound(py);
+        for (name, fs) in &stats.features {
+            let d = PyDict::new_bound(py);
+            d.set_item("mean", fs.mean.clone())?;
+            d.set_item("std", fs.std.clone())?;
+            d.set_item("min", fs.min.clone())?;
+            d.set_item("max", fs.max.clone())?;
+            d.set_item("count", fs.count)?;
+            out.set_item(name, d)?;
+        }
+        Ok(Some(out.unbind()))
+    }
+
+    /// Deterministic train/validation split over **episode** indices (split by episode, not by
+    /// frame, to avoid temporal leakage). Returns `(train_episodes, val_episodes)`, both sorted.
+    #[pyo3(signature = (val_fraction=0.1, seed=0))]
+    fn train_val_split(&self, val_fraction: f64, seed: u64) -> (Vec<usize>, Vec<usize>) {
+        self.dataset.train_val_split(val_fraction, seed)
+    }
+
     /// Build a dataloader over the tabular (state/action) features.
     ///
     /// `delta_timestamps` (optional) maps a feature to a list of time offsets in seconds, e.g.
@@ -326,6 +353,18 @@ impl Loader {
         } else {
             self.order.len().div_ceil(self.batch_size)
         }
+    }
+
+    /// Frames consumed so far this epoch — save this to checkpoint a run.
+    #[getter]
+    fn position(&self) -> usize {
+        self.cursor
+    }
+
+    /// Resume an interrupted epoch: rebuild the loader with the same `seed`/`shuffle`, then
+    /// `seek(position)` to skip the frames already consumed (clamped to the epoch length).
+    fn seek(&mut self, position: usize) {
+        self.cursor = position.min(self.order.len());
     }
 }
 

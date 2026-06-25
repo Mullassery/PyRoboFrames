@@ -6,6 +6,8 @@
 //! sequential stream. This gives training a near-random order while keeping decode locality —
 //! nearby frames stay close, so the decoder seeks far less than under a global shuffle.
 
+use crate::rng::SplitMix64;
+
 /// Deterministic, seedable order generator.
 pub struct Sampler {
     shuffle: bool,
@@ -41,7 +43,7 @@ impl Sampler {
         }
         // Emit a random buffered element each step, refilling from the sequential stream.
         while !buf.is_empty() {
-            let pick = (rng.next_u64() % buf.len() as u64) as usize;
+            let pick = rng.below(buf.len());
             out.push(buf[pick]);
             if next < total {
                 buf[pick] = next;
@@ -51,25 +53,6 @@ impl Sampler {
             }
         }
         out
-    }
-}
-
-/// Small, dependency-free, deterministic PRNG (SplitMix64) — enough for shuffling.
-struct SplitMix64 {
-    state: u64,
-}
-
-impl SplitMix64 {
-    fn new(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        self.state = self.state.wrapping_add(0x9E3779B97F4A7C15);
-        let mut z = self.state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
-        z ^ (z >> 31)
     }
 }
 

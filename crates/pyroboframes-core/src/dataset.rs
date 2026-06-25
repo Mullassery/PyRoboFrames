@@ -94,6 +94,18 @@ impl Dataset {
     pub fn validate(&self) -> Result<crate::ValidationReport> {
         crate::validate::validate(self)
     }
+
+    /// Per-feature statistics from `meta/stats.json` (mean/std/min/max for normalization).
+    /// Returns `Ok(None)` when the dataset has no stats file.
+    pub fn stats(&self) -> Result<Option<crate::stats::Stats>> {
+        crate::stats::Stats::load(&self.root)
+    }
+
+    /// Deterministic train/validation split over episode indices (split by episode, not frame,
+    /// to avoid temporal leakage). See [`crate::split`].
+    pub fn train_val_split(&self, val_fraction: f64, seed: u64) -> (Vec<usize>, Vec<usize>) {
+        crate::split::split_episodes(self.num_episodes(), val_fraction, seed)
+    }
 }
 
 #[cfg(test)]
