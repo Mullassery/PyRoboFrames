@@ -181,13 +181,19 @@ The engine is Rust (crate `pyroboframes-core`); the Python package is a thin
 [PyO3](https://pyo3.rs)/[maturin](https://www.maturin.rs) binding. Full design,
 decisions, and trade-offs are in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
-### Cross-platform
+### Cross-platform — *Train Anywhere*
 
-| Platform | Decode (today) | Output (today) | Planned |
-|---|---|---|---|
-| macOS (Apple Silicon) | FFmpeg | NumPy · MLX · PyTorch | VideoToolbox → **zero-copy MLX** |
-| Linux | FFmpeg (VAAPI / software) | NumPy · PyTorch · MLX | — |
-| Linux + CUDA | FFmpeg | NumPy · PyTorch | NVDEC decode + CUDA output (`--features cuda`) |
+The goal: **one script runs unchanged** on a Mac, a rented NVIDIA box, or a CPU — the
+environment picks the backend (`device="auto"`), not your code. See
+[`docs/ROADMAP.md`](./docs/ROADMAP.md) for the design and build order.
+
+| Target | Decode | Compute / transforms | Output | Status |
+|---|---|---|---|---|
+| macOS (Apple Silicon) — MLX | FFmpeg | MLX | `mlx.core.array` | ✅ output · ⏳ transforms |
+| macOS (Apple Silicon) — MPS | FFmpeg | Torch (MPS) | `torch.Tensor` | ⏳ |
+| RTX 5090 / H100 / RunPod | NVDEC | **CV-CUDA** | `torch.Tensor` (cuda) | ⏳ |
+| Local CPU | FFmpeg (software) | NumPy / Torch | `np.ndarray` / `torch.Tensor` | ✅ |
+| macOS (Apple Silicon) | FFmpeg | — | NumPy · MLX · PyTorch | ✅ · VideoToolbox→zero-copy MLX ⏳ |
 
 ---
 
@@ -243,6 +249,12 @@ temporal windows, `ds.validate()`, FFmpeg decode, and NumPy / MLX / PyTorch outp
 
 **Next up:**
 
+- **Train Anywhere (multi-backend core).** One script, unchanged, across MacBook (MLX / MPS),
+  NVIDIA (RTX 5090 / H100 / RunPod, via **CV-CUDA** + NVDEC), and CPU — the runtime auto-selects
+  the backend. Sequenced **test-first**: the backend-detection seam, the unified tensor/transforms
+  abstraction, and the CPU/MPS/MLX paths (verifiable on a Mac) land before the NVIDIA paths
+  (built feature-gated, functionally signed off on a GPU box). Full plan + priority tiers in
+  [`docs/ROADMAP.md`](./docs/ROADMAP.md).
 - **0.1.x — The Apple fast path.** Native **VideoToolbox** (macOS) hardware decode → **zero-copy
   MLX** (no NumPy hop, gated on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and
   NVIDIA **NVDEC** on Linux; a published decode-throughput benchmark vs. the FFmpeg/CPU baseline.
@@ -255,7 +267,9 @@ temporal windows, `ds.validate()`, FFmpeg decode, and NumPy / MLX / PyTorch outp
 - **0.5+ — Scale.** Multi-GPU / multi-Mac distributed loading, on-the-fly augmentation, and
   interop with synthetic-data / world-model pipelines.
 
-See [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) for the near-term build plan.
+See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the "Train Anywhere" multi-backend plan and
+priority tiers, and [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) for the
+original v0.1 build sequence.
 
 ---
 
