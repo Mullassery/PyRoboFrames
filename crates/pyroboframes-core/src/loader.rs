@@ -5,7 +5,7 @@
 //! the functional, video-free half of the dataloader: it works today on any LeRobotDataset
 //! v3.0. Video frames layer on top once a decode backend is available.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::data::DataShard;
@@ -94,6 +94,21 @@ impl TabularLoader {
 
     pub fn features(&self) -> &[String] {
         &self.features
+    }
+
+    /// Global frame indices belonging to the given episode indices, ascending. Lets a loader
+    /// iterate just a train (or val) split — see [`Dataset::train_val_split`](crate::dataset::Dataset::train_val_split).
+    /// Unknown episode indices are ignored.
+    pub fn frame_indices_for_episodes(&self, episodes: &[usize]) -> Vec<usize> {
+        let wanted: HashSet<usize> = episodes.iter().copied().collect();
+        let mut out = Vec::new();
+        for ep in self.index.episodes() {
+            if wanted.contains(&ep.episode_index) {
+                out.extend(ep.from_index..ep.to_index);
+            }
+        }
+        out.sort_unstable();
+        out
     }
 
     /// Ensure a data shard is open (cached) so subsequent reads don't reopen the file.
@@ -381,6 +396,26 @@ mod tests {
         assert_eq!(batch[2].episode_index, 1); // frame 50 is first of episode 1
         assert_eq!(batch[3].features["action"], vec![99.0, 99.0, 99.0]);
         assert!(loader.sample(100).is_err()); // out of range
+    }
+
+    #[test]
+    fn frame_indices_for_episodes_selects_subset() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_dataset(tmp.path());
+        let ds = Dataset::open(tmp.path()).unwrap();
+        let loader = TabularLoader::open(Arc::new(ds)).unwrap();
+
+        // Episode 1 owns global frames [50, 100).
+        assert_eq!(
+            loader.frame_indices_for_episodes(&[1]),
+            (50..100).collect::<Vec<_>>()
+        );
+        // Both episodes -> all frames; unknown indices ignored.
+        assert_eq!(
+            loader.frame_indices_for_episodes(&[0, 1, 99]),
+            (0..100).collect::<Vec<_>>()
+        );
+        assert!(loader.frame_indices_for_episodes(&[]).is_empty());
     }
 
     use crate::decode::{FrameBuffer, FrameCache};

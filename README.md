@@ -160,7 +160,7 @@ print(report.ok, report.warnings)
 | **Camera frame decoding** (FFmpeg → NumPy) | ✅ (needs `ffmpeg` on `PATH`) |
 | Dataset **validation** (`ds.validate()`) | ✅ |
 | Dataset **statistics** (`ds.stats()` for normalization) | ✅ (reads `meta/stats.json`) |
-| **Train/val split** (`ds.train_val_split()`, by episode) | ✅ |
+| **Train/val split** (`ds.train_val_split()` + `loader(episodes=…)`) | ✅ |
 | Loader **checkpoint/resume** (`loader.position` / `seek()`) | ✅ |
 | **NumPy / MLX / PyTorch output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
 | Native **VideoToolbox / NVDEC** decode | 🚧 |

@@ -59,6 +59,33 @@ def test_train_val_split_partitions_episodes(tmp_path):
     assert (train, val) == ds.train_val_split(val_fraction=0.2, seed=0)
 
 
+def test_loader_filters_to_split_episodes(tmp_path):
+    # 4 episodes x 25 frames; episode e owns global frames [e*25, (e+1)*25).
+    make_dataset(str(tmp_path), episodes=4, length=25)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+
+    train, val = ds.train_val_split(val_fraction=0.5, seed=1)
+    assert len(train) == 2 and len(val) == 2
+
+    def frames(loader):
+        seen = []
+        for b in loader:
+            seen.extend(int(round(x)) for x in b["observation.state"][:, 0])
+        return sorted(seen)
+
+    def expected(eps):
+        return sorted(f for e in eps for f in range(e * 25, (e + 1) * 25))
+
+    train_frames = frames(ds.loader(batch_size=8, shuffle=True, seed=3, episodes=train))
+    val_frames = frames(ds.loader(batch_size=8, shuffle=False, episodes=val))
+
+    assert train_frames == expected(train)
+    assert val_frames == expected(val)
+    # No leakage: train and val frames are disjoint and together cover everything.
+    assert set(train_frames).isdisjoint(val_frames)
+    assert sorted(train_frames + val_frames) == list(range(100))
+
+
 def test_loader_position_and_seek_resume(tmp_path):
     make_dataset(str(tmp_path))
     ds = prf.RoboFrameDataset.from_path(str(tmp_path))

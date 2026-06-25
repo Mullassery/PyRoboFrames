@@ -170,7 +170,10 @@ impl RoboFrameDataset {
     ///
     /// `output` selects the array type per batch: `"numpy"` (default), `"mlx"`
     /// (`mlx.core.array`), or `"torch"` (`torch.from_numpy`, zero-copy from the NumPy buffers).
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string()))]
+    ///
+    /// `episodes` (optional) restricts iteration to the given episode indices — pass one half of
+    /// `ds.train_val_split(...)` to build a train- or validation-only loader.
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None))]
     #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
@@ -183,6 +186,7 @@ impl RoboFrameDataset {
         tolerance_s: f64,
         cameras: Option<Vec<String>>,
         output: String,
+        episodes: Option<Vec<usize>>,
     ) -> PyResult<Loader> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
@@ -211,7 +215,17 @@ impl RoboFrameDataset {
             Ok(inner) => inner,
             Err(e) => return Err(core_err(e)),
         };
-        let order = Sampler::new(shuffle, shuffle_buffer, seed).order(inner.total_frames(), 0);
+        // Population of global frame indices to draw from: all frames, or just the chosen episodes.
+        let base: Vec<usize> = match episodes {
+            Some(eps) => inner.frame_indices_for_episodes(&eps),
+            None => (0..inner.total_frames()).collect(),
+        };
+        // The sampler permutes positions 0..base.len(); map them back to global frame indices.
+        let order: Vec<usize> = Sampler::new(shuffle, shuffle_buffer, seed)
+            .order(base.len(), 0)
+            .into_iter()
+            .map(|i| base[i])
+            .collect();
 
         let cameras = cameras.unwrap_or_default();
         let (frame_decoder, frame_cache) = if cameras.is_empty() {

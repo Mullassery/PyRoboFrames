@@ -14,8 +14,11 @@ All notable changes to this project are documented here. The format follows
   (never by frame, to avoid temporal leakage), returning sorted `(train, val)` episode lists.
 - **Loader checkpoint/resume** — `loader.position` (frames consumed this epoch) and
   `loader.seek(position)` to resume an interrupted epoch on a fresh, identically-seeded loader.
+- **`loader(episodes=[...])`** — restrict iteration to a set of episode indices; pass one half of
+  `ds.train_val_split(...)` for a train- or validation-only loader. Core:
+  `TabularLoader::frame_indices_for_episodes`.
 - Core: `stats` + `split` modules, shared `rng` (SplitMix64) module; `Dataset::stats` /
-  `Dataset::train_val_split`. +11 tests (7 Rust, 4 Python).
+  `Dataset::train_val_split`. +13 tests (8 Rust, 5 Python).
 
 ## [0.1.2] - 2026-06-25
 
