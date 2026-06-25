@@ -20,11 +20,16 @@ and feed them to the model**. This step is slow — so slow that the expensive G
 idle *waiting for video to be decoded*. It's the single biggest bottleneck in robot-learning
 training pipelines.
 
-**PyRoboFrames is the piece that makes that data feed fast.** It reads your robot dataset,
-decodes the video, and hands batches straight to your training loop as **NumPy, MLX, or
-PyTorch** arrays — with a focus on **Apple Silicon Macs**, where the usual CUDA-centric tools
-serve you poorly. (Today it decodes with FFmpeg; the Apple Media-Engine fast path is in
-progress — see [What works today](#what-works-today).)
+**PyRoboFrames is the piece that feeds that data to your training loop** — and is being built
+to make it fast. It reads your robot dataset, decodes the video, and hands batches straight to
+your training loop as **NumPy, MLX, or PyTorch** arrays — with a focus on **Apple Silicon Macs**,
+where the usual CUDA-centric tools serve you poorly.
+
+> **Honest status on speed:** today it decodes with FFmpeg and the loader runs **single-threaded**.
+> The pieces that actually deliver throughput — the Apple Media-Engine hardware decode and the
+> off-GIL **parallel prefetch pipeline** — are still in progress, and **throughput has not been
+> benchmarked yet**. So treat "fast" as the design goal, not a measured claim. See
+> [What works today](#what-works-today).
 
 ### When would I use it?
 
@@ -40,15 +45,19 @@ progress — see [What works today](#what-works-today).)
 - **Apple Silicon first.** **MLX** (and PyTorch) output works today. The headline goal —
   decoding on the Mac's hardware video engine (VideoToolbox) straight into MLX with **zero
   copies** — is in progress; no other robot dataloader even targets it.
-- **Fast core, simple Python.** The engine is Rust (no GIL, hardware access); you just
-  `pip install` and `import` it.
+- **Rust core, simple Python.** The engine is Rust (native speed, hardware access, room to go
+  off-GIL); you just `pip install` and `import` it. The parallel prefetch pipeline that turns
+  that into end-to-end throughput is on the roadmap, not wired yet.
 - **Runs on Linux too** (NVIDIA CUDA/NVDEC support is planned).
 
-> ## Status: early (`0.1.2`, `0.x` — expect API changes)
-> Works today on any LeRobotDataset v3.0: the **dataloader** (state/action **and camera
-> frames**), shuffling, temporal windows, `validate()`, and **NumPy / MLX / PyTorch output**.
-> Camera frames decode via **FFmpeg**. Still in progress: the Apple-Silicon **zero-copy MLX**
-> path (decode → IOSurface → MLX) and the native VideoToolbox / NVDEC backends. See
+> ## Status: early (`0.1.3`, `0.x` — expect API changes)
+> **Works today** on any LeRobotDataset v3.0: the **dataloader** (state/action **and camera
+> frames**), shuffling, temporal windows, `validate()`, **dataset stats** (`ds.stats()`),
+> **train/val split**, **checkpoint/resume**, and **NumPy / MLX / PyTorch output**. Camera frames
+> decode via **FFmpeg**.
+> **Not yet:** the Apple-Silicon **zero-copy MLX** path (decode → IOSurface → MLX), the native
+> **VideoToolbox / NVDEC** backends, and the **parallel prefetch pipeline** — the loader runs
+> single-threaded today and **throughput is not yet benchmarked**. See
 > [What works today](#what-works-today).
 
 ---
@@ -165,6 +174,11 @@ print(report.ok, report.warnings)
 | **NumPy / MLX / PyTorch output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
 | Native **VideoToolbox / NVDEC** decode | 🚧 |
 | **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 (upstream `mlx#2855`) |
+| **Parallel prefetch / multiprocess workers** | 🚧 (loader is single-threaded today) |
+| Published **throughput benchmarks** (vs FFmpeg/CPU baseline) | 🚧 (no numbers yet) |
+| **CUDA / CV-CUDA** compute · **MPS** output · **HF Hub streaming** | 🚧 |
+
+The 🚧 rows are the honest gaps — see the [Roadmap](#roadmap) for sequencing.
 
 ---
 
@@ -247,11 +261,17 @@ Direction is informed by where robot learning is heading — Vision-Language-Act
 trained on ever-larger, multimodal, increasingly **streamed** datasets, with a growing need for
 **data-quality curation**.
 
-**Shipped so far (0.1.0 → 0.1.2):** dataloader (state/action + camera frames), buffered shuffle,
-temporal windows, `ds.validate()`, FFmpeg decode, and NumPy / MLX / PyTorch output — macOS & Linux.
+**Shipped so far (0.1.0 → 0.1.3):** dataloader (state/action + camera frames), buffered shuffle,
+temporal windows, `ds.validate()`, **`ds.stats()`**, **train/val split** (`train_val_split` +
+`loader(episodes=…)`), **checkpoint/resume**, FFmpeg decode, and NumPy / MLX / PyTorch output —
+macOS & Linux. *(All single-threaded; no throughput benchmarks published yet.)*
 
 **Next up:**
 
+- **Performance — the actual speed story.** Wire the off-GIL **parallel prefetch + worker
+  pipeline** (today these are config fields only), then publish a reproducible **throughput
+  benchmark** vs the FFmpeg/CPU baseline. This is what justifies the word "fast"; until it lands,
+  the claim stays a goal.
 - **Train Anywhere (multi-backend core).** One script, unchanged, across MacBook (MLX / MPS),
   NVIDIA (RTX 5090 / H100 / RunPod, via **CV-CUDA** + NVDEC), and CPU — the runtime auto-selects
   the backend. Sequenced **test-first**: the backend-detection seam, the unified tensor/transforms
