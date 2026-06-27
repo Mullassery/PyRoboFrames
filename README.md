@@ -6,14 +6,14 @@
 
 **A robotics data platform for training robots from recorded demonstrations — ingest, query, and a fast dataloader, built for Apple Silicon and Linux.**
 
-> **Status: v0.4.0-rc** — Video codec selection (H.264/HEVC/AV1) and GPU decode backends. **What works today:**
+> **Status: v0.4.0-rc** — Video codec selection + depth camera support + GPU decode backends. **What works today:**
 > the LeRobot **dataloader** (state/action + camera frames, temporal windows, **video**, **off-GIL prefetch**,
 > NumPy / MLX / PyTorch / JAX output); **ingest** (MCAP JSON/protobuf/CDR, ROS 2 `.db3` bags);
 > **data-ops** (quality scoring, episode filtering, delta compression, sparse/masked data, versioning,
-> distributed loading, MQTT/Kafka streaming); a time-indexed **Robotics DataFrame**; **LeRobot write-back** with **codec selection**;
+> distributed loading, MQTT/Kafka streaming); a time-indexed **Robotics DataFrame**; **LeRobot write-back** with **codec selection** + **depth cameras**;
 > **curriculum** + **goal-conditioned** sampling; **batched augmentation**; **Keras/TensorFlow adapter**; memory-mapped shards;
 > **GPU decode** (VideoToolbox on macOS, NVDEC on Linux+CUDA); **CV-CUDA transforms**. Next:
-> **depth camera support** (point clouds), **camera calibration**, and Apple-Silicon **zero-copy MLX** (decode → IOSurface, gated on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)).
+> **camera calibration**, time-aligned depth/RGB, and Apple-Silicon **zero-copy MLX** (decode → IOSurface, gated on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)).
 > See [What works today](#what-works-today).
 
 ---
@@ -251,7 +251,8 @@ print(report.ok, report.warnings)
 | Converter **metadata.json + stats.json** (self-describing, loader-ready) | ✅ |
 | **Robotics DataFrame** (time-index, `slice`, as-of `align`, `resample`, `save`) | ✅ |
 | **LeRobot write-back** (`write_lerobot_dataset()`, v3.0) | ✅ |
-| **Video codec selection** (H.264, HEVC, AV1 for write-back) | ✅ (v0.4.0) 30-40% storage savings with HEVC |
+| **Video codec selection** (H.264, HEVC, AV1) | ✅ (v0.4.0) 30-40% storage savings with HEVC |
+| **Depth camera support** (point clouds: .xyz, .ply, .pcd) | ✅ (v0.4.0) Oak-D, RealSense, generic depth sensors |
 | **HF Hub importer** (`download_lerobot_dataset()`) | ✅ (needs `huggingface_hub`) |
 | **Memory-mapped** data shards (lower RSS on large datasets) | ✅ |
 | **Image transforms + augments** (Resize bilinear, Flip/Crop/ColorJitter) | ✅ (NumPy/MLX/Torch; CV-CUDA requires GPU) |
