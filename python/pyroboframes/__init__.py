@@ -16,6 +16,7 @@ from .backend import available_backends, default_framework, resolve_device, to_b
 from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
 from .hub import download_lerobot_dataset
+from .lazy_parquet import LazyDataFrameShards, LazyParquetReader
 from .lerobot import write_lerobot_dataset
 
 __all__ = [
@@ -31,6 +32,8 @@ __all__ = [
     "AlignedFrame",
     "write_lerobot_dataset",
     "download_lerobot_dataset",
+    "LazyParquetReader",
+    "LazyDataFrameShards",
     "transforms",
     "backend",
     "resolve_device",
