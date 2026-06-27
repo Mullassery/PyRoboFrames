@@ -14,12 +14,13 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use numpy::ndarray::{Array2, Array3, Array4, ArrayD, IxDyn};
+use numpy::ndarray::{Array1, Array2, Array3, Array4, ArrayD, IxDyn};
 use numpy::IntoPyArray;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+use pyroboframes_core::calibration::{CameraCalibration, CameraIntrinsics};
 use pyroboframes_core::dataset::Dataset;
 use pyroboframes_core::decode::{Decoder, FrameCache};
 use pyroboframes_core::depth::PointCloud;
@@ -829,6 +830,176 @@ impl PointCloudPy {
     }
 }
 
+/// Python wrapper for camera intrinsics (focal length, principal point).
+#[pyclass]
+struct CameraIntrinsicsPy {
+    inner: CameraIntrinsics,
+}
+
+#[pymethods]
+impl CameraIntrinsicsPy {
+    /// Create intrinsics from focal length and principal point.
+    #[new]
+    fn new(fx: f64, fy: f64, cx: f64, cy: f64, width: usize, height: usize) -> Self {
+        Self {
+            inner: CameraIntrinsics::new(fx, fy, cx, cy, width, height),
+        }
+    }
+
+    /// Get the 3×3 K matrix as a NumPy array.
+    fn k_matrix(&self, py: Python<'_>) -> Py<PyAny> {
+        let k = self.inner.k_matrix();
+        Array2::from_shape_vec((3, 3), k.to_vec())
+            .unwrap()
+            .into_pyarray_bound(py)
+            .unbind()
+            .into()
+    }
+
+    /// Project a 3D point onto the image plane.
+    ///
+    /// Args:
+    ///     x, y, z: 3D point in camera frame
+    ///
+    /// Returns:
+    ///     (u, v) pixel coordinates, or None if behind camera
+    fn project(&self, x: f64, y: f64, z: f64) -> Option<(f64, f64)> {
+        self.inner.project(x, y, z)
+    }
+
+    /// Unproject a pixel to a 3D ray direction.
+    ///
+    /// Args:
+    ///     u, v: pixel coordinates
+    ///
+    /// Returns:
+    ///     [x, y, z] unit direction vector
+    fn unproject_direction(&self, u: f64, v: f64, py: Python<'_>) -> Py<PyAny> {
+        let dir = self.inner.unproject_direction(u, v);
+        Array1::from_vec(dir.to_vec())
+            .into_pyarray_bound(py)
+            .unbind()
+            .into()
+    }
+
+    #[getter]
+    fn fx(&self) -> f64 {
+        self.inner.fx
+    }
+
+    #[getter]
+    fn fy(&self) -> f64 {
+        self.inner.fy
+    }
+
+    #[getter]
+    fn cx(&self) -> f64 {
+        self.inner.cx
+    }
+
+    #[getter]
+    fn cy(&self) -> f64 {
+        self.inner.cy
+    }
+
+    #[getter]
+    fn width(&self) -> usize {
+        self.inner.width
+    }
+
+    #[getter]
+    fn height(&self) -> usize {
+        self.inner.height
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CameraIntrinsics(fx={:.1}, fy={:.1}, cx={:.1}, cy={:.1}, {}x{})",
+            self.inner.fx, self.inner.fy, self.inner.cx, self.inner.cy,
+            self.inner.width, self.inner.height
+        )
+    }
+}
+
+/// Python wrapper for camera calibration (intrinsics + distortion + pose).
+#[pyclass]
+struct CameraCalibrationPy {
+    inner: CameraCalibration,
+}
+
+#[pymethods]
+impl CameraCalibrationPy {
+    /// Create a camera calibration.
+    #[new]
+    fn new(
+        name: String,
+        fx: f64,
+        fy: f64,
+        cx: f64,
+        cy: f64,
+        width: usize,
+        height: usize,
+    ) -> Self {
+        let intrinsics = CameraIntrinsics::new(fx, fy, cx, cy, width, height);
+        Self {
+            inner: CameraCalibration::new(name, intrinsics),
+        }
+    }
+
+    /// Get camera name.
+    #[getter]
+    fn name(&self) -> String {
+        self.inner.name.clone()
+    }
+
+    /// Get intrinsics as a CameraIntrinsicsPy object.
+    #[getter]
+    fn intrinsics(&self) -> CameraIntrinsicsPy {
+        CameraIntrinsicsPy {
+            inner: self.inner.intrinsics,
+        }
+    }
+
+    /// Project a 3D world point to image pixel coordinates.
+    ///
+    /// Args:
+    ///     x, y, z: 3D point in world frame
+    ///
+    /// Returns:
+    ///     (u, v) pixel coordinates, or None if behind camera
+    fn project_world_point(&self, x: f64, y: f64, z: f64) -> Option<(f64, f64)> {
+        self.inner.project_world_point([x, y, z])
+    }
+
+    /// Unproject a pixel to a 3D ray in world frame.
+    ///
+    /// Args:
+    ///     u, v: pixel coordinates
+    ///
+    /// Returns:
+    ///     ((ox, oy, oz), (dx, dy, dz)): ray origin and direction
+    fn unproject_to_world_ray(&self, u: f64, v: f64, py: Python<'_>) -> (Py<PyAny>, Py<PyAny>) {
+        let (origin, direction) = self.inner.unproject_to_world_ray(u, v);
+        let origin_arr = Array1::from_vec(origin.to_vec());
+        let dir_arr = Array1::from_vec(direction.to_vec());
+        (
+            origin_arr.into_pyarray_bound(py).unbind().into(),
+            dir_arr.into_pyarray_bound(py).unbind().into(),
+        )
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CameraCalibration(name='{}', {}x{}, {}x{})",
+            self.inner.name,
+            self.inner.intrinsics.width,
+            self.inner.intrinsics.height,
+            self.inner.intrinsics.fx,
+            self.inner.intrinsics.fy
+        )
+    }
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", pyroboframes_core::VERSION)?;
@@ -840,6 +1011,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PrefetchLoader>()?;
     m.add_class::<ValidationReport>()?;
     m.add_class::<PointCloudPy>()?;
+    m.add_class::<CameraIntrinsicsPy>()?;
+    m.add_class::<CameraCalibrationPy>()?;
     Ok(())
 }
 

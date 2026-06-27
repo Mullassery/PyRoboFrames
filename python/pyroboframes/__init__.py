@@ -10,8 +10,16 @@ engine version so wheels and the build can be smoke-tested end to end.
 
 from __future__ import annotations
 
-from . import _core, backend, transforms
-from ._core import Loader, PointCloudPy, RoboFrameDataset, convert_mcap, convert_ros2_bag
+from . import _core, backend, depth_io, transforms
+from ._core import (
+    CameraCalibrationPy,
+    CameraIntrinsicsPy,
+    Loader,
+    PointCloudPy,
+    RoboFrameDataset,
+    convert_mcap,
+    convert_ros2_bag,
+)
 from .augmentation import (
     AugmentationPipeline,
     RandomBrightness,
@@ -35,8 +43,10 @@ from .streaming import KafkaStreamer, MQTTStreamer, StreamingRoboticsDataset
 from .tensorflow_support import KerasDataAdapter, create_keras_model_for_robotics, to_tf_dataset
 from .versioning import DatasetManifest, DatasetVersion
 
-# Public alias for the point cloud class
+# Public aliases for depth and calibration classes
 PointCloud = PointCloudPy
+CameraIntrinsics = CameraIntrinsicsPy
+CameraCalibration = CameraCalibrationPy
 
 __all__ = [
     "__version__",
@@ -44,6 +54,8 @@ __all__ = [
     "RoboFrameDataset",
     "Loader",
     "PointCloud",
+    "CameraIntrinsics",
+    "CameraCalibration",
     "DataLoader",
     "DistributedLoader",
     "DistributedSampler",
@@ -82,6 +94,7 @@ __all__ = [
     "StreamingRoboticsDataset",
     "transforms",
     "backend",
+    "depth_io",
     "resolve_device",
     "available_backends",
     "default_framework",

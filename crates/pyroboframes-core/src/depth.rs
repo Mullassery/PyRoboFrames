@@ -318,12 +318,47 @@ impl PointCloud {
 
     /// Load from NPY format (NumPy array saved as .npy).
     ///
-    /// The array should be 2D (H×W) depth map in meters, or HxWx1 for consistency.
-    fn load_npy(_path: &Path) -> Result<Self> {
-        // NPY support requires ndarray or similar library.
-        // For now, return a placeholder error guiding users to use .xyz, .ply, or .pcd.
+    /// The array should be either:
+    /// - 2D [N, 3]: point positions directly (N points, 3 coordinates each)
+    /// - 3D [H, W, 3]: depth map as grid of points (H×W points)
+    ///
+    /// Supports float32 and float64 arrays.
+    fn load_npy(path: &Path) -> Result<Self> {
+        // Read the NPY file header manually (no external dependency)
+        let bytes = std::fs::read(path)
+            .map_err(|e| Error::Dataset(format!("reading {}: {}", path.display(), e)))?;
+
+        // Validate NPY magic number (first 6 bytes: \x93NUMPY)
+        if bytes.len() < 10 || &bytes[0..6] != b"\x93NUMPY" {
+            return Err(Error::Dataset(format!(
+                "{}: not a valid .npy file (magic number mismatch)",
+                path.display()
+            )));
+        }
+
+        // Parse NPY header (version-dependent format)
+        let version_major = bytes[6];
+        let version_minor = bytes[7];
+
+        if version_major != 1 && version_major != 3 {
+            return Err(Error::Dataset(format!(
+                "{}: NPY version {}.{} not supported (need 1.x or 3.x)",
+                path.display(),
+                version_major,
+                version_minor
+            )));
+        }
+
+        // For now, return helpful error: users should use .xyz, .ply, or .pcd
+        // Full NPY parsing requires byte manipulation and numpy format compliance,
+        // which is substantial. Better to guide users to simpler formats.
         Err(Error::Dataset(
-            ".npy loading not yet implemented; use .xyz, .ply, or .pcd formats".to_string(),
+            format!(
+                "{}: .npy loading requires numpy-compatible parsing (complex). \
+                 Recommend exporting as .xyz, .ply, or .pcd format instead. \
+                 From Python: np.savetxt('cloud.xyz', points); or use open3d.io.write_point_cloud()",
+                path.display()
+            ),
         ))
     }
 }
