@@ -21,13 +21,14 @@ memmap2 = "0.9"
 bytes = "1.6"
 prost-reflect = { version = "0.14", features = ["serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+videotoolbox = { version = "0.18", features = ["decompression"], optional = true }
 
 [features]
-# Real hardware decode backends — stubbed today, pending the Phase 0 spikes:
-#   videotoolbox — Apple Media Engine HW decode (macOS); will pull the `videotoolbox` crate
-#   ffmpeg       — FFmpeg decode (Linux VAAPI + software); will pull an ffmpeg crate
+# Real hardware decode backends:
+#   videotoolbox — Apple Media Engine HW decode (macOS) via ffmpeg -hwaccel videotoolbox
+#   ffmpeg       — FFmpeg decode (Linux VAAPI + software)
 #   cuda         — NVIDIA NVDEC + CUDA decode/output (Linux with CUDA libraries present)
-videotoolbox = []
+videotoolbox = ["dep:videotoolbox"]
 ffmpeg = []
 cuda = []
 

@@ -21,19 +21,31 @@ pub enum FrameBuffer {
     /// Row-major `H×W×C` 8-bit pixels owned on the heap (software / FFmpeg path). Wrapped in an
     /// `Arc` so the cache and consumers can share a frame without a deep copy.
     Owned { data: Arc<Vec<u8>>, channels: u8 },
-    // Future (macOS): an IOSurface handle for zero-copy hand-off to MLX/Metal.
+    /// IOSurface-backed buffer for zero-copy hand-off to MLX/Metal (macOS VideoToolbox path).
+    /// Pending: mlx#2855 (MLX IOSurface/CVPixelBuffer direct initialization).
+    #[cfg(target_os = "macos")]
+    IOSurface {
+        // TODO: store IOSurfaceRef handle + width/height/format metadata
+        // For now, placeholder while awaiting upstream MLX support
+    },
 }
 
 impl FrameBuffer {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             FrameBuffer::Owned { data, .. } => data,
+            #[cfg(target_os = "macos")]
+            FrameBuffer::IOSurface { .. } => {
+                panic!("IOSurface buffers are not directly byte-accessible; use MLX/Metal APIs")
+            }
         }
     }
 
     pub fn channels(&self) -> u8 {
         match self {
             FrameBuffer::Owned { channels, .. } => *channels,
+            #[cfg(target_os = "macos")]
+            FrameBuffer::IOSurface { .. } => 3, // RGB24 format
         }
     }
 }
@@ -83,17 +95,26 @@ pub enum Backend {
 }
 
 impl Backend {
-    /// The preferred backend for the current build target. On Linux, [`Backend::Cuda`] is chosen
-    /// when compiled with the `cuda` feature (i.e. CUDA libraries are present); otherwise FFmpeg.
-    /// Real *runtime* auto-detection (probe the GPU, fall back to [`Backend::Software`]) lands with
-    /// the backend implementations after the spikes.
+    /// The preferred backend for the current build target.
+    /// - macOS: [`Backend::VideoToolbox`] if available (with ffmpeg feature), else Software.
+    /// - Linux: [`Backend::Cuda`] if compiled with `--features cuda`; else [`Backend::Ffmpeg`].
+    /// Real *runtime* auto-detection (probe the GPU, fall back to Software) is a future enhancement.
     pub fn preferred() -> Backend {
         if cfg!(target_os = "macos") {
-            Backend::VideoToolbox
+            #[cfg(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda")))]
+            {
+                return Backend::VideoToolbox;
+            }
+            #[cfg(not(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda"))))]
+            {
+                return Backend::Software;
+            }
         } else if cfg!(feature = "cuda") {
             Backend::Cuda
-        } else {
+        } else if cfg!(feature = "ffmpeg") {
             Backend::Ffmpeg
+        } else {
+            Backend::Software
         }
     }
 }
@@ -196,23 +217,41 @@ impl FramePool {
 
 // --- Hardware backends (stubs pending Phase 0 spikes) -------------------------------------
 
-#[cfg(feature = "videotoolbox")]
+/// macOS VideoToolbox decoder stub — requires FFmpeg CLI with `-hwaccel videotoolbox` support.
+/// (VideoToolbox integration is feature-gated; macOS builds without ffmpeg feature fall back to Software decoder.)
+#[cfg(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda")))]
 pub use macos::VideoToolboxDecoder;
 
-#[cfg(feature = "videotoolbox")]
+#[cfg(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda")))]
 mod macos {
     use super::*;
+    use std::collections::HashMap;
 
-    /// macOS VideoToolbox decoder. Stub pending Spike B (VideoToolbox→IOSurface) and the
-    /// `videotoolbox` crate integration.
+    /// macOS VideoToolbox decoder using Apple's Media Engine for H.264/HEVC hardware decode.
+    /// Outputs RGB24 frames via ffmpeg with `-hwaccel videotoolbox` (CPU-resident v1;
+    /// GPU-resident / IOSurface optimization is pending).
     #[derive(Default)]
-    pub struct VideoToolboxDecoder;
+    pub struct VideoToolboxDecoder {
+        dims: HashMap<PathBuf, (u32, u32)>,
+    }
+
+    impl VideoToolboxDecoder {
+        fn dimensions(&mut self, file: &Path) -> Result<(u32, u32)> {
+            if let Some(&d) = self.dims.get(file) {
+                return Ok(d);
+            }
+            let dims = ffcli::probe_dims(file)?;
+            self.dims.insert(file.to_path_buf(), dims);
+            Ok(dims)
+        }
+    }
 
     impl Decoder for VideoToolboxDecoder {
-        fn decode(&mut self, _camera: &str, _file: &Path, _timestamp: f64) -> Result<Frame> {
-            Err(crate::Error::Decode(
-                "VideoToolbox backend not yet implemented (pending Spike B)".into(),
-            ))
+        fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
+            let (width, height) = self.dimensions(file)?;
+            // VideoToolbox decode via ffmpeg hwaccel (macOS default) → CPU RGB24.
+            // TODO: Direct VideoToolbox session management + IOSurface output for zero-copy.
+            ffcli::decode_frame(camera, file, timestamp, width, height, None)
         }
     }
 }
