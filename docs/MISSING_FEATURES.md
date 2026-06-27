@@ -4,49 +4,42 @@ Comprehensive audit of gaps vs. robot-learning requirements and competing tools 
 
 ---
 
-## 🔴 CRITICAL (needed for production datasets >1GB)
+## 🟢 DONE (v0.2, implemented)
 
-### 1. **Incremental append / dataset versioning**
-- **Gap:** No way to add new episodes to existing dataset without rewriting entire Parquet
-- **Impact:** Production datasets grow; must support `dataset_v1 + new_episodes → dataset_v2`
-- **Current:** Save creates new dataset; no merge/append
-- **Effort:** M (Parquet row-group append, metadata rollup)
-- **Why it matters:** LeRobot v3.0 expects versioning; robotics datasets evolve with retraining
+### 1. ✅ **Incremental append / dataset versioning**
+- **Status:** DONE (versioning.py)
+- **API:** `DatasetVersion(ds).append(new_df, tag="v2")`
+- **Features:** Version tracking, metadata, rollback support
+- **Impact:** Production datasets can evolve without rewrites
 
-### 2. **Delta encoding for state/action columns**
-- **Gap:** Full state values stored; no compression for near-constant or slowly-varying signals
-- **Impact:** 10M-frame datasets waste storage on 99% redundant joint positions
-- **Current:** NumPy/Parquet defaults (no delta encoding)
+### 2. **Delta encoding for state/action columns** ⏳
+- **Status:** NOT YET (planned post-v0.2)
 - **Effort:** S (write delta at save time, decode on read)
-- **Why it matters:** DALI + torchcodec both do this; 30–50% storage savings typical
+- **Reason:** Storage optimization; lower priority than versioning/filtering
 
-### 3. **Batched augmentation / prefetch augmentation**
+### 3. **Batched augmentation / prefetch augmentation** ⏳
+- **Status:** NOT YET (planned post-v0.2)
 - **Gap:** Transforms only; no on-the-fly augmentation (rotation, crop, noise, etc.)
-- **Impact:** Must augment offline or implement per-model → no unified pipeline
-- **Current:** Only `transforms.Resize`, `Normalize`, `Crop`, `RandomCrop`, `RandomHorizontalFlip`
-- **Effort:** M (augmentation suite + feature flags for enable/disable)
-- **Why it matters:** VLA models (ACT, Diffusion Policy) train on heavily augmented data
+- **Effort:** M (augmentation suite)
+- **Reason:** VLA models need this; built on quality filtering
 
-### 4. **Episode filtering / dynamic subsampling**
-- **Gap:** Fixed dataset at load time; no runtime filtering by metadata (e.g., episode_length > 100)
-- **Impact:** Curriculum learning needs to filter by quality score, task ID, or success flag
-- **Current:** Train/val split only; no conditional sampling
-- **Effort:** S (Python predicate filtering in Loader)
-- **Why it matters:** Curriculum learning, quality-gated training, task-specific splits
+### 4. ✅ **Episode filtering / dynamic subsampling**
+- **Status:** DONE (filtering.py)
+- **API:** `EpisodeFilter(df).where(success=True, quality_score_min=0.7)`
+- **Features:** SQL-like where clauses, range queries, set membership
+- **Impact:** Curriculum learning, quality-gated training
 
-### 5. **Distributed data loading (multi-GPU, multi-machine)**
-- **Gap:** Single-machine prefetch pipeline; no sharding across workers
-- **Impact:** Training on RTX 5090 + A100 in same job; wasted GPU cycles
-- **Current:** `num_workers` is threading-only (off-GIL); no Ray/multiprocessing
-- **Effort:** L (Ray/PyTorch distributed sampler)
-- **Why it matters:** 100M-frame datasets need N×throughput on N GPUs
+### 5. ✅ **Distributed data loading (multi-GPU, multi-machine)**
+- **Status:** DONE (distributed.py)
+- **API:** `DistributedLoader(ds, batch_size=32, world_size=4, rank=0)`
+- **Features:** PyTorch distributed sampler, synchronized shuffling
+- **Impact:** Multi-GPU training without episode overlap
 
-### 6. **Quality scoring / trajectory filtering**
-- **Gap:** `validate()` checks data integrity; no scoring (diversity, sharpness, state-variance)
-- **Impact:** Can't identify/skip low-quality episodes before training
-- **Current:** `ds.stats()` has summary stats; no per-episode quality metrics
-- **Effort:** M (implement scorers: diversity, sharpness via Laplacian, action-rank)
-- **Why it matters:** 30–50% of demonstration data is low-quality; filtering saves GPU hours
+### 6. ✅ **Quality scoring / trajectory filtering**
+- **Status:** DONE (quality.py)
+- **API:** `EpisodeScorer().score_episodes(df)`
+- **Metrics:** diversity, sharpness, state_variance, action_magnitude, motion_smoothness
+- **Impact:** Data curation; filter low-quality episodes
 
 ---
 

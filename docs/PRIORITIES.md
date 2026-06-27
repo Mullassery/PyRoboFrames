@@ -4,9 +4,9 @@ High-level summary of work organized by priority tier. For detailed breakdown, s
 
 ---
 
-## 🎯 Current Status: v0.1.12+
+## 🎯 Current Status: v0.2 (Critical Features)
 
-**Shipped (P0–P9 except hardware verify):**
+**Shipped (P0–P9 + v0.2 Critical):**
 - ✅ LeRobot v3.0 dataloader (state/action + camera frames, temporal windows, off-GIL prefetch)
 - ✅ MCAP ingestion (JSON, protobuf, CDR/ros2msg)
 - ✅ ROS 2 bag converter (`.db3` SQLite + embedded message definitions)
@@ -21,6 +21,10 @@ High-level summary of work organized by priority tier. For detailed breakdown, s
 - ✅ **Vision integration** (CLIP embeddings, SAM2 segmentation, Grounding DINO detection)
 - ✅ **NVIDIA throughput benchmark** (FFmpeg baseline + frame timing)
 - ✅ NVDEC decode path (built feature-gated, awaiting GPU verification)
+- ✅ **Quality scoring** (diversity, sharpness, state_variance, action_magnitude, motion_smoothness)
+- ✅ **Episode filtering** (SQL-like where clauses, range queries, set membership)
+- ✅ **Dataset versioning** (incremental append, version history, rollback support)
+- ✅ **Distributed loading** (PyTorch multi-GPU sampler, synchronized shuffling)
 
 **In progress or blocked:**
 - 🟡 Apple Silicon zero-copy MLX (blocked on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855))
