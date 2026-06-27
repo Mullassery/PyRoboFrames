@@ -66,6 +66,35 @@ def resolve_device(device: str = "auto") -> str:
     return "cpu"
 
 
+def default_framework(device: str) -> str:
+    """The native array framework for a (resolved) backend: ``"mlx"`` on Apple-MLX, ``"torch"`` on
+    cuda/mps, ``"numpy"`` on cpu. This is the seam behind "no manual ``output=``": the loader can
+    pick the right tensor type from the device alone."""
+    return {"mlx": "mlx", "cuda": "torch", "mps": "torch", "cpu": "numpy"}[resolve_device(device)]
+
+
+def to_backend(obj, device: str = "auto"):
+    """Move a NumPy array — or a ``dict`` batch of them — to the framework native to ``device``.
+
+    cpu → NumPy (unchanged); mlx → ``mlx.core.array``; cuda/mps → ``torch.Tensor`` on that device.
+    The inverse of ``output=``: lets ``device="auto"`` choose the tensor type without code changes.
+    """
+    dev = resolve_device(device)
+    if isinstance(obj, dict):
+        return {k: to_backend(v, dev) for k, v in obj.items()}
+    if dev == "cpu":
+        return obj
+    if dev == "mlx":
+        import mlx.core as mx  # noqa: PLC0415
+
+        return mx.array(obj)
+    if dev in ("cuda", "mps"):
+        import torch  # noqa: PLC0415
+
+        return torch.as_tensor(obj).to(dev)
+    raise ValueError(f"unsupported device {dev!r}")
+
+
 def available_backends() -> dict[str, bool]:
     """Map each backend to whether it's usable in this environment (for diagnostics)."""
     torch = _torch()

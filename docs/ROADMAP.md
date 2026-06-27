@@ -81,30 +81,30 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
       (backward as-of join for sensor fusion). `from_converted` / `from_mcap` / `from_ros2_bag`. — ✅
 
 ### P3 — Native storage + LeRobot interop **← next batch starts here**
-- [ ] **Native Parquet dataset format** (own **write** path, not just reads) — `L · high · ✓test`.
-- [ ] **LeRobot write-back** (export v3.x) — `L · high · ✓test`.
-- [ ] **Hugging Face Hub importer** (download / partial-stream a `LeRobotDataset`) —
-      `L · high · ~test (network)`.
+- [x] **Native dataset format** (own **write** path) — `RoboticsDataFrame.save()` (Parquet +
+      metadata + stats, round-trips via `from_converted`). — ✅
+- [x] **LeRobot write-back** (export v3.0) — `write_lerobot_dataset()`; verified by reading back. — ✅
+- [x] **Hugging Face Hub importer** — `download_lerobot_dataset()` (optional `huggingface_hub`). — ✅
+      *Hub partial-streaming (read only needed shards) still ⬜.*
 
-### P4 — Production-grade loader hardening (testable, fills known gaps)
-- [ ] **Lazy loading / mmap parquet** — datasets > RAM. `M · high · ✓test`.
-- [ ] **Multi-camera windowed video sync** — temporal windows for *video*, not just tabular.
-      `M · high · ✓test`.
-- [ ] **Curriculum** + **goal-conditioned** sampling — `M · med-high · ✓test`.
+### P4 — Production-grade loader hardening — ✅ done (0.1.10)
+- [x] **mmap parquet** — `data/*.parquet` shards are memory-mapped (lower RSS). — ✅
+      *Row-group-level streaming for >RAM shards still ⬜.*
+- [x] **Multi-camera windowed video sync** — `delta_timestamps` applies to cameras →
+      `[batch, steps, H, W, 3]`. — ✅
+- [x] **Curriculum** (`curriculum=True`) + **goal-conditioned** (`goal="final"`) sampling. — ✅
 
-### P5 — Time-synchronized multi-sensor fusion
-- [ ] Multi-rate alignment / resampling across sensors (IMU / GPS / LiDAR / audio), building on the
-      Robotics DataFrame. `L · high · ✓test`.
+### P5 — Time-synchronized multi-sensor fusion — ✅ done (0.1.10)
+- [x] `RoboticsDataFrame.resample(period, method="previous"|"nearest"|"linear")` fuses multi-rate
+      topics onto one uniform time grid. — ✅
 
-### P6 — "Train Anywhere" backend parity (Tier B — verify on this Mac)
-- [ ] **Unified tensor/output abstraction** — auto-select the native framework per backend (Torch on
-      cuda/mps/cpu, MLX on Apple-MLX, NumPy fallback); keep `output=` as an override.
-      `S · high · ✓test`.
-- [ ] **MLX / MPS native transforms** — run `Resize`/`Crop`/`Normalize`/augments on-device so the
-      transform script is identical on every backend (today transforms are NumPy/CPU).
-      `M · high · ✓test`.
-- [ ] **Fallback chain** (CV-CUDA → Torch → NumPy) + a **one-script conformance test** asserting
-      identical batch shapes across CPU and this Mac. `S · high · ✓test`.
+### P6 — "Train Anywhere" backend parity — ✅ done (0.1.10)
+- [x] **Unified tensor/output abstraction** — `default_framework(device)` + `to_backend(obj,
+      device)` pick the native framework from the device. — ✅
+- [x] **Fallback chain** (CV-CUDA → Torch → NumPy) — `transforms.resolve_transform_backend()` +
+      a one-script CPU-vs-auto **conformance test**. — ✅
+- [ ] **MLX / MPS native transform kernels** — on-device `Resize`/`Crop`/etc. (today NumPy; the
+      backend seam is in place). `M · high · ✓test` ⬜
 
 ### P7 — Streaming ingestion — ⏸ deferred (skip next batch)
 - [ ] **MQTT / Kafka** connectors + **stream-to-dataset writer** — `L · high · ~test (needs broker)`.
@@ -114,20 +114,29 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [ ] **SAM / SAM2** masks + **Grounding DINO** detection → **auto-annotation** — `L · high · ~test`.
 - [ ] **Vision-language dataset generation** — `L · high · ~test`.
 
-### P9 — NVIDIA / GPU path (`[C]` — build feature-gated now, verify on a GPU box)
-- [ ] CUDA / NVDEC decode (`-hwaccel cuda`) — `S · med · [C]`.
-- [ ] **CV-CUDA** transform backend — `M · high · [C]`.
-- [ ] NVIDIA throughput benchmark vs LeRobot (torchcodec) / DALI — `M · med · [C]`.
-- [ ] GPU-resident zero-copy (Video Codec SDK → DLPack) — `XL · high · [C]`.
+### P9 — NVIDIA / GPU path (`[C]` — built feature-gated; functional verify on a GPU box)
+- [x] CUDA / NVDEC decode (`-hwaccel cuda`) — `CudaDecoder` (`--features cuda`) drives ffmpeg NVDEC,
+      sharing the CLI path with the FFmpeg backend; compile-/lint-clean. **Functional verify on
+      NVIDIA HW pending.** — ✅ (build)
+- [ ] **CV-CUDA** transform backend — seam in place (`resolve_transform_backend` → `cvcuda`); real
+      operators ⬜ `[C]`.
+- [ ] NVIDIA throughput benchmark vs LeRobot (torchcodec) / DALI — `M · med · [C]` ⬜.
+- [ ] GPU-resident zero-copy (Video Codec SDK → DLPack) — `XL · high · [C]` ⬜.
 
 ### P10 — Scale & research (later) — ⏸ deferred (skip next batch)
 - [ ] Distributed / multi-node dataloading · Ray / Slurm / RunPod templates — `L`.
 - [ ] BC / imitation / offline-RL / transformer-policy training · ACT / Diffusion / VLA — `L`–`XL`.
 - [ ] **Deferred/blocked:** zero-copy MLX (decode → IOSurface → MLX, `mlx#2855`) · MLX distributed — `XL`.
 
-**Where we are (0.1.9):** P0, P1, and P2 are shipped — ingest now handles JSON / protobuf / CDR
-(MCAP) and ROS 2 `.db3` bags, emits self-describing metadata + stats, and the **Robotics DataFrame**
-gives the columnar output a time-indexed, sensor-fusion-ready API.
+**Where we are (0.1.10):** P0–P6 and P9(build) are shipped. Beyond ingest + the Robotics DataFrame
+(0.1.9), this adds **LeRobot write-back** + native save, **resampling**, **curriculum / goal /
+windowed-video** sampling, **mmap** shards, **backend parity** (`to_backend` + transform fallback
+chain), and a feature-gated **NVDEC** decoder. Remaining open within done sections: HF Hub
+partial-streaming, row-group-level lazy reads, MLX/MPS native transform kernels, and the
+NVIDIA-hardware functional sign-off + CV-CUDA operators (P9 `[C]`).
+
+**Recommended next batch:** the deferred **P7** (streaming MQTT/Kafka), **P8** (Tier-2 vision:
+CLIP → SAM/SAM2 → Grounding DINO), and **P10** (scale/research), plus the open sub-items above.
 
 **Recommended next batch (per the current call, skipping P7 / P8 / P10):** **P3** native Parquet
 write + LeRobot write-back + HF Hub importer (own the storage/interop loop), then **P4** loader

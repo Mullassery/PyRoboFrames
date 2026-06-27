@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-06-27
+
+### Added
+- **LeRobot write-back** — `write_lerobot_dataset(path, features, episode_lengths, fps)` exports a
+  tabular `LeRobotDataset v3.0` (info/episodes/data parquet + stats); round-trips through
+  `RoboFrameDataset`.
+- **Native dataset save** — `RoboticsDataFrame.save(path)` writes the columnar format (Parquet +
+  `metadata.json` + `stats.json`), round-tripping via `from_converted`.
+- **Hugging Face Hub importer** — `download_lerobot_dataset(repo_id, …)` (optional `huggingface_hub`).
+- **Multi-rate resampling / fusion** — `RoboticsDataFrame.resample(period, method="previous"|
+  "nearest"|"linear")` fuses multi-rate topics onto one uniform time grid.
+- **Curriculum sampling** — `loader(curriculum=True)` orders the epoch easy→hard (shorter episodes
+  first).
+- **Goal-conditioned sampling** — `loader(goal="final")` adds `<feature>.goal` (the episode's final
+  frame) to each sample.
+- **Windowed video sync** — `delta_timestamps` now applies to cameras too, yielding
+  `[batch, steps, H, W, 3]` temporal frame stacks.
+- **Memory-mapped data shards** — `data/*.parquet` shards are mmap-backed (lower resident memory on
+  large datasets), values unchanged.
+- **Backend parity** — `default_framework(device)` + `to_backend(obj, device)` (unified output
+  abstraction) and `transforms.resolve_transform_backend()` (CV-CUDA → Torch → NumPy fallback chain).
+- **NVIDIA NVDEC decoder** (`--features cuda`) — `CudaDecoder` drives `ffmpeg -hwaccel cuda`,
+  sharing the CLI path with the FFmpeg backend. Compile-/lint-clean; functional verification
+  deferred to NVIDIA hardware.
+
 ## [0.1.9] - 2026-06-27
 
 ### Added

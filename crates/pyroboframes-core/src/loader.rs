@@ -172,6 +172,25 @@ impl TabularLoader {
         runs
     }
 
+    /// Global index of the **final frame of the episode** containing `global_index` — the goal
+    /// frame for goal-conditioned sampling.
+    pub fn goal_index(&self, global_index: usize) -> Result<usize> {
+        let loc = self
+            .index
+            .locate(global_index)
+            .ok_or_else(|| Error::Dataset(format!("frame {global_index} out of range")))?;
+        Ok(loc.global_index - loc.frame_in_episode + loc.episode_len - 1)
+    }
+
+    /// `(episode_len, episode_index)` for a global frame — the sort key for curriculum ordering
+    /// (shorter episodes first). Returns `(0, 0)` for an out-of-range index.
+    pub fn curriculum_key(&self, global_index: usize) -> (usize, usize) {
+        self.index
+            .locate(global_index)
+            .map(|l| (l.episode_len, l.episode_index))
+            .unwrap_or((0, 0))
+    }
+
     /// Ensure a data shard is open (cached) so subsequent reads don't reopen the file.
     fn ensure_open(&mut self, key: (usize, usize)) -> Result<()> {
         if !self.open.contains_key(&key) {
@@ -269,6 +288,50 @@ impl TabularLoader {
     /// Resolve a global frame to its decode location.
     pub fn locate(&self, global_index: usize) -> Option<FrameLocation> {
         self.index.locate(global_index)
+    }
+
+    /// Decode a **temporal window** of frames per camera for a global frame index: for each camera
+    /// the deltas in `spec` (or just the current frame if it has none) are resolved to in-episode
+    /// frame offsets and decoded, returning `(camera, frames)` with one [`Frame`] per step. Offsets
+    /// stay within the episode (edge-clamped), matching the tabular windowing.
+    pub fn windowed_frames_for(
+        &self,
+        global_index: usize,
+        cameras: &[String],
+        spec: &WindowSpec,
+        decoder: &mut dyn Decoder,
+        cache: &mut FrameCache,
+    ) -> Result<Vec<(String, Vec<Frame>)>> {
+        let loc = self
+            .index
+            .locate(global_index)
+            .ok_or_else(|| Error::Dataset(format!("frame {global_index} out of range")))?;
+        let episode_from_global = loc.global_index - loc.frame_in_episode;
+        let mut out = Vec::with_capacity(cameras.len());
+        for cam in cameras {
+            let offsets = resolve_offsets(
+                spec.deltas_for(cam),
+                loc.frame_in_episode,
+                loc.episode_len,
+                self.fps,
+                spec.tolerance_s,
+            )?;
+            let mut frames = Vec::with_capacity(offsets.len());
+            for off in offsets {
+                let g = episode_from_global + off;
+                let step_loc = self
+                    .index
+                    .locate(g)
+                    .ok_or_else(|| Error::Dataset(format!("frame {g} out of range")))?;
+                let &(chunk, file, ts) = step_loc.videos.get(cam).ok_or_else(|| {
+                    Error::Dataset(format!("camera `{cam}` not found for frame {g}"))
+                })?;
+                let path = self.dataset.video_file(cam, chunk, file);
+                frames.push(cache.get_or_decode(decoder, cam, &path, ts)?);
+            }
+            out.push((cam.clone(), frames));
+        }
+        Ok(out)
     }
 
     /// Decode the requested cameras' frames for a global frame index, via `decoder` + `cache`.

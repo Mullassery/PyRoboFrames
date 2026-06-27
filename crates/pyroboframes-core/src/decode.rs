@@ -217,23 +217,141 @@ mod macos {
     }
 }
 
+/// Shared `ffmpeg`/`ffprobe` CLI helpers for the FFmpeg + CUDA (NVDEC) backends.
+#[cfg(any(feature = "ffmpeg", feature = "cuda"))]
+mod ffcli {
+    use super::*;
+    use std::process::Command;
+
+    /// Video stream width/height via `ffprobe`.
+    pub(crate) fn probe_dims(file: &Path) -> Result<(u32, u32)> {
+        let out = Command::new("ffprobe")
+            .args([
+                "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0",
+            ])
+            .arg(file)
+            .output()
+            .map_err(|e| crate::Error::Decode(format!("ffprobe not runnable: {e}")))?;
+        if !out.status.success() {
+            return Err(crate::Error::Decode(format!(
+                "ffprobe failed for {}",
+                file.display()
+            )));
+        }
+        let s = String::from_utf8_lossy(&out.stdout);
+        let (w, h) = s.trim().split_once('x').ok_or_else(|| {
+            crate::Error::Decode(format!("unexpected ffprobe output: {:?}", s.trim()))
+        })?;
+        let parse = |v: &str| {
+            v.trim()
+                .parse::<u32>()
+                .map_err(|_| crate::Error::Decode(format!("bad dimension {v:?}")))
+        };
+        Ok((parse(w)?, parse(h)?))
+    }
+
+    /// Decode one RGB24 frame at `timestamp`. `hwaccel` (e.g. `Some("cuda")` for NVDEC) inserts
+    /// `-hwaccel <name>` before the input; `None` uses the ffmpeg build's default decode path.
+    pub(crate) fn decode_rgb24(
+        file: &Path,
+        timestamp: f64,
+        width: u32,
+        height: u32,
+        hwaccel: Option<&str>,
+    ) -> Result<Vec<u8>> {
+        let mut cmd = Command::new("ffmpeg");
+        cmd.args(["-nostdin", "-v", "error"]);
+        if let Some(hw) = hwaccel {
+            cmd.args(["-hwaccel", hw]);
+        }
+        // Accurate (output) seek: `-ss` after `-i` decodes to the exact timestamp.
+        cmd.arg("-i")
+            .arg(file)
+            .args(["-ss"])
+            .arg(format!("{timestamp}"))
+            .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+        let out = cmd
+            .output()
+            .map_err(|e| crate::Error::Decode(format!("ffmpeg not runnable: {e}")))?;
+        if !out.status.success() {
+            return Err(crate::Error::Decode(format!(
+                "ffmpeg failed to decode {} @ {timestamp}s",
+                file.display()
+            )));
+        }
+        let expected = width as usize * height as usize * 3;
+        if out.stdout.len() < expected {
+            return Err(crate::Error::Decode(format!(
+                "short frame from {}: got {} bytes, expected {expected}",
+                file.display(),
+                out.stdout.len()
+            )));
+        }
+        let mut data = out.stdout;
+        data.truncate(expected);
+        Ok(data)
+    }
+
+    fn frame(camera: &str, timestamp: f64, width: u32, height: u32, data: Vec<u8>) -> Frame {
+        Frame {
+            width,
+            height,
+            camera: camera.to_string(),
+            timestamp,
+            pixels: FrameBuffer::Owned {
+                data: Arc::new(data),
+                channels: 3,
+            },
+        }
+    }
+
+    pub(crate) fn decode_frame(
+        camera: &str,
+        file: &Path,
+        timestamp: f64,
+        width: u32,
+        height: u32,
+        hwaccel: Option<&str>,
+    ) -> Result<Frame> {
+        let data = decode_rgb24(file, timestamp, width, height, hwaccel)?;
+        Ok(frame(camera, timestamp, width, height, data))
+    }
+}
+
 #[cfg(feature = "cuda")]
 pub use cuda::CudaDecoder;
 
 #[cfg(feature = "cuda")]
 mod cuda {
     use super::*;
+    use std::collections::HashMap;
 
-    /// NVIDIA NVDEC + CUDA decoder for Linux (zero-copy into CUDA device memory for PyTorch).
-    /// Stub pending CUDA toolkit integration; selected on Linux when built with `--features cuda`.
+    /// NVIDIA **NVDEC** decoder driving `ffmpeg -hwaccel cuda`. v1 downloads each decoded frame to
+    /// CPU memory as RGB24 (GPU-resident DLPack output is a later milestone). Requires a CUDA/NVDEC-
+    /// enabled ffmpeg build with `ffmpeg`/`ffprobe` on `PATH`; selected on Linux when built with
+    /// `--features cuda`. **Functional verification is deferred to NVIDIA hardware** — on this code
+    /// path the only thing CI checks is that it compiles and lints.
     #[derive(Default)]
-    pub struct CudaDecoder;
+    pub struct CudaDecoder {
+        dims: HashMap<PathBuf, (u32, u32)>,
+    }
+
+    impl CudaDecoder {
+        fn dimensions(&mut self, file: &Path) -> Result<(u32, u32)> {
+            if let Some(&d) = self.dims.get(file) {
+                return Ok(d);
+            }
+            let dims = ffcli::probe_dims(file)?;
+            self.dims.insert(file.to_path_buf(), dims);
+            Ok(dims)
+        }
+    }
 
     impl Decoder for CudaDecoder {
-        fn decode(&mut self, _camera: &str, _file: &Path, _timestamp: f64) -> Result<Frame> {
-            Err(crate::Error::Decode(
-                "CUDA/NVDEC backend not yet implemented (pending CUDA toolkit integration)".into(),
-            ))
+        fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
+            let (width, height) = self.dimensions(file)?;
+            ffcli::decode_frame(camera, file, timestamp, width, height, Some("cuda"))
         }
     }
 }
@@ -245,7 +363,6 @@ pub use linux::FfmpegDecoder;
 mod linux {
     use super::*;
     use std::collections::HashMap;
-    use std::process::Command;
 
     /// Video decoder driving the `ffmpeg` CLI (cross-platform: uses the platform's hwaccel —
     /// VAAPI/NVDEC on Linux, VideoToolbox on macOS — when the ffmpeg build supports it, software
@@ -262,30 +379,7 @@ mod linux {
             if let Some(&d) = self.dims.get(file) {
                 return Ok(d);
             }
-            let out = Command::new("ffprobe")
-                .args([
-                    "-v", "error", "-select_streams", "v:0",
-                    "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0",
-                ])
-                .arg(file)
-                .output()
-                .map_err(|e| crate::Error::Decode(format!("ffprobe not runnable: {e}")))?;
-            if !out.status.success() {
-                return Err(crate::Error::Decode(format!(
-                    "ffprobe failed for {}",
-                    file.display()
-                )));
-            }
-            let s = String::from_utf8_lossy(&out.stdout);
-            let (w, h) = s.trim().split_once('x').ok_or_else(|| {
-                crate::Error::Decode(format!("unexpected ffprobe output: {:?}", s.trim()))
-            })?;
-            let parse = |v: &str| {
-                v.trim()
-                    .parse::<u32>()
-                    .map_err(|_| crate::Error::Decode(format!("bad dimension {v:?}")))
-            };
-            let dims = (parse(w)?, parse(h)?);
+            let dims = ffcli::probe_dims(file)?;
             self.dims.insert(file.to_path_buf(), dims);
             Ok(dims)
         }
@@ -294,41 +388,7 @@ mod linux {
     impl Decoder for FfmpegDecoder {
         fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
             let (width, height) = self.dimensions(file)?;
-            // Accurate (output) seek: `-ss` after `-i` decodes to the exact timestamp.
-            let out = Command::new("ffmpeg")
-                .args(["-nostdin", "-v", "error", "-i"])
-                .arg(file)
-                .args(["-ss"])
-                .arg(format!("{timestamp}"))
-                .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
-                .output()
-                .map_err(|e| crate::Error::Decode(format!("ffmpeg not runnable: {e}")))?;
-            if !out.status.success() {
-                return Err(crate::Error::Decode(format!(
-                    "ffmpeg failed to decode {} @ {timestamp}s",
-                    file.display()
-                )));
-            }
-            let expected = width as usize * height as usize * 3;
-            if out.stdout.len() < expected {
-                return Err(crate::Error::Decode(format!(
-                    "short frame from {}: got {} bytes, expected {expected}",
-                    file.display(),
-                    out.stdout.len()
-                )));
-            }
-            let mut data = out.stdout;
-            data.truncate(expected);
-            Ok(Frame {
-                width,
-                height,
-                camera: camera.to_string(),
-                timestamp,
-                pixels: FrameBuffer::Owned {
-                    data: Arc::new(data),
-                    channels: 3,
-                },
-            })
+            ffcli::decode_frame(camera, file, timestamp, width, height, None)
         }
     }
 }

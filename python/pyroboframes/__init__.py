@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from . import _core, backend, transforms
 from ._core import Loader, RoboFrameDataset, convert_mcap, convert_ros2_bag
-from .backend import available_backends, resolve_device
+from .backend import available_backends, default_framework, resolve_device, to_backend
 from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
 from .hub import download_lerobot_dataset
@@ -35,6 +35,8 @@ __all__ = [
     "backend",
     "resolve_device",
     "available_backends",
+    "default_framework",
+    "to_backend",
 ]
 
 __version__: str = _core.__version__

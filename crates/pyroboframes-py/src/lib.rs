@@ -222,7 +222,13 @@ impl RoboFrameDataset {
     /// a chunk. This keeps decode locality and produces sequence-friendly batches; pair it with a
     /// matching `delta_timestamps` window for MLX/PyTorch sequence models. Ignored when
     /// `balanced=True`.
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4, balanced=false, chunk_size=0))]
+    ///
+    /// `curriculum=True` orders the epoch easy→hard (shorter episodes first), instead of shuffling.
+    ///
+    /// `goal="final"` makes it **goal-conditioned**: each sample gains `<feature>.goal` columns
+    /// holding the final frame of the same episode. (Synchronous tabular path only — not combined
+    /// with `delta_timestamps` or `num_workers`.)
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4, balanced=false, chunk_size=0, curriculum=false, goal=None))]
     #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
@@ -242,6 +248,8 @@ impl RoboFrameDataset {
         prefetch: usize,
         balanced: bool,
         chunk_size: usize,
+        curriculum: bool,
+        goal: Option<String>,
     ) -> PyResult<Py<PyAny>> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
@@ -250,6 +258,16 @@ impl RoboFrameDataset {
             return Err(PyValueError::new_err(format!(
                 "output must be 'numpy', 'mlx', 'torch', or 'jax' (got '{output}')"
             )));
+        }
+        if let Some(g) = &goal {
+            if g != "final" {
+                return Err(PyValueError::new_err("goal must be 'final' (or None)"));
+            }
+            if delta_timestamps.is_some() || num_workers >= 1 {
+                return Err(PyValueError::new_err(
+                    "goal='final' is not supported with delta_timestamps or num_workers>0",
+                ));
+            }
         }
         let window = match delta_timestamps {
             None => None,
@@ -294,6 +312,13 @@ impl RoboFrameDataset {
         } else if chunk_size >= 1 {
             let runs = inner.episode_runs(episodes.as_deref());
             chunked_order(&runs, chunk_size, shuffle, seed)
+        } else if curriculum {
+            // Easy→hard: stable-sort positions by (episode_len, episode_index), frames in order.
+            let mut keyed: Vec<((usize, usize), usize)> = (0..base.len())
+                .map(|i| (inner.curriculum_key(base[i]), i))
+                .collect();
+            keyed.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            keyed.into_iter().map(|(_, i)| i).collect()
         } else {
             Sampler::new(shuffle, shuffle_buffer, seed).order(base.len(), 0)
         };
@@ -344,6 +369,7 @@ impl RoboFrameDataset {
             frame_decoder,
             frame_cache,
             output,
+            goal: goal.is_some(),
         };
         Ok(Py::new(py, loader)?.into_any())
     }
@@ -375,6 +401,8 @@ struct Loader {
     frame_cache: FrameCache,
     /// "numpy" | "mlx" | "torch"
     output: String,
+    /// Goal-conditioned: add `<feature>.goal` (the episode's final frame) to each sample.
+    goal: bool,
 }
 
 #[pymethods]
@@ -415,36 +443,92 @@ impl Loader {
             }
         };
 
-        // Camera frames -> [batch, H, W, 3] uint8 per camera.
+        // Goal-conditioning: append the episode's final-frame features as `<name>.goal`.
+        if self.goal {
+            let goal_indices: Vec<usize> = indices
+                .iter()
+                .map(|&g| self.inner.goal_index(g))
+                .collect::<pyroboframes_core::Result<_>>()
+                .map_err(core_err)?;
+            let goal_samples = self.inner.batch(&goal_indices).map_err(core_err)?;
+            let goal_dict = batch_to_dict(py, &goal_samples)?;
+            let dst = batch.bind(py);
+            for (k, v) in goal_dict.bind(py).iter() {
+                let key: String = k.extract()?;
+                if key == "episode_index" {
+                    continue;
+                }
+                dst.set_item(format!("{key}.goal"), v)?;
+            }
+        }
+
+        // Camera frames. Without a window: [batch, H, W, 3] per camera. With a window: a temporal
+        // stack [batch, steps, H, W, 3], the per-camera deltas resolved like the tabular window.
         if !self.cameras.is_empty() {
             let cameras = self.cameras.clone();
-            let decoder = self.frame_decoder.as_deref_mut().expect("decoder set");
-            // camera -> (width, height, concatenated RGB bytes)
-            let mut acc: BTreeMap<String, (u32, u32, Vec<u8>)> = BTreeMap::new();
-            for &i in &indices {
-                let frames = match self.inner.frames_for(i, &cameras, decoder, &mut self.frame_cache)
-                {
-                    Ok(f) => f,
-                    Err(e) => return Err(core_err(e)),
-                };
-                for (cam, frame) in frames {
-                    let entry = acc
-                        .entry(cam)
-                        .or_insert((frame.width, frame.height, Vec::new()));
-                    if entry.0 != frame.width || entry.1 != frame.height {
-                        return Err(PyValueError::new_err(
-                            "frames in a batch have inconsistent dimensions",
-                        ));
-                    }
-                    entry.2.extend_from_slice(frame.pixels.as_bytes());
-                }
-            }
             let n = indices.len();
             let dict = batch.bind(py);
-            for (cam, (w, h, data)) in acc {
-                let arr = Array4::from_shape_vec((n, h as usize, w as usize, 3), data)
-                    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-                dict.set_item(cam, arr.into_pyarray_bound(py))?;
+            match self.window.clone() {
+                None => {
+                    let decoder = self.frame_decoder.as_deref_mut().expect("decoder set");
+                    // camera -> (width, height, concatenated RGB bytes)
+                    let mut acc: BTreeMap<String, (u32, u32, Vec<u8>)> = BTreeMap::new();
+                    for &i in &indices {
+                        let frames = self
+                            .inner
+                            .frames_for(i, &cameras, decoder, &mut self.frame_cache)
+                            .map_err(core_err)?;
+                        for (cam, frame) in frames {
+                            let entry = acc
+                                .entry(cam)
+                                .or_insert((frame.width, frame.height, Vec::new()));
+                            if entry.0 != frame.width || entry.1 != frame.height {
+                                return Err(PyValueError::new_err(
+                                    "frames in a batch have inconsistent dimensions",
+                                ));
+                            }
+                            entry.2.extend_from_slice(frame.pixels.as_bytes());
+                        }
+                    }
+                    for (cam, (w, h, data)) in acc {
+                        let arr = Array4::from_shape_vec((n, h as usize, w as usize, 3), data)
+                            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                        dict.set_item(cam, arr.into_pyarray_bound(py))?;
+                    }
+                }
+                Some(spec) => {
+                    let decoder = self.frame_decoder.as_deref_mut().expect("decoder set");
+                    // camera -> (steps, width, height, concatenated RGB bytes)
+                    let mut acc: BTreeMap<String, (usize, u32, u32, Vec<u8>)> = BTreeMap::new();
+                    for &i in &indices {
+                        let cam_frames = self
+                            .inner
+                            .windowed_frames_for(i, &cameras, &spec, decoder, &mut self.frame_cache)
+                            .map_err(core_err)?;
+                        for (cam, frames) in cam_frames {
+                            let steps = frames.len();
+                            let (w, h) = frames
+                                .first()
+                                .map(|f| (f.width, f.height))
+                                .unwrap_or((0, 0));
+                            let entry = acc.entry(cam).or_insert((steps, w, h, Vec::new()));
+                            if entry.0 != steps || entry.1 != w || entry.2 != h {
+                                return Err(PyValueError::new_err(
+                                    "windowed frames have inconsistent steps or dimensions",
+                                ));
+                            }
+                            for f in &frames {
+                                entry.3.extend_from_slice(f.pixels.as_bytes());
+                            }
+                        }
+                    }
+                    for (cam, (steps, w, h, data)) in acc {
+                        let shape = IxDyn(&[n, steps, h as usize, w as usize, 3]);
+                        let arr = ArrayD::from_shape_vec(shape, data)
+                            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                        dict.set_item(cam, arr.into_pyarray_bound(py))?;
+                    }
+                }
             }
         }
 

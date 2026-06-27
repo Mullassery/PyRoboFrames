@@ -10,6 +10,8 @@ use std::path::Path;
 
 use arrow::array::{Array, FixedSizeListArray, Float32Array, ListArray};
 use arrow::record_batch::RecordBatch;
+use bytes::Bytes;
+use memmap2::Mmap;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
 use crate::{Error, Result};
@@ -20,10 +22,16 @@ pub struct DataShard {
 }
 
 impl DataShard {
-    /// Open and fully read a `data/*.parquet` shard.
+    /// Open and read a `data/*.parquet` shard. The file is **memory-mapped** so reads go through
+    /// the OS page cache (shared, demand-paged) rather than buffering the whole file in the heap —
+    /// keeping resident memory down for large shards.
     pub fn open(path: &Path) -> Result<Self> {
         let file = File::open(path)?;
-        let reader = ParquetRecordBatchReaderBuilder::try_new(file)
+        // SAFETY: the shard files are read-only dataset assets; we never mutate the mapping, and
+        // the `Bytes` keeps the mapping alive for the read.
+        let mmap = unsafe { Mmap::map(&file) }
+            .map_err(|e| Error::Dataset(format!("mmap {}: {e}", path.display())))?;
+        let reader = ParquetRecordBatchReaderBuilder::try_new(Bytes::from_owner(mmap))
             .map_err(|e| Error::Dataset(format!("{}: {e}", path.display())))?
             .build()
             .map_err(|e| Error::Dataset(format!("{}: {e}", path.display())))?;

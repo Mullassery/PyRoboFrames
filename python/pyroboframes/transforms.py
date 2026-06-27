@@ -19,6 +19,41 @@ from __future__ import annotations
 
 import numpy as np
 
+#: Preference order for the transform compute backend (fastest/most-capable first).
+TRANSFORM_BACKENDS = ("cvcuda", "torch", "numpy")
+
+
+def _importable(module: str) -> bool:
+    try:
+        __import__(module)
+        return True
+    except ImportError:
+        return False
+
+
+def resolve_transform_backend(prefer: str = "auto") -> str:
+    """Pick the transform compute backend via the fallback chain **CV-CUDA → Torch → NumPy**.
+
+    ``prefer="auto"`` returns the first *available* backend in :data:`TRANSFORM_BACKENDS`; a
+    specific ``prefer`` is honored if available, otherwise it degrades down the chain (never an
+    error). NumPy is always available, so this always resolves. Today every op executes on NumPy;
+    this is the seam the CV-CUDA / Torch kernels plug into, so the same script keeps working as they
+    land.
+    """
+    available = {
+        "cvcuda": _importable("cvcuda"),
+        "torch": _importable("torch"),
+        "numpy": True,
+    }
+    if prefer != "auto":
+        if prefer not in TRANSFORM_BACKENDS:
+            raise ValueError(f"prefer must be one of {TRANSFORM_BACKENDS} or 'auto'")
+        # Honor the preference if usable, else fall through the chain below it.
+        chain = TRANSFORM_BACKENDS[TRANSFORM_BACKENDS.index(prefer):]
+    else:
+        chain = TRANSFORM_BACKENDS
+    return next(b for b in chain if available[b])
+
 
 class Compose:
     """Chain transforms, applied left to right."""

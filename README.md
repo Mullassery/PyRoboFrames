@@ -4,11 +4,14 @@
 [![Python](https://img.shields.io/pypi/pyversions/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-**A fast dataloader for training robots from recorded demonstrations — built for Apple Silicon, and Linux too.**
+**A robotics data platform for training robots from recorded demonstrations — ingest, query, and a fast dataloader, built for Apple Silicon and Linux.**
 
-> ⚠️ **Early / experimental** (`0.x`, expect API changes). The LeRobot **dataloader works today**;
-> the hardware-decode / **zero-copy-MLX** fast path and the **parallel prefetch pipeline** are still
-> in progress, and throughput isn't benchmarked yet. See [What works today](#what-works-today).
+> ⚠️ **Early / experimental** (`0.x`, expect API changes). What works today: the LeRobot
+> **dataloader** (state/action + camera frames, temporal windows, **off-GIL prefetch**, NumPy /
+> MLX / PyTorch / JAX output); **ingest** from MCAP (JSON/protobuf/CDR) and ROS 2 `.db3` bags; a
+> time-indexed **Robotics DataFrame** (slice + as-of align + resample); and **LeRobot write-back**.
+> Still in progress: the Apple-Silicon **zero-copy-MLX** fast path and the **NVIDIA CUDA/NVDEC**
+> path (built feature-gated, verified on a GPU box). See [What works today](#what-works-today).
 
 ---
 
@@ -26,12 +29,16 @@ training pipelines.
 
 **PyRoboFrames is the piece that feeds that data to your training loop** — and is being built
 to make it fast. It reads your robot dataset, decodes the video, and hands batches straight to
-your training loop as **NumPy, MLX, or PyTorch** arrays — with a focus on **Apple Silicon Macs**,
-where the usual CUDA-centric tools serve you poorly.
+your training loop as **NumPy, MLX, PyTorch, or JAX** arrays — with a focus on **Apple Silicon
+Macs**, where the usual CUDA-centric tools serve you poorly.
+
+It's also growing into a small **data platform**: convert raw robot logs (**MCAP**, **ROS 2
+bags**) into columnar Parquet, work with them through a time-indexed **Robotics DataFrame**
+(slice, time-align, resample), and **write datasets back out** in LeRobot v3.0 format.
 
 > **Honest status on speed:** decode today is **FFmpeg** (the Apple Media-Engine hardware path is
-> still in progress). The **off-GIL prefetch pipeline** now works (`num_workers=`): on synthetic
-> data it scales the FFmpeg camera-decode epoch **~2.7× with 4 workers** vs synchronous
+> still in progress). The **off-GIL prefetch pipeline** works (`num_workers=`): on synthetic data
+> it scales the FFmpeg camera-decode epoch **~2.7× with 4 workers** vs synchronous
 > ([`benches/throughput.py`](./benches/throughput.py)) — a relative sync-vs-prefetch signal on one
 > machine, not yet an absolute benchmark vs other libraries. See
 > [What works today](#what-works-today).
@@ -47,22 +54,27 @@ where the usual CUDA-centric tools serve you poorly.
 
 ### Why it's different
 
-- **Apple Silicon first.** **MLX** (and PyTorch) output works today. The headline goal —
-  decoding on the Mac's hardware video engine (VideoToolbox) straight into MLX with **zero
-  copies** — is in progress; no other robot dataloader even targets it.
-- **Rust core, simple Python.** The engine is Rust (native speed, hardware access, room to go
-  off-GIL); you just `pip install` and `import` it. The parallel prefetch pipeline that turns
-  that into end-to-end throughput is on the roadmap, not wired yet.
-- **Runs on Linux too** (NVIDIA CUDA/NVDEC support is planned).
+- **Apple Silicon first.** **MLX** (and PyTorch/JAX) output works today, and one script runs
+  unchanged across Mac and CPU (`device="auto"`). The headline goal — decoding on the Mac's
+  hardware video engine (VideoToolbox) straight into MLX with **zero copies** — is in progress; no
+  other robot dataloader even targets it.
+- **More than a loader.** Ingest **MCAP** / **ROS 2 bags** → columnar Parquet, query a
+  time-indexed **Robotics DataFrame** (as-of align + resample for multi-sensor fusion), and
+  **write back** LeRobot datasets — the data layer most robot-learning stacks lack.
+- **Rust core, simple Python.** The engine is Rust (native speed, hardware access, off-GIL
+  prefetch); you just `pip install` and `import` it.
+- **Runs on Linux too**, with an NVIDIA **CUDA/NVDEC** decode path built feature-gated (functional
+  sign-off on a GPU box).
 
-> ## Status: early (`0.1.3`, `0.x` — expect API changes)
+> ## Status: early (`0.1.x` — expect API changes)
 > **Works today** on any LeRobotDataset v3.0: the **dataloader** (state/action **and camera
-> frames**), shuffling, temporal windows, `validate()`, **dataset stats** (`ds.stats()`),
-> **train/val split**, **checkpoint/resume**, and **NumPy / MLX / PyTorch output**. Camera frames
-> decode via **FFmpeg**.
-> **Not yet:** the Apple-Silicon **zero-copy MLX** path (decode → IOSurface → MLX), the native
-> **VideoToolbox / NVDEC** backends, and the **parallel prefetch pipeline** — the loader runs
-> single-threaded today and **throughput is not yet benchmarked**. See
+> frames**, temporal windows incl. **video**, **curriculum** / **goal-conditioned** / balanced /
+> episode-chunking sampling), **off-GIL prefetch**, `validate()`, **stats** + normalization,
+> **train/val split**, **checkpoint/resume**, **NumPy / MLX / PyTorch / JAX** output;
+> **ingest** (MCAP JSON/protobuf/CDR, ROS 2 `.db3`); the **Robotics DataFrame**; and **LeRobot
+> write-back**. Camera frames decode via **FFmpeg**.
+> **Not yet (functionally):** Apple-Silicon **zero-copy MLX** (decode → IOSurface → MLX), native
+> **VideoToolbox**, and **NVIDIA NVDEC** (built feature-gated, verified on a GPU box). See
 > [What works today](#what-works-today).
 
 ---
@@ -196,6 +208,24 @@ print(df.topics, df.time_range())
 window = df.slice(start_ns, end_ns)                # every topic restricted to a time window
 fused = df.align("/joint_states", tolerance=10_000_000)  # 10 ms; columns like "imu.accel.x"
 print(fused.log_time, fused["imu.accel.x"])        # NaN where no sample within tolerance
+
+grid = df.resample(period=20_000_000, method="linear")   # 50 Hz uniform grid, interpolated
+df.save("native_out/")                                   # round-trips via from_converted(...)
+```
+
+### Write a dataset back out in LeRobot format (works today)
+
+```python
+import numpy as np, pyroboframes as prf
+
+prf.write_lerobot_dataset(
+    "my_dataset/",
+    features={"observation.state": np.zeros((100, 7), np.float32),
+              "action": np.zeros((100, 7), np.float32)},
+    episode_lengths=[50, 50],   # two episodes
+    fps=30.0,
+)
+ds = prf.RoboFrameDataset.from_path("my_dataset/")   # read it straight back
 ```
 
 ### Validate a dataset before training
@@ -215,7 +245,7 @@ print(report.ok, report.warnings)
 | Read LeRobotDataset v3.0 (schema, episodes, state/action) | ✅ |
 | Dataloader: batches of state/action as NumPy | ✅ |
 | Shuffling (buffered/quasi-random), `drop_last`, seeding | ✅ |
-| Temporal windows (`delta_timestamps`, `tolerance_s`) | ✅ |
+| Temporal windows (`delta_timestamps`, `tolerance_s`) — tabular **and video** | ✅ |
 | macOS **and** Linux | ✅ |
 | Decoded-frame cache, batched-seek API, backend selection | ✅ |
 | **Camera frame decoding** (FFmpeg → NumPy) | ✅ (needs `ffmpeg` on `PATH`) |
@@ -227,18 +257,24 @@ print(report.ok, report.warnings)
 | **Off-GIL prefetch pipeline** (`loader(num_workers=…)`) | ✅ |
 | **Balanced sampling** (`loader(balanced=True)`, by episode) | ✅ |
 | **Episode-chunking sampler** (`loader(chunk_size=N)`, sequence-friendly) | ✅ |
+| **Curriculum** (`curriculum=True`) + **goal-conditioned** (`goal="final"`) sampling | ✅ |
 | **MCAP → columnar (Parquet)** converter (`convert_mcap()`) | ✅ JSON · protobuf · cdr/ros2msg |
 | **ROS 2 bag → columnar** converter (`convert_ros2_bag()`, `.db3`) | ✅ |
 | Converter **metadata.json + stats.json** (self-describing, loader-ready) | ✅ |
-| **Robotics DataFrame** (`RoboticsDataFrame`: time-index, slice, as-of `align`) | ✅ |
+| **Robotics DataFrame** (time-index, `slice`, as-of `align`, `resample`, `save`) | ✅ |
+| **LeRobot write-back** (`write_lerobot_dataset()`, v3.0) | ✅ |
+| **HF Hub importer** (`download_lerobot_dataset()`) | ✅ (needs `huggingface_hub`) |
+| **Memory-mapped** data shards (lower RSS on large datasets) | ✅ |
 | **Image transforms + augments** (Resize bilinear, Flip/Crop/ColorJitter) | ✅ (NumPy; GPU later) |
+| **Backend parity** (`to_backend`, `default_framework`, transform fallback chain) | ✅ |
 | **Device/backend selection** (`resolve_device`, `DataLoader`, MPS) | ✅ |
 | **Loader profiling** (`DataLoader(on_batch=…)`, `loader.stats`) | ✅ |
 | **Throughput benchmark** harness (`benches/throughput.py`) | ✅ |
 | **NumPy / MLX / PyTorch / JAX output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
-| Native **VideoToolbox / NVDEC** decode | 🚧 |
+| **NVIDIA NVDEC** decode (`CudaDecoder`, `--features cuda`) | 🚧 built; verify on a GPU box |
+| Native **VideoToolbox** decode | 🚧 |
 | **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 (upstream `mlx#2855`) |
-| **CUDA / CV-CUDA** compute · **MPS** output · **HF Hub streaming** | 🚧 |
+| **CV-CUDA** compute · **HF Hub streaming** | 🚧 |
 
 The 🚧 rows are the honest gaps — see the [Roadmap](#roadmap) for sequencing.
 
