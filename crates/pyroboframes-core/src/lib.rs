@@ -16,6 +16,7 @@ pub mod loader;
 pub mod mcap;
 pub mod pipeline;
 pub mod rng;
+pub mod ros2;
 pub mod sampler;
 pub mod split;
 pub mod stats;

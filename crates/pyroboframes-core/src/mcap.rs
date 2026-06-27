@@ -2,10 +2,13 @@
 //!
 //! MCAP is the de-facto container format for robotics logs (ROS 2 bags, Foxglove, many
 //! teleoperation stacks). This module reads an `.mcap` file and writes **one Parquet table per
-//! topic** whose messages are JSON-encoded, flattening each message into scalar columns (dot-path
-//! names, e.g. `pose.position.0`) alongside a `log_time` nanosecond column. Non-JSON topics
-//! (protobuf / ros2msg / cdr) are reported as skipped — decoding those needs their schema and is a
-//! follow-up.
+//! topic**, flattening each message into scalar columns (dot-path names, e.g. `pose.position.0`)
+//! alongside a `log_time` nanosecond column. Supported message encodings:
+//! - **`json`** — parsed directly.
+//! - **`protobuf`** — decoded dynamically from the channel's embedded `FileDescriptorSet`
+//!   (no generated code needed), via [`prost_reflect`].
+//!
+//! Other encodings (`cdr`/`ros2msg`, …) are reported as skipped until their decoder lands.
 //!
 //! This is the first step of the Tier-1 "data platform" identity: turn raw robot logs into the
 //! columnar tables the rest of PyRoboFrames — and any Parquet-native tooling — can consume.
@@ -18,7 +21,7 @@
 //! }
 //! ```
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -27,9 +30,83 @@ use arrow::array::{ArrayRef, BooleanBuilder, Float64Builder, Int64Array, StringB
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
+use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor, SerializeOptions};
 use serde_json::Value;
 
 use crate::{Error, Result};
+
+/// How a topic's messages are decoded into flattened leaves, resolved once per topic from its
+/// channel's `message_encoding` (+ schema).
+enum TopicDecoder {
+    /// `json` message encoding — parse the payload as JSON.
+    Json,
+    /// `protobuf` — decode dynamically against the message type from the embedded descriptor set.
+    Protobuf(MessageDescriptor),
+    /// `cdr` with a `ros2msg` schema — decode dynamically against the parsed message definition.
+    Ros2(crate::ros2::Ros2Schema),
+    /// Encoding we can't decode yet — the topic is reported as skipped.
+    Unsupported,
+}
+
+impl TopicDecoder {
+    /// Resolve the decoder for a channel from its message encoding and schema.
+    fn build(channel: &::mcap::Channel) -> Self {
+        match channel.message_encoding.to_ascii_lowercase().as_str() {
+            "json" => TopicDecoder::Json,
+            "protobuf" => Self::build_protobuf(channel).unwrap_or(TopicDecoder::Unsupported),
+            "cdr" => Self::build_ros2(channel).unwrap_or(TopicDecoder::Unsupported),
+            _ => TopicDecoder::Unsupported,
+        }
+    }
+
+    /// Build a ROS 2 decoder from a `cdr` channel whose schema is the `ros2msg` `.msg` text.
+    fn build_ros2(channel: &::mcap::Channel) -> Option<Self> {
+        let schema = channel.schema.as_ref()?;
+        if !schema.encoding.eq_ignore_ascii_case("ros2msg") {
+            return None;
+        }
+        let text = std::str::from_utf8(&schema.data).ok()?;
+        let parsed = crate::ros2::Ros2Schema::parse(text).ok()?;
+        Some(TopicDecoder::Ros2(parsed))
+    }
+
+    /// Build a protobuf decoder from the channel's schema: the schema `data` is a serialized
+    /// `FileDescriptorSet` and `name` is the fully-qualified message type. `None` if either is
+    /// missing or doesn't parse (→ the topic is treated as unsupported).
+    fn build_protobuf(channel: &::mcap::Channel) -> Option<Self> {
+        let schema = channel.schema.as_ref()?;
+        if !schema.encoding.eq_ignore_ascii_case("protobuf") {
+            return None;
+        }
+        let pool = DescriptorPool::decode(schema.data.as_ref()).ok()?;
+        let desc = pool.get_message_by_name(&schema.name)?;
+        Some(TopicDecoder::Protobuf(desc))
+    }
+
+    /// Decode one message payload into flattened scalar leaves. `None` means this individual
+    /// payload couldn't be decoded (it's dropped); `Unsupported` decoders never reach here.
+    fn decode(&self, data: &[u8]) -> Option<BTreeMap<String, Leaf>> {
+        let value: Value = match self {
+            TopicDecoder::Json => serde_json::from_slice(data).ok()?,
+            TopicDecoder::Protobuf(desc) => {
+                let msg = DynamicMessage::decode(desc.clone(), data).ok()?;
+                // proto field names (snake_case), 64-bit ints as numbers (not strings), and keep
+                // default-valued fields so every message of a topic yields the same columns.
+                let opts = SerializeOptions::new()
+                    .stringify_64_bit_integers(false)
+                    .use_proto_field_name(true)
+                    .skip_default_fields(false);
+                msg.serialize_with_options(serde_json::value::Serializer, &opts)
+                    .ok()?
+            }
+            TopicDecoder::Ros2(schema) => crate::ros2::decode_cdr(schema, data).ok()?,
+            TopicDecoder::Unsupported => return None,
+        };
+        let mut leaves = BTreeMap::new();
+        flatten("", &value, &mut leaves);
+        Some(leaves)
+    }
+}
 
 /// One converted topic in a [`ConversionReport`].
 #[derive(Debug, Clone)]
@@ -82,21 +159,24 @@ pub fn convert(input: &Path, out_dir: &Path) -> Result<ConversionReport> {
 
     let mut topics: BTreeMap<String, TopicAccum> = BTreeMap::new();
     let mut skipped: BTreeSet<String> = BTreeSet::new();
+    // One decoder per topic, resolved from the first message's channel.
+    let mut decoders: HashMap<String, TopicDecoder> = HashMap::new();
 
     for message in stream {
         let message = message.map_err(|e| Error::Conversion(format!("reading message: {e}")))?;
         let topic = message.channel.topic.clone();
 
-        if !message.channel.message_encoding.eq_ignore_ascii_case("json") {
+        let decoder = decoders
+            .entry(topic.clone())
+            .or_insert_with(|| TopicDecoder::build(&message.channel));
+        if matches!(decoder, TopicDecoder::Unsupported) {
             skipped.insert(topic);
             continue;
         }
         // Tolerate the odd malformed payload rather than failing the whole file.
-        let Ok(value) = serde_json::from_slice::<Value>(&message.data) else {
+        let Some(leaves) = decoder.decode(&message.data) else {
             continue;
         };
-        let mut leaves = BTreeMap::new();
-        flatten("", &value, &mut leaves);
 
         let acc = topics.entry(topic).or_insert_with(|| TopicAccum {
             log_times: Vec::new(),
@@ -389,6 +469,200 @@ mod tests {
             .downcast_ref::<BooleanArray>()
             .unwrap();
         assert!(gripper.value(0) && !gripper.value(1));
+    }
+
+    /// Build a `FileDescriptorSet` for `demo.State { repeated double position = 1; bool gripper = 2;
+    /// int64 stamp = 3; }` — the schema a protobuf MCAP channel embeds.
+    fn proto_descriptor_set() -> Vec<u8> {
+        use prost::Message as _;
+        use prost_types::field_descriptor_proto::{Label, Type};
+        use prost_types::{
+            DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
+        };
+        let field = |name: &str, num: i32, ty: Type, label: Label| FieldDescriptorProto {
+            name: Some(name.to_string()),
+            number: Some(num),
+            label: Some(label as i32),
+            r#type: Some(ty as i32),
+            ..Default::default()
+        };
+        let msg = DescriptorProto {
+            name: Some("State".to_string()),
+            field: vec![
+                field("position", 1, Type::Double, Label::Repeated),
+                field("gripper", 2, Type::Bool, Label::Optional),
+                field("stamp", 3, Type::Int64, Label::Optional),
+            ],
+            ..Default::default()
+        };
+        let file = FileDescriptorProto {
+            name: Some("state.proto".to_string()),
+            package: Some("demo".to_string()),
+            message_type: vec![msg],
+            syntax: Some("proto3".to_string()),
+            ..Default::default()
+        };
+        FileDescriptorSet { file: vec![file] }.encode_to_vec()
+    }
+
+    #[test]
+    fn converts_protobuf_topics_via_embedded_descriptor() {
+        use prost::Message as _;
+        use prost_reflect::Value as PValue;
+
+        let fds = proto_descriptor_set();
+        let pool = DescriptorPool::decode(fds.as_ref()).unwrap();
+        let desc = pool.get_message_by_name("demo.State").unwrap();
+
+        // Encode two protobuf messages.
+        let encode = |pos: [f64; 2], grip: bool, stamp: i64| {
+            let mut m = DynamicMessage::new(desc.clone());
+            m.set_field_by_name(
+                "position",
+                PValue::List(vec![PValue::F64(pos[0]), PValue::F64(pos[1])]),
+            );
+            m.set_field_by_name("gripper", PValue::Bool(grip));
+            m.set_field_by_name("stamp", PValue::I64(stamp));
+            m.encode_to_vec()
+        };
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mcap_path = tmp.path().join("run.mcap");
+        {
+            let file = fs::File::create(&mcap_path).unwrap();
+            let mut writer = ::mcap::Writer::new(file).unwrap();
+            let schema = Arc::new(::mcap::Schema {
+                name: "demo.State".into(),
+                encoding: "protobuf".into(),
+                data: Cow::Owned(fds.clone()),
+            });
+            let chan = Arc::new(::mcap::Channel {
+                topic: "/state".into(),
+                schema: Some(schema),
+                message_encoding: "protobuf".into(),
+                metadata: Map::new(),
+            });
+            for (i, payload) in [encode([1.0, 2.0], true, 10), encode([3.0, 4.0], false, 20)]
+                .into_iter()
+                .enumerate()
+            {
+                let t = (i as u64 + 1) * 1000;
+                writer
+                    .write(&::mcap::Message {
+                        channel: chan.clone(),
+                        sequence: i as u32,
+                        log_time: t,
+                        publish_time: t,
+                        data: Cow::Owned(payload),
+                    })
+                    .unwrap();
+            }
+            writer.finish().unwrap();
+        }
+
+        let out = tmp.path().join("out");
+        let report = convert(&mcap_path, &out).unwrap();
+        assert_eq!(report.skipped_topics.len(), 0);
+        let t = &report.topics[0];
+        assert_eq!(t.topic, "/state");
+        assert_eq!(t.messages, 2);
+
+        let file = fs::File::open(&t.path).unwrap();
+        let batch = ParquetRecordBatchReaderBuilder::try_new(file)
+            .unwrap()
+            .build()
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        let schema = batch.schema();
+        let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        assert!(names.contains(&"position.0"));
+        assert!(names.contains(&"gripper"));
+        assert!(names.contains(&"stamp")); // int64 stayed numeric (not stringified)
+
+        use arrow::array::{BooleanArray, Float64Array};
+        let col = |n: &str| schema.index_of(n).unwrap();
+        let p1 = batch
+            .column(col("position.1"))
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        assert_eq!(p1.values(), &[2.0, 4.0]);
+        let stamp = batch
+            .column(col("stamp"))
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        assert_eq!(stamp.values(), &[10.0, 20.0]);
+        let grip = batch
+            .column(col("gripper"))
+            .as_any()
+            .downcast_ref::<BooleanArray>()
+            .unwrap();
+        assert!(grip.value(0) && !grip.value(1));
+    }
+
+    #[test]
+    fn converts_cdr_ros2msg_topics() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mcap_path = tmp.path().join("run.mcap");
+        {
+            let file = fs::File::create(&mcap_path).unwrap();
+            let mut writer = ::mcap::Writer::new(file).unwrap();
+            let schema = Arc::new(::mcap::Schema {
+                name: "demo/Reading".into(),
+                encoding: "ros2msg".into(),
+                data: Cow::Owned(b"float64 value\nint32 seq\n".to_vec()),
+            });
+            let chan = Arc::new(::mcap::Channel {
+                topic: "/reading".into(),
+                schema: Some(schema),
+                message_encoding: "cdr".into(),
+                metadata: Map::new(),
+            });
+            // CDR LE: header, value=2.5 (f64 @ offset 8), seq=9 (i32 @ offset 16).
+            let payload: Vec<u8> = vec![
+                0x00, 0x01, 0x00, 0x00, // header
+                0x00, 0x00, 0x00, 0x00, // pad to align f64
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x40, // 2.5
+                0x09, 0x00, 0x00, 0x00, // 9
+            ];
+            writer
+                .write(&::mcap::Message {
+                    channel: chan,
+                    sequence: 0,
+                    log_time: 100,
+                    publish_time: 100,
+                    data: Cow::Owned(payload),
+                })
+                .unwrap();
+            writer.finish().unwrap();
+        }
+
+        let out = tmp.path().join("out");
+        let report = convert(&mcap_path, &out).unwrap();
+        assert_eq!(report.skipped_topics.len(), 0);
+        let t = &report.topics[0];
+        assert_eq!(t.topic, "/reading");
+        assert_eq!(t.columns, 2); // value, seq
+
+        let file = fs::File::open(&t.path).unwrap();
+        let batch = ParquetRecordBatchReaderBuilder::try_new(file)
+            .unwrap()
+            .build()
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        let schema = batch.schema();
+        use arrow::array::Float64Array;
+        let value = batch
+            .column(schema.index_of("value").unwrap())
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        assert_eq!(value.values(), &[2.5]);
     }
 
     #[test]
