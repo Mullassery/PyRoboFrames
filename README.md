@@ -379,21 +379,29 @@ streaming ingestion (MQTT/Kafka for online learning & closed-loop data collectio
 **CV-CUDA** operators (Resize, Normalize) for GPU-accelerated transforms. IOSurface infrastructure
 for zero-copy MLX (awaiting mlx#2855). Comprehensive GPU verification tooling (docs + automated checks).
 
-**Next (v0.2.1 — Humanoid-Ready, 1 week):**
+**Next (v0.3.1 — GPU Verification):**
 
-- **Action-space validation** — prevent joint-limit violations, torque saturation; catch unsafe trajectories at load time
-- **Deterministic reproducibility** — RNG state tracking, exact frame extraction order for debugging + safety analysis
-- **Trajectory-level metadata** — per-trajectory task/success labels for goal-conditioned learning + failure analysis
+- **GPU benchmark results** — NVDEC & CV-CUDA performance on NVIDIA hardware (RunPod H100 / RTX 5090)
+- **Known-good config matrix** — GPU model × CUDA version × OS compatibility guide
 
-**Next+ (v1.0 — Full Humanoid + Ecosystem, multi-week):**
+**Next (v0.4.0 — Quality & Depth, 4 weeks):**
 
-- **GPU verification.** End-to-end benchmarks for NVDEC decode and CV-CUDA transforms on NVIDIA hardware.
-- **Zero-copy MLX.** VideoToolbox/NVDEC → IOSurface/GPU buffer → MLX (once mlx#2855 lands).
-- **Depth camera support** — point clouds (Oak-D, Kinect, structured light), memory-mapped storage, transforms
-- **Camera calibration** — intrinsics/distortion registry for multi-camera alignment
-- **Video codec selection.** Choose H.264, HEVC, or AV1 (40–50% storage savings).
-- **Streaming & scale.** Multi-node distributed loading (S3/GCS streaming, Ray integration).
-- **More formats.** RLDS / Open X-Embodiment, HDF5, and other robotics log formats.
+- **Video codec selection** — choose H.264 (default), HEVC, or AV1 (40–50% storage savings)
+- **Depth camera support** — point clouds (Oak-D, RealSense, Kinect), memory-mapped, time-aligned with RGB
+- **Camera calibration** — intrinsics/distortion registry, undistortion, multi-camera alignment
+
+**Next (v0.5.0 — Humanoid Fusion, 2 weeks):**
+
+- **Multimodal sensor fusion** — RGB + depth + IMU synchronized batches
+- **Humanoid training example** — arm + gripper + wrist camera full pipeline
+
+**Next+ (v1.0 — Full Humanoid + Ecosystem, 3 weeks):**
+
+- **Zero-copy MLX.** VideoToolbox/NVDEC → IOSurface/GPU buffer → MLX (once mlx#2855 lands) — 3× speedup.
+- **Distributed loading** — S3/GCS streaming, multi-node Ray integration for 1M+ frame training.
+- **Ecosystem support** — RLDS / Open X-Embodiment, HDF5, NetCDF format converters.
+- **Action-space validation** — joint-limit, torque saturation checks at load time.
+- **Enhanced quality scoring** — motion blur detection, scene diversity, trajectory smoothness.
 
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the "Train Anywhere" multi-backend plan and
 priority tiers, and [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) for the
