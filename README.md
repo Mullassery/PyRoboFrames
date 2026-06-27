@@ -6,12 +6,14 @@
 
 **A robotics data platform for training robots from recorded demonstrations — ingest, query, and a fast dataloader, built for Apple Silicon and Linux.**
 
-> ⚠️ **Early / experimental** (`0.x`, expect API changes). What works today: the LeRobot
-> **dataloader** (state/action + camera frames, temporal windows, **off-GIL prefetch**, NumPy /
-> MLX / PyTorch / JAX output); **ingest** from MCAP (JSON/protobuf/CDR) and ROS 2 `.db3` bags; a
-> time-indexed **Robotics DataFrame** (slice + as-of align + resample); and **LeRobot write-back**.
-> Still in progress: the Apple-Silicon **zero-copy-MLX** fast path and the **NVIDIA CUDA/NVDEC**
-> path (built feature-gated, verified on a GPU box). See [What works today](#what-works-today).
+> ⚠️ **Early / experimental** (`0.1.x`, expect API changes). **What works today** (0.1.10):
+> the LeRobot **dataloader** (state/action + camera frames, temporal windows incl. **video**,
+> **off-GIL prefetch**, NumPy / MLX / PyTorch / JAX output); **ingest** (MCAP JSON/protobuf/CDR,
+> ROS 2 `.db3` bags); a time-indexed **Robotics DataFrame** (slice, as-of align, resample, save);
+> **LeRobot write-back**; **curriculum** + **goal-conditioned** sampling; and memory-mapped shards.
+> Still in progress: Apple-Silicon **zero-copy MLX** (decode → IOSurface, gated on
+> [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and **NVIDIA CUDA/NVDEC** (built
+> feature-gated, awaiting GPU verification). See [What works today](#what-works-today).
 
 ---
 
@@ -37,11 +39,9 @@ bags**) into columnar Parquet, work with them through a time-indexed **Robotics 
 (slice, time-align, resample), and **write datasets back out** in LeRobot v3.0 format.
 
 > **Honest status on speed:** decode today is **FFmpeg** (the Apple Media-Engine hardware path is
-> still in progress). The **off-GIL prefetch pipeline** works (`num_workers=`): on synthetic data
-> it scales the FFmpeg camera-decode epoch **~2.7× with 4 workers** vs synchronous
-> ([`benches/throughput.py`](./benches/throughput.py)) — a relative sync-vs-prefetch signal on one
-> machine, not yet an absolute benchmark vs other libraries. See
-> [What works today](#what-works-today).
+> planned). The **off-GIL prefetch pipeline** works: `num_workers=4` shows measurable improvement
+> over synchronous decoding on a Mac; a published throughput benchmark vs other libraries is
+> planned. See [What works today](#what-works-today).
 
 ### When would I use it?
 
@@ -66,41 +66,27 @@ bags**) into columnar Parquet, work with them through a time-indexed **Robotics 
 - **Runs on Linux too**, with an NVIDIA **CUDA/NVDEC** decode path built feature-gated (functional
   sign-off on a GPU box).
 
-> ## Status: early (`0.1.x` — expect API changes)
-> **Works today** on any LeRobotDataset v3.0: the **dataloader** (state/action **and camera
-> frames**, temporal windows incl. **video**, **curriculum** / **goal-conditioned** / balanced /
-> episode-chunking sampling), **off-GIL prefetch**, `validate()`, **stats** + normalization,
-> **train/val split**, **checkpoint/resume**, **NumPy / MLX / PyTorch / JAX** output;
-> **ingest** (MCAP JSON/protobuf/CDR, ROS 2 `.db3`); the **Robotics DataFrame**; and **LeRobot
-> write-back**. Camera frames decode via **FFmpeg**.
-> **Not yet (functionally):** Apple-Silicon **zero-copy MLX** (decode → IOSurface → MLX), native
-> **VideoToolbox**, and **NVIDIA NVDEC** (built feature-gated, verified on a GPU box). See
-> [What works today](#what-works-today).
-
 ---
 
 ## Installation
 
-Requires Python ≥ 3.10.
+Requires Python ≥ 3.10. **Prebuilt wheels exist for macOS (Apple Silicon) and Linux (x86_64)**;
+on other platforms or for source builds, a **Rust toolchain** (`rustc` + `cargo`) is required.
 
 ```bash
 # pip
 pip install pyroboframes
 
 # uv
-uv pip install pyroboframes
-#   or, in a uv project:
 uv add pyroboframes
 
 # one-line installer (uses uv if present, else pip)
 curl -LsSf https://raw.githubusercontent.com/Mullassery/PyRoboFrames/main/install.sh | sh
 ```
 
-Prebuilt wheels are published for **macOS (Apple Silicon)**; on other platforms pip builds
-from the source distribution (a Rust toolchain is required for that until more wheels ship).
-
-> The `curl` one-liner fetches [`install.sh`](./install.sh) from this repo; it needs the
-> repository to be public.
+> **Building from source:** `pip install --no-binary :all: pyroboframes` requires Rust 1.78+.
+> On macOS, use `brew install rust`; on Linux, `curl --proto '=https' --tlsv1.2 -sSf
+> https://sh.rustup.rs | sh`.
 
 ---
 
@@ -359,34 +345,30 @@ Direction is informed by where robot learning is heading — Vision-Language-Act
 trained on ever-larger, multimodal, increasingly **streamed** datasets, with a growing need for
 **data-quality curation**.
 
-**Shipped so far (0.1.0 → 0.1.3):** dataloader (state/action + camera frames), buffered shuffle,
-temporal windows, `ds.validate()`, **`ds.stats()`**, **train/val split** (`train_val_split` +
-`loader(episodes=…)`), **checkpoint/resume**, FFmpeg decode, and NumPy / MLX / PyTorch output —
-macOS & Linux. *(All single-threaded; no throughput benchmarks published yet.)*
+**Shipped (0.1.0 → 0.1.10):** Full LeRobot v3.0 dataloader (state/action + camera frames),
+shuffling/temporal windows, `ds.validate()`, `ds.stats()`, train/val split, checkpoint/resume,
+FFmpeg decode, off-GIL prefetch pipeline (`num_workers=`), balanced/curriculum/goal-conditioned
+sampling, windowed video sync, and NumPy / MLX / PyTorch / JAX output — macOS & Linux. **Plus
+(0.1.9+):** MCAP (JSON/protobuf/CDR) and ROS 2 bag ingest, Robotics DataFrame (slice, align,
+resample, save), LeRobot write-back, HF Hub importer, and memory-mapped shards.
 
 **Next up:**
 
-- **Performance — the actual speed story.** Wire the off-GIL **parallel prefetch + worker
-  pipeline** (today these are config fields only), then publish a reproducible **throughput
-  benchmark** vs the FFmpeg/CPU baseline. This is what justifies the word "fast"; until it lands,
-  the claim stays a goal.
-- **Train Anywhere (multi-backend core).** One script, unchanged, across MacBook (MLX / MPS),
-  NVIDIA (RTX 5090 / H100 / RunPod, via **CV-CUDA** + NVDEC), and CPU — the runtime auto-selects
-  the backend. Sequenced **test-first**: the backend-detection seam, the unified tensor/transforms
-  abstraction, and the CPU/MPS/MLX paths (verifiable on a Mac) land before the NVIDIA paths
-  (built feature-gated, functionally signed off on a GPU box). Full plan + priority tiers in
-  [`docs/ROADMAP.md`](./docs/ROADMAP.md).
-- **0.1.x — The Apple fast path.** Native **VideoToolbox** (macOS) hardware decode → **zero-copy
-  MLX** (no NumPy hop, gated on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and
-  NVIDIA **NVDEC** on Linux; a published decode-throughput benchmark vs. the FFmpeg/CPU baseline.
-- **0.2 — Streaming.** Stream datasets directly from the Hugging Face Hub without a full download
-  (à la LeRobot's `StreamingLeRobotDataset`).
-- **0.3 — More formats.** MCAP, RLDS / Open X-Embodiment, and HDF5 ingestion behind the same
-  loader API.
-- **0.4 — Data-quality curation.** Beyond `validate()`: trajectory **scoring** (jitter, diversity,
-  sharpness, state-variance) to filter low-quality segments before training.
-- **0.5+ — Scale.** Multi-GPU / multi-Mac distributed loading, on-the-fly augmentation, and
-  interop with synthetic-data / world-model pipelines.
+- **Publish throughput benchmarks.** The off-GIL prefetch pipeline works (`num_workers=…`); a
+  reproducible benchmark vs FFmpeg/CPU baseline will justify the "fast" claim.
+
+- **Apple hardware decode.** Native **VideoToolbox** (macOS) → zero-copy MLX (gated on
+  [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and NVIDIA **NVDEC** (built,
+  awaiting GPU verification).
+- **Hardware decode + zero-copy MLX.** Native **VideoToolbox** (macOS) → **zero-copy MLX**
+  (gated on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and **NVIDIA NVDEC**
+  (built, awaiting verification).
+- **Streaming.** Download partial LeRobot datasets from the Hub on-the-fly (no full download).
+- **More formats.** RLDS / Open X-Embodiment, HDF5, and other robotics log formats.
+- **Data curation.** Trajectory scoring (diversity, sharpness, state-variance) to filter
+  low-quality episodes before training.
+- **Scale.** Multi-GPU / multi-Mac distributed loading, on-the-fly augmentation, synthetic-data
+  interop.
 
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the "Train Anywhere" multi-backend plan and
 priority tiers, and [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) for the
