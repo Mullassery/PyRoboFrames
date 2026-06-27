@@ -93,7 +93,9 @@ class Resize:
         if self._backend is None:
             self._backend = resolve_transform_backend()
 
-        if self._backend == "mlx":
+        if self._backend == "cvcuda":
+            return _resize_cvcuda(x, self.height, self.width, self.interpolation)
+        elif self._backend == "mlx":
             return _resize_mlx(x, self.height, self.width, self.interpolation)
         elif self._backend == "torch":
             return _resize_torch(x, self.height, self.width, self.interpolation)
@@ -169,7 +171,9 @@ class Normalize:
         if self._backend is None:
             self._backend = resolve_transform_backend()
 
-        if self._backend == "mlx":
+        if self._backend == "cvcuda":
+            return _normalize_cvcuda(x, self.mean, self.std, self.scale)
+        elif self._backend == "mlx":
             return _normalize_mlx(x, self.mean, self.std, self.scale)
         elif self._backend == "torch":
             return _normalize_torch(x, self.mean, self.std, self.scale)
@@ -297,6 +301,69 @@ def _normalize_torch(x, mean, std, scale: float):
     mean_t = torch.from_numpy(mean).float()
     std_t = torch.from_numpy(std).float()
     return ((x_t - mean_t) / std_t).numpy()
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# CV-CUDA native implementations (NVIDIA hardware only)
+
+def _resize_cvcuda(x, out_h: int, out_w: int, interpolation: str):
+    """Resize using CV-CUDA (NVIDIA GPU acceleration).
+
+    Requires: pip install cvcuda-cu12 (or cvcuda-cu11 for CUDA 11.x)
+    Interpolation: 'bilinear' uses linear filtering; 'nearest' uses nearest-neighbor.
+    """
+    try:
+        import cvcuda
+    except ImportError as e:
+        raise ImportError(
+            "CV-CUDA not installed. Install with: pip install cvcuda-cu12 "
+            "(or cvcuda-cu11 for CUDA 11.x)"
+        ) from e
+
+    # [N, H, W, C] → [N, C, H, W] for cvcuda (typical tensor layout)
+    n, h, w, c = x.shape
+    x_reordered = np.transpose(x, (0, 3, 1, 2))  # [N, C, H, W]
+    x_gpu = cvcuda.as_tensor(x_reordered)
+
+    # Resize with specified interpolation
+    interp = cvcuda.Interp.LINEAR if interpolation == "bilinear" else cvcuda.Interp.NEAREST
+    x_resized = cvcuda.resize(
+        x_gpu, (out_h, out_w), cvcuda.Interp.LINEAR if interpolation == "bilinear" else cvcuda.Interp.NEAREST
+    )
+
+    # Convert back to NumPy and reorder to [N, H, W, C]
+    return np.transpose(x_resized.cuda().numpy(), (0, 2, 3, 1)).astype(np.float32)
+
+
+def _normalize_cvcuda(x, mean, std, scale: float):
+    """Normalize using CV-CUDA (NVIDIA GPU acceleration).
+
+    Performs: (x / scale - mean) / std per channel.
+    """
+    try:
+        import cvcuda
+    except ImportError as e:
+        raise ImportError(
+            "CV-CUDA not installed. Install with: pip install cvcuda-cu12 "
+            "(or cvcuda-cu11 for CUDA 11.x)"
+        ) from e
+
+    # [N, H, W, C] → [N, C, H, W] for cvcuda
+    n, h, w, c = x.shape
+    x_reordered = np.transpose(x, (0, 3, 1, 2))  # [N, C, H, W]
+    x_gpu = cvcuda.as_tensor(x_reordered.astype(np.float32))
+
+    # Scale, then subtract mean and divide by std (per channel)
+    x_scaled = x_gpu / scale
+
+    # Reshape mean/std for broadcasting: [C] → [1, C, 1, 1]
+    mean_gpu = cvcuda.as_tensor(mean.astype(np.float32).reshape(1, c, 1, 1))
+    std_gpu = cvcuda.as_tensor(std.astype(np.float32).reshape(1, c, 1, 1))
+
+    x_norm = (x_scaled - mean_gpu) / std_gpu
+
+    # Convert back to NumPy and reorder to [N, H, W, C]
+    return np.transpose(x_norm.cuda().numpy(), (0, 2, 3, 1)).astype(np.float32)
 
 
 class ColorJitter:

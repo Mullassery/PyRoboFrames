@@ -116,6 +116,23 @@ def test_resolve_device(monkeypatch):
     assert prf.resolve_device("auto") in prf.backend.VALID_DEVICES
 
 
+def test_transform_backend_resolution():
+    """Verify backend resolution fallback chain: CV-CUDA → MLX → Torch → NumPy."""
+    from pyroboframes import transforms as T
+
+    # Test that resolve_transform_backend follows the correct fallback order
+    backend = T.resolve_transform_backend("auto")
+    assert backend in T.TRANSFORM_BACKENDS
+
+    # NumPy should always be available (last in chain)
+    backend = T.resolve_transform_backend("numpy")
+    assert backend == "numpy"
+
+    # Invalid backend raises ValueError
+    with pytest.raises(ValueError):
+        T.resolve_transform_backend("invalid")
+
+
 def test_transforms_shapes_and_values():
     from pyroboframes import transforms as T
 
