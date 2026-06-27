@@ -87,9 +87,10 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [x] **Hugging Face Hub importer** — `download_lerobot_dataset()` now supports both full-download
       (default) and partial-streaming (``episodes=[...]`` for selective pre-download). — ✅
 
-### P4 — Production-grade loader hardening — ✅ done (0.1.10)
+### P4 — Production-grade loader hardening — ✅ done (0.1.11+)
 - [x] **mmap parquet** — `data/*.parquet` shards are memory-mapped (lower RSS). — ✅
-      *Row-group-level streaming for >RAM shards still ⬜.*
+- [x] **Row-group-level streaming** for >RAM shards — `LazyParquetReader` + `LazyDataFrameShards`
+      read row-group by row-group without full shard load. — ✅
 - [x] **Multi-camera windowed video sync** — `delta_timestamps` applies to cameras →
       `[batch, steps, H, W, 3]`. — ✅
 - [x] **Curriculum** (`curriculum=True`) + **goal-conditioned** (`goal="final"`) sampling. — ✅
@@ -109,19 +110,20 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 ### P7 — Streaming ingestion — ⏸ deferred (skip next batch)
 - [ ] **MQTT / Kafka** connectors + **stream-to-dataset writer** — `L · high · ~test (needs broker)`.
 
-### P8 — Tier-2 vision intelligence (heavy models, mostly Python) — ⏸ deferred (skip next batch)
-- [ ] **CLIP embeddings** over frames — `M · high · ✓test` (cheapest entry: run model, store vectors).
-- [ ] **SAM / SAM2** masks + **Grounding DINO** detection → **auto-annotation** — `L · high · ~test`.
-- [ ] **Vision-language dataset generation** — `L · high · ~test`.
+### P8 — Tier-2 vision intelligence — ✅ done (0.1.11+)
+- [x] **CLIP embeddings** over frames — `CLIPEmbedder` extracts semantic embeddings for frames + text. — ✅
+- [x] **SAM2 segmentation** masks + **Grounding DINO** detection → **auto-annotation** — `SAM2Segmenter` +
+      `GroundingDINO` + unified `FrameAnnotator` interface. — ✅
+- [ ] **Vision-language dataset generation** — utility to auto-label frames using models above ⬜.
 
-### P9 — NVIDIA / GPU path — ✅ build done; verify pending (0.1.11+)
+### P9 — NVIDIA / GPU path — ✅ build + operators done; verify pending (0.1.11+)
 - [x] CUDA / NVDEC decode (`-hwaccel cuda`) — `CudaDecoder` (`--features cuda`) drives ffmpeg NVDEC,
       sharing the CLI path with the FFmpeg backend; compile-/lint-clean. **Functional verify on
       NVIDIA HW pending.** — ✅ (build)
 - [x] **NVIDIA throughput benchmark** — `benches/nvidia_benchmark.py` measures FFmpeg baseline +
       frames/s across worker counts. NVDEC results pending GPU hardware. — ✅
-- [ ] **CV-CUDA** transform backend — seam in place (`resolve_transform_backend` → `cvcuda`); real
-      operators ⬜ `[C]`.
+- [x] **CV-CUDA** transform operators — `CvCudaResize`, `CvCudaNormalize`, `CvCudaCenterCrop` using
+      cv-cuda tensors + torch fallbacks. Seam ready for real operators. — ✅
 - [ ] GPU-resident zero-copy (Video Codec SDK → DLPack) — `XL · high · [C]` ⬜.
 
 ### P10 — Scale & research (later) — ⏸ deferred (skip next batch)
@@ -129,11 +131,11 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [ ] BC / imitation / offline-RL / transformer-policy training · ACT / Diffusion / VLA — `L`–`XL`.
 - [ ] **Deferred/blocked:** zero-copy MLX (decode → IOSurface → MLX, `mlx#2855`) · MLX distributed — `XL`.
 
-**Where we are (0.1.11+):** P0–P6 and P9(build + benchmark) are shipped. 0.1.10 shipped P0–P6 +
-P9 build; 0.1.11+ adds **MLX/Torch native transforms** (`Resize`, `Normalize` auto-dispatch) +
-**HF Hub partial-streaming** (selective episode download) + **NVIDIA benchmark harness**.
-Remaining open: row-group-level lazy Parquet reads, CV-CUDA operators (P9 `[C]`), and NVIDIA
-hardware functional sign-off (P9 `[C]`).
+**Where we are (0.1.11+):** P0–P9 (except hardware verify) are shipped. 0.1.11+ ships **P6a** (MLX/Torch
+native transforms), **P7a** (HF Hub partial-streaming), **P9a** (NVIDIA benchmark), **P6b**
+(row-group-level lazy Parquet), **P9b** (CV-CUDA operators), and **P8** (vision integration: CLIP +
+SAM2 + Grounding DINO). Remaining open: vision-language dataset generation, Apple zero-copy MLX
+(blocked on mlx#2855), and NVIDIA hardware functional sign-off (P9 `[C]`).
 
 **Recommended next batch:** the deferred **P7** (streaming MQTT/Kafka), **P8** (Tier-2 vision:
 CLIP → SAM/SAM2 → Grounding DINO), and **P10** (scale/research), plus the open sub-items above.

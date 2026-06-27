@@ -4,9 +4,9 @@ High-level summary of work organized by priority tier. For detailed breakdown, s
 
 ---
 
-## 🎯 Current Status: v0.1.11+
+## 🎯 Current Status: v0.1.12+
 
-**Shipped (P0–P6 + P9 build/benchmark):**
+**Shipped (P0–P9 except hardware verify):**
 - ✅ LeRobot v3.0 dataloader (state/action + camera frames, temporal windows, off-GIL prefetch)
 - ✅ MCAP ingestion (JSON, protobuf, CDR/ros2msg)
 - ✅ ROS 2 bag converter (`.db3` SQLite + embedded message definitions)
@@ -16,31 +16,41 @@ High-level summary of work organized by priority tier. For detailed breakdown, s
 - ✅ Backend parity (NumPy / MLX / PyTorch / JAX output, unified abstraction)
 - ✅ **MLX/Torch native transforms** (Resize, Normalize with device dispatch)
 - ✅ **HF Hub partial-streaming** (selective episode download for faster startup)
+- ✅ **Row-group-level lazy Parquet** (streaming large shards without full load)
+- ✅ **CV-CUDA GPU transforms** (Resize, Normalize, CenterCrop operators)
+- ✅ **Vision integration** (CLIP embeddings, SAM2 segmentation, Grounding DINO detection)
 - ✅ **NVIDIA throughput benchmark** (FFmpeg baseline + frame timing)
 - ✅ NVDEC decode path (built feature-gated, awaiting GPU verification)
 
 **In progress or blocked:**
 - 🟡 Apple Silicon zero-copy MLX (blocked on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855))
 - 🟡 NVIDIA CUDA/NVDEC functional verification (needs GPU hardware)
-- ⬜ CV-CUDA operators (requires NVIDIA hardware)
+- ⬜ Vision-language dataset generation (auto-labeling utility)
 
 ---
 
 ## 📋 Completed & Next Priorities
 
-### ✅ Just Completed (0.1.11+)
+### ✅ Just Completed (0.1.12+)
+| Priority | Item | Effort | Impact | Test | Status |
+|----------|------|--------|--------|------|--------|
+| **P6b** | **Row-group-level lazy Parquet reads** | M | High | ✓ | ✅ |
+| **P9b** | **CV-CUDA transform operators** | L | High | [C] | ✅ |
+| **P8** | **Tier-2 vision** (CLIP → SAM2 → Grounding DINO) | L | High | ✓ | ✅ |
+
+### ✅ Previously Completed (0.1.11+)
 | Priority | Item | Effort | Impact | Test | Status |
 |----------|------|--------|--------|------|--------|
 | **P7a** | **HF Hub partial-streaming** | S | High | ✓ | ✅ |
 | **P6a** | **MLX / MPS native transforms** | M | High | ✓ | ✅ |
 | **P9a** | **NVIDIA throughput benchmark** | M | Medium | [C] | ✅ |
 
-### Next Must-do (high-impact, low-effort)
+### Next (in backlog order)
 | Priority | Item | Effort | Impact | Test | Status |
 |----------|------|--------|--------|------|--------|
-| **P6b** | **Row-group-level lazy Parquet reads** | M | High | ✓ | ⬜ |
-| **P9b** | **CV-CUDA transform operators** | L | High | [C] | ⬜ |
-| **P8** | **Tier-2 vision** (CLIP → SAM → Grounding DINO) | L | High | ✓ | ⬜ |
+| **P8b** | **Vision-language dataset generation** | M | High | ✓ | ⬜ |
+| **P10** | **Scale & research** (Ray, Slurm, multi-node) | L | Medium | ~test | ⬜ |
+| **P7** | **Streaming** (MQTT / Kafka) | L | Medium | ~test | ⬜ |
 
 ### Nice-to-have (larger scope)
 | Priority | Item | Effort | Impact | Test | Status |
@@ -88,7 +98,8 @@ All Tier-A and Tier-B items stay verifiable on CI. Tier-C items are feature-gate
 | Metadata + stats | ✅ | Auto-generated for converters |
 | HF Hub full-download | ✅ | `download_lerobot_dataset()` (default) |
 | HF Hub partial-streaming | ✅ | `episodes=[...]` for selective pre-download |
-| Lazy Parquet row-groups | 🟡 | Per-shard only; row-group streaming ⬜ |
+| Lazy Parquet row-groups | ✅ | `LazyParquetReader`, `LazyDataFrameShards` |
+| Streaming access | ✅ | No full-shard load for >RAM datasets |
 
 ### Compute & loader
 | Feature | Status | Notes |
@@ -102,7 +113,7 @@ All Tier-A and Tier-B items stay verifiable on CI. Tier-C items are feature-gate
 | Balanced sampling | ✅ | Equal episodes per batch |
 | Train/val split | ✅ | `ds.train_val_split` |
 
-### Output formats
+### Output formats & transforms
 | Backend | Status | Notes |
 |---------|--------|-------|
 | NumPy | ✅ | Default, CPU-only |
@@ -114,6 +125,7 @@ All Tier-A and Tier-B items stay verifiable on CI. Tier-C items are feature-gate
 | Native MLX transforms | ✅ | Resize (bilinear/nearest), Normalize |
 | Native Torch transforms | ✅ | Resize (via F.interpolate), Normalize |
 | Native MPS transforms | ✅ | Via Torch MPS backend |
+| CV-CUDA transforms | ✅ | Resize, Normalize, CenterCrop (GPU operators) |
 
 ### Decoding
 | Decoder | Status | Notes |
@@ -133,6 +145,15 @@ All Tier-A and Tier-B items stay verifiable on CI. Tier-C items are feature-gate
 | Multi-rate resample | ✅ | "previous", "nearest", "linear" methods |
 | Schema validation | ✅ | `ds.validate()` |
 | Statistics profiling | ✅ | `ds.stats()` → mean, std, min, max, etc. |
+
+### Vision & annotation
+| Feature | Status | Notes |
+|---------|--------|-------|
+| CLIP embeddings | ✅ | Extract semantic vectors from frames + text |
+| SAM2 segmentation | ✅ | Zero-shot masks from text/point prompts |
+| Grounding DINO detection | ✅ | Open-vocab object detection from descriptions |
+| Unified annotator | ✅ | `FrameAnnotator` combines all three models |
+| Auto-labeling | 🟡 | Combines vision models for dataset annotation ⬜ |
 
 ---
 
