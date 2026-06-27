@@ -20,7 +20,7 @@ from __future__ import annotations
 import numpy as np
 
 #: Preference order for the transform compute backend (fastest/most-capable first).
-TRANSFORM_BACKENDS = ("cvcuda", "torch", "numpy")
+TRANSFORM_BACKENDS = ("cvcuda", "mlx", "torch", "numpy")
 
 
 def _importable(module: str) -> bool:
@@ -32,16 +32,16 @@ def _importable(module: str) -> bool:
 
 
 def resolve_transform_backend(prefer: str = "auto") -> str:
-    """Pick the transform compute backend via the fallback chain **CV-CUDA → Torch → NumPy**.
+    """Pick the transform compute backend via the fallback chain **CV-CUDA → MLX → Torch → NumPy**.
 
     ``prefer="auto"`` returns the first *available* backend in :data:`TRANSFORM_BACKENDS`; a
     specific ``prefer`` is honored if available, otherwise it degrades down the chain (never an
-    error). NumPy is always available, so this always resolves. Today every op executes on NumPy;
-    this is the seam the CV-CUDA / Torch kernels plug into, so the same script keeps working as they
-    land.
+    error). NumPy is always available, so this always resolves. Native MLX/Torch/CV-CUDA ops
+    plug in here; NumPy is the CPU fallback.
     """
     available = {
         "cvcuda": _importable("cvcuda"),
+        "mlx": _importable("mlx.core"),
         "torch": _importable("torch"),
         "numpy": True,
     }
@@ -75,7 +75,8 @@ class Resize:
     """Resize each frame to ``(height, width)``.
 
     ``interpolation`` is ``"bilinear"`` (default, half-pixel aligned) or ``"nearest"``. Bilinear
-    returns ``float32``; nearest preserves the input dtype.
+    returns ``float32``; nearest preserves the input dtype. Native MLX/Torch implementations
+    dispatch via the backend (NumPy fallback if none available).
     """
 
     def __init__(self, height: int, width: int, interpolation: str = "bilinear"):
@@ -86,14 +87,25 @@ class Resize:
         self.height = height
         self.width = width
         self.interpolation = interpolation
+        self._backend = None
 
     def __call__(self, x):
-        _, h, w, _ = x.shape
-        if self.interpolation == "nearest":
-            ys = (np.arange(self.height) * h) // self.height
-            xs = (np.arange(self.width) * w) // self.width
-            return x[:, ys][:, :, xs]
-        return _bilinear_resize(x, self.height, self.width)
+        if self._backend is None:
+            self._backend = resolve_transform_backend()
+
+        if self._backend == "mlx":
+            return _resize_mlx(x, self.height, self.width, self.interpolation)
+        elif self._backend == "torch":
+            return _resize_torch(x, self.height, self.width, self.interpolation)
+        elif self._backend == "numpy":
+            _, h, w, _ = x.shape
+            if self.interpolation == "nearest":
+                ys = (np.arange(self.height) * h) // self.height
+                xs = (np.arange(self.width) * w) // self.width
+                return x[:, ys][:, :, xs]
+            return _bilinear_resize(x, self.height, self.width)
+        else:
+            raise ValueError(f"Unsupported backend: {self._backend}")
 
     def __repr__(self) -> str:
         return f"Resize({self.height}, {self.width}, interpolation={self.interpolation!r})"
@@ -143,17 +155,29 @@ class CenterCrop:
 class Normalize:
     """Scale to ``[0, 1]`` (divide by ``scale``) then standardize per channel: ``(x - mean) / std``.
 
-    Returns ``float32``. ``mean``/``std`` are per-channel (length C).
+    Returns ``float32``. ``mean``/``std`` are per-channel (length C). Native MLX/Torch
+    implementations dispatch via the backend (NumPy fallback if none available).
     """
 
     def __init__(self, mean, std, scale: float = 255.0):
         self.mean = np.asarray(mean, dtype=np.float32)
         self.std = np.asarray(std, dtype=np.float32)
         self.scale = float(scale)
+        self._backend = None
 
     def __call__(self, x):
-        x = x.astype(np.float32) / self.scale
-        return (x - self.mean) / self.std
+        if self._backend is None:
+            self._backend = resolve_transform_backend()
+
+        if self._backend == "mlx":
+            return _normalize_mlx(x, self.mean, self.std, self.scale)
+        elif self._backend == "torch":
+            return _normalize_torch(x, self.mean, self.std, self.scale)
+        elif self._backend == "numpy":
+            x = x.astype(np.float32) / self.scale
+            return (x - self.mean) / self.std
+        else:
+            raise ValueError(f"Unsupported backend: {self._backend}")
 
     def __repr__(self) -> str:
         return f"Normalize(mean={self.mean.tolist()}, std={self.std.tolist()})"
@@ -197,6 +221,82 @@ class RandomCrop:
 
     def __repr__(self) -> str:
         return f"RandomCrop({self.height}, {self.width})"
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# MLX native implementations
+
+def _resize_mlx(x, out_h: int, out_w: int, interpolation: str):
+    """Resize using MLX (Apple Silicon GPU/CPU)."""
+    import mlx.core as mx
+
+    x_mx = mx.array(x)
+    _, h, w, c = x_mx.shape
+
+    if interpolation == "nearest":
+        ys = (mx.arange(out_h) * h) // out_h
+        xs = (mx.arange(out_w) * w) // out_w
+        return mx.take(mx.take(x_mx, ys, axis=1), xs, axis=2)
+
+    x_f = x_mx.astype(mx.float32)
+    src_y = (mx.arange(out_h, dtype=mx.float32) + 0.5) * (h / out_h) - 0.5
+    src_x = (mx.arange(out_w, dtype=mx.float32) + 0.5) * (w / out_w) - 0.5
+    src_y = mx.clip(src_y, 0, h - 1)
+    src_x = mx.clip(src_x, 0, w - 1)
+
+    y0 = mx.floor(src_y).astype(mx.int32)
+    x0 = mx.floor(src_x).astype(mx.int32)
+    y1 = mx.minimum(y0 + 1, h - 1)
+    x1 = mx.minimum(x0 + 1, w - 1)
+
+    wy = (src_y - y0.astype(mx.float32))[:, None]
+    wx = (src_x - x0.astype(mx.float32))[None, :]
+
+    top_l = mx.take(mx.take(x_f, y0, axis=1), x0, axis=2)
+    top_r = mx.take(mx.take(x_f, y0, axis=1), x1, axis=2)
+    bot_l = mx.take(mx.take(x_f, y1, axis=1), x0, axis=2)
+    bot_r = mx.take(mx.take(x_f, y1, axis=1), x1, axis=2)
+
+    top = top_l * (1 - wx)[..., None] + top_r * wx[..., None]
+    bot = bot_l * (1 - wx)[..., None] + bot_r * wx[..., None]
+    return (top * (1 - wy)[..., None] + bot * wy[..., None]).astype(mx.float32)
+
+
+def _resize_torch(x, out_h: int, out_w: int, interpolation: str):
+    """Resize using Torch (CPU/CUDA, includes MPS for macOS)."""
+    import torch
+    import torch.nn.functional as F
+
+    x_t = torch.from_numpy(x).float()
+    x_t = x_t.permute(0, 3, 1, 2)
+
+    mode = "nearest" if interpolation == "nearest" else "bilinear"
+    align_corners = (mode == "bilinear")
+    x_resized = F.interpolate(x_t, size=(out_h, out_w), mode=mode, align_corners=align_corners)
+
+    return x_resized.permute(0, 2, 3, 1).numpy()
+
+
+def _normalize_mlx(x, mean, std, scale: float):
+    """Normalize using MLX (Apple Silicon GPU/CPU)."""
+    import mlx.core as mx
+
+    x_mx = mx.array(x, dtype=mx.float32)
+    x_mx = x_mx / scale
+    mean_mx = mx.array(mean, dtype=mx.float32)
+    std_mx = mx.array(std, dtype=mx.float32)
+    return (x_mx - mean_mx) / std_mx
+
+
+def _normalize_torch(x, mean, std, scale: float):
+    """Normalize using Torch (CPU/CUDA, includes MPS for macOS)."""
+    import torch
+
+    x_t = torch.from_numpy(x).float()
+    x_t = x_t / scale
+    mean_t = torch.from_numpy(mean).float()
+    std_t = torch.from_numpy(std).float()
+    return ((x_t - mean_t) / std_t).numpy()
 
 
 class ColorJitter:
