@@ -30,6 +30,39 @@ def _short(topic: str) -> str:
     return topic.strip("/").replace("/", ".") or "topic"
 
 
+def _sanitize(topic: str) -> str:
+    """Topic name → filesystem-safe stem, matching the Rust converter: non-alphanumerics → ``_``,
+    leading/trailing ``_`` trimmed (``/joint_states`` → ``joint_states``)."""
+    mapped = "".join(c if c.isalnum() else "_" for c in topic)
+    return mapped.strip("_") or "topic"
+
+
+def _column_dtype(arr: np.ndarray) -> str:
+    """Map a NumPy column to the converter's dtype label."""
+    if np.issubdtype(arr.dtype, np.bool_):
+        return "bool"
+    if np.issubdtype(arr.dtype, np.number):
+        return "float64"
+    return "string"
+
+
+def _column_stats(arr: np.ndarray) -> dict | None:
+    """count/mean/std/min/max over finite numeric values, or ``None`` for non-numeric columns."""
+    if np.issubdtype(arr.dtype, np.bool_) or not np.issubdtype(arr.dtype, np.number):
+        return None
+    vals = np.asarray(arr, dtype=np.float64)
+    vals = vals[np.isfinite(vals)]
+    if vals.size == 0:
+        return {"count": 0, "mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0}
+    return {
+        "count": int(vals.size),
+        "mean": float(vals.mean()),
+        "std": float(vals.std()),
+        "min": float(vals.min()),
+        "max": float(vals.max()),
+    }
+
+
 class TopicFrame:
     """One topic's messages as a time-indexed table (a ``log_time`` column plus data columns)."""
 
@@ -173,6 +206,45 @@ class RoboticsDataFrame:
                 ends.append(int(t.max()))
         return (min(starts), max(ends)) if starts else None
 
+    # ---- persistence --------------------------------------------------------
+
+    def save(self, path: str) -> None:
+        """Write this frame as a native PyRoboFrames columnar dataset: one ``<topic>.parquet`` per
+        topic plus a ``metadata.json`` manifest and a ``stats.json`` (same layout the converters
+        produce), so it round-trips through :meth:`from_converted`."""
+        os.makedirs(path, exist_ok=True)
+        topics_meta = []
+        stats: dict[str, dict] = {}
+        for name, frame in self._frames.items():
+            file_name = f"{_sanitize(name)}.parquet"
+            pq.write_table(frame.table, os.path.join(path, file_name))
+
+            columns: dict[str, str] = {}
+            topic_stats: dict[str, dict] = {}
+            for col in frame.columns:
+                arr = frame.column(col)
+                columns[col] = _column_dtype(arr)
+                s = _column_stats(arr)
+                if s is not None:
+                    topic_stats[col] = s
+            if topic_stats:
+                stats[name] = topic_stats
+
+            log_time = frame.log_time
+            topics_meta.append({
+                "topic": name,
+                "path": file_name,
+                "num_rows": len(frame),
+                "log_time_start": int(log_time.min()) if len(frame) else None,
+                "log_time_end": int(log_time.max()) if len(frame) else None,
+                "columns": columns,
+            })
+
+        with open(os.path.join(path, "metadata.json"), "w") as fh:
+            json.dump({"format": "pyroboframes-columnar", "version": 1, "topics": topics_meta}, fh, indent=2)
+        with open(os.path.join(path, "stats.json"), "w") as fh:
+            json.dump(stats, fh, indent=2)
+
     # ---- operations ---------------------------------------------------------
 
     def slice(self, start: int, end: int) -> "RoboticsDataFrame":
@@ -224,8 +296,69 @@ class RoboticsDataFrame:
 
         return AlignedFrame(data)
 
+    def resample(
+        self,
+        period: int,
+        method: str = "previous",
+        start: int | None = None,
+        end: int | None = None,
+    ) -> AlignedFrame:
+        """Resample every topic onto a **uniform time grid** (``period`` nanoseconds), fusing
+        multi-rate sensors into one regularly-sampled table — the basis for time-series models.
+
+        ``method``: ``"previous"`` (zero-order hold / backward as-of), ``"nearest"`` (closest
+        sample), or ``"linear"`` (linear interpolation, numeric columns only; non-numeric fall back
+        to ``"previous"``). Grid points with no usable sample are ``NaN``/``None``. Columns are
+        prefixed by topic name (e.g. ``imu.accel.x``).
+        """
+        if period <= 0:
+            raise ValueError("period must be positive")
+        span = self.time_range()
+        if span is None:
+            return AlignedFrame({"log_time": np.empty(0, dtype=np.int64)})
+        lo = span[0] if start is None else start
+        hi = span[1] if end is None else end
+        grid = np.arange(lo, hi + 1, period, dtype=np.int64)
+
+        data: dict[str, np.ndarray] = {"log_time": grid}
+        for name, frame in self._frames.items():
+            if len(frame) == 0:
+                continue
+            t = frame.log_time
+            order = np.argsort(t, kind="stable")
+            t_sorted = t[order]
+            prefix = _short(name)
+            for c in frame.columns:
+                col = frame.column(c)[order]
+                data[f"{prefix}.{c}"] = _resample_col(grid, t_sorted, col, method)
+        return AlignedFrame(data)
+
     def __repr__(self) -> str:
         return f"RoboticsDataFrame(topics={self.topics})"
+
+
+def _resample_col(grid: np.ndarray, t: np.ndarray, col: np.ndarray, method: str) -> np.ndarray:
+    """Resample one sorted (``t``, ``col``) series onto ``grid`` by ``method``."""
+    numeric = np.issubdtype(col.dtype, np.number) and not np.issubdtype(col.dtype, np.bool_)
+
+    if method == "linear" and numeric:
+        out = np.interp(grid, t, col.astype(np.float64))
+        out[(grid < t[0]) | (grid > t[-1])] = np.nan  # don't extrapolate past the data
+        return out
+
+    if method == "nearest":
+        right = np.clip(np.searchsorted(t, grid, side="left"), 0, len(t) - 1)
+        left = np.clip(right - 1, 0, len(t) - 1)
+        pick_left = np.abs(grid - t[left]) <= np.abs(t[right] - grid)
+        idx = np.where(pick_left, left, right)
+        return _gather(col, idx, np.ones(len(grid), dtype=bool))
+
+    if method not in ("previous", "linear"):
+        raise ValueError(f"unknown resample method {method!r}")
+
+    # "previous" (zero-order hold): last sample at or before each grid point.
+    idx = np.searchsorted(t, grid, side="right") - 1
+    return _gather(col, idx, idx >= 0)
 
 
 def _gather(col: np.ndarray, idx: np.ndarray, valid: np.ndarray) -> np.ndarray:

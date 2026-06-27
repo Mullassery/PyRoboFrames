@@ -90,6 +90,30 @@ def test_align_tolerance_drops_stale_matches(tmp_path):
     assert imu[2] == 200.0  # t=30, dt=5 <= 6 -> kept
 
 
+def test_resample_previous_and_linear(tmp_path):
+    _make_converted(str(tmp_path))  # /state t[10,20,30] x[1,2,3]; /imu t[12,25] a[100,200]
+    df = prf.RoboticsDataFrame.from_converted(str(tmp_path))
+
+    prev = df.resample(period=10, start=10, end=30, method="previous")  # grid 10,20,30
+    np.testing.assert_array_equal(prev.log_time, [10, 20, 30])
+    np.testing.assert_array_equal(prev["state.x"], [1.0, 2.0, 3.0])
+    imu = prev["imu.a"]
+    assert np.isnan(imu[0])  # no imu sample at/before t=10
+    np.testing.assert_array_equal(imu[1:], [100.0, 200.0])
+
+    lin = df.resample(period=5, start=10, end=30, method="linear")  # grid 10,15,20,25,30
+    np.testing.assert_allclose(lin["state.x"], [1.0, 1.5, 2.0, 2.5, 3.0])
+
+
+def test_resample_nearest(tmp_path):
+    _make_converted(str(tmp_path))
+    df = prf.RoboticsDataFrame.from_converted(str(tmp_path))
+    # imu samples at t=12 (100) and t=25 (200); nearest to grid 10,20,30.
+    near = df.resample(period=10, start=10, end=30, method="nearest")["imu.a"]
+    # 10->12 (d2); 20->25 (d5 < d8 to 12); 30->25 (d5).
+    np.testing.assert_array_equal(near, [100.0, 200.0, 200.0])
+
+
 def test_from_mcap_end_to_end(tmp_path):
     pytest.importorskip("mcap.writer")
     from test_mcap import _write_mcap  # reuse the MCAP fixture writer

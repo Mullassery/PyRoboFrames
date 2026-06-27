@@ -15,6 +15,8 @@ from ._core import Loader, RoboFrameDataset, convert_mcap, convert_ros2_bag
 from .backend import available_backends, resolve_device
 from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
+from .hub import download_lerobot_dataset
+from .lerobot import write_lerobot_dataset
 
 __all__ = [
     "__version__",
@@ -27,6 +29,8 @@ __all__ = [
     "RoboticsDataFrame",
     "TopicFrame",
     "AlignedFrame",
+    "write_lerobot_dataset",
+    "download_lerobot_dataset",
     "transforms",
     "backend",
     "resolve_device",
