@@ -7,6 +7,11 @@ rather than by editing code. Resolution order for ``device="auto"``:
 2. CUDA, if a CUDA-capable PyTorch is available;
 3. on Apple Silicon: MLX if installed, else MPS (PyTorch) if available;
 4. CPU (NumPy) otherwise.
+
+**Zero-copy MLX path (pending mlx#2855):** On Apple Silicon with MLX, decoded video frames
+are currently transferred via NumPy buffer protocol (low-copy via unified memory, not zero-copy).
+Once MLX gains IOSurface/CVPixelBuffer direct initialization support, VideoToolbox-decoded
+frames will pass directly to MLX arrays with zero copies — a ~3× speedup on the decode path.
 """
 
 from __future__ import annotations

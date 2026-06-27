@@ -22,11 +22,24 @@ pub enum FrameBuffer {
     /// `Arc` so the cache and consumers can share a frame without a deep copy.
     Owned { data: Arc<Vec<u8>>, channels: u8 },
     /// IOSurface-backed buffer for zero-copy hand-off to MLX/Metal (macOS VideoToolbox path).
-    /// Pending: mlx#2855 (MLX IOSurface/CVPixelBuffer direct initialization).
+    ///
+    /// **Zero-copy hand-off flow (once mlx#2855 lands):**
+    /// 1. VideoToolbox decodes to CVPixelBuffer (IOSurface-backed)
+    /// 2. Rust wraps IOSurfaceRef in FrameBuffer::IOSurface
+    /// 3. Python extracts the opaque IOSurface pointer
+    /// 4. MLX initializes array directly over IOSurface (no copy)
+    /// 5. MLX array is immediately GPU-usable (unified memory)
+    /// 6. IOSurfaceUseCount tracks lifetime; buffer recycled after Metal finishes
+    ///
+    /// **Current status:** Blocked by [mlx#2855](https://github.com/ml-explore/mlx/issues/2855).
+    /// v1 uses ffmpeg RGB24 output (Owned variant); true zero-copy awaits MLX support.
     #[cfg(target_os = "macos")]
     IOSurface {
-        // TODO: store IOSurfaceRef handle + width/height/format metadata
-        // For now, placeholder while awaiting upstream MLX support
+        /// Opaque IOSurface reference (size varies by platform; encoded as u64 on 64-bit).
+        /// Kept behind a type boundary so Python bindings can safely extract it.
+        surface: u64,
+        /// Pixel format code (kCVPixelFormatType_*; RFC 3394 "pixel format" enums).
+        format: u32,
     },
 }
 
@@ -36,7 +49,7 @@ impl FrameBuffer {
             FrameBuffer::Owned { data, .. } => data,
             #[cfg(target_os = "macos")]
             FrameBuffer::IOSurface { .. } => {
-                panic!("IOSurface buffers are not directly byte-accessible; use MLX/Metal APIs")
+                panic!("IOSurface buffers are GPU-resident; use MLX/Metal APIs for access")
             }
         }
     }
@@ -45,7 +58,17 @@ impl FrameBuffer {
         match self {
             FrameBuffer::Owned { channels, .. } => *channels,
             #[cfg(target_os = "macos")]
-            FrameBuffer::IOSurface { .. } => 3, // RGB24 format
+            FrameBuffer::IOSurface { .. } => 3, // kCVPixelFormatType_24RGB variant
+        }
+    }
+
+    /// Extract the IOSurface pointer for direct GPU access (macOS only).
+    /// Returns None for Owned buffers (CPU-resident). Pending MLX support for zero-copy.
+    #[cfg(target_os = "macos")]
+    pub fn as_iosurface(&self) -> Option<u64> {
+        match self {
+            FrameBuffer::IOSurface { surface, .. } => Some(*surface),
+            FrameBuffer::Owned { .. } => None,
         }
     }
 }
