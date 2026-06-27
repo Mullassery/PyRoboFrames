@@ -4,32 +4,43 @@ High-level summary of work organized by priority tier. For detailed breakdown, s
 
 ---
 
-## 🎯 Current Status: v0.1.10
+## 🎯 Current Status: v0.1.11+
 
-**Shipped (P0–P6 + P9 build):**
+**Shipped (P0–P6 + P9 build/benchmark):**
 - ✅ LeRobot v3.0 dataloader (state/action + camera frames, temporal windows, off-GIL prefetch)
 - ✅ MCAP ingestion (JSON, protobuf, CDR/ros2msg)
 - ✅ ROS 2 bag converter (`.db3` SQLite + embedded message definitions)
 - ✅ Robotics DataFrame (time-indexed, multi-sensor, slice/align/resample/save)
-- ✅ LeRobot write-back + HF Hub importer
+- ✅ LeRobot write-back + HF Hub importer (full-download or partial-streaming)
 - ✅ Memory-mapped shards + curriculum/goal-conditioned sampling
 - ✅ Backend parity (NumPy / MLX / PyTorch / JAX output, unified abstraction)
+- ✅ **MLX/Torch native transforms** (Resize, Normalize with device dispatch)
+- ✅ **HF Hub partial-streaming** (selective episode download for faster startup)
+- ✅ **NVIDIA throughput benchmark** (FFmpeg baseline + frame timing)
 - ✅ NVDEC decode path (built feature-gated, awaiting GPU verification)
 
 **In progress or blocked:**
 - 🟡 Apple Silicon zero-copy MLX (blocked on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855))
 - 🟡 NVIDIA CUDA/NVDEC functional verification (needs GPU hardware)
+- ⬜ CV-CUDA operators (requires NVIDIA hardware)
 
 ---
 
-## 📋 Next Priority Batch (Recommended)
+## 📋 Completed & Next Priorities
 
-### Must-do (high-impact, low-effort)
+### ✅ Just Completed (0.1.11+)
 | Priority | Item | Effort | Impact | Test | Status |
 |----------|------|--------|--------|------|--------|
-| **P7a** | **HF Hub partial-streaming** | S | High | ✓ | ⬜ |
-| **P6a** | **MLX / MPS native transforms** | M | High | ✓ | ⬜ |
-| **P9a** | **NVIDIA throughput benchmark** | M | Medium | [C] | ⬜ |
+| **P7a** | **HF Hub partial-streaming** | S | High | ✓ | ✅ |
+| **P6a** | **MLX / MPS native transforms** | M | High | ✓ | ✅ |
+| **P9a** | **NVIDIA throughput benchmark** | M | Medium | [C] | ✅ |
+
+### Next Must-do (high-impact, low-effort)
+| Priority | Item | Effort | Impact | Test | Status |
+|----------|------|--------|--------|------|--------|
+| **P6b** | **Row-group-level lazy Parquet reads** | M | High | ✓ | ⬜ |
+| **P9b** | **CV-CUDA transform operators** | L | High | [C] | ⬜ |
+| **P8** | **Tier-2 vision** (CLIP → SAM → Grounding DINO) | L | High | ✓ | ⬜ |
 
 ### Nice-to-have (larger scope)
 | Priority | Item | Effort | Impact | Test | Status |
@@ -75,7 +86,9 @@ All Tier-A and Tier-B items stay verifiable on CI. Tier-C items are feature-gate
 | MCAP → Parquet | ✅ | JSON, protobuf, CDR/ros2msg |
 | ROS 2 bag → Parquet | ✅ | `.db3` SQLite format |
 | Metadata + stats | ✅ | Auto-generated for converters |
-| HF Hub streaming | 🟡 | Download only; partial-stream ⬜ |
+| HF Hub full-download | ✅ | `download_lerobot_dataset()` (default) |
+| HF Hub partial-streaming | ✅ | `episodes=[...]` for selective pre-download |
+| Lazy Parquet row-groups | 🟡 | Per-shard only; row-group streaming ⬜ |
 
 ### Compute & loader
 | Feature | Status | Notes |
@@ -97,9 +110,10 @@ All Tier-A and Tier-B items stay verifiable on CI. Tier-C items are feature-gate
 | MLX | ✅ | Apple Silicon, sequence batches |
 | JAX | ✅ | CPU + GPU via XLA |
 | Backend auto-select | ✅ | `resolve_device("auto")` |
-| Transform fallback chain | ✅ | CV-CUDA → Torch → NumPy |
-| Native MLX transforms | 🟡 | Seam in place; CPU path active |
-| Native MPS transforms | 🟡 | Via Torch MPS; not optimized |
+| Transform fallback chain | ✅ | CV-CUDA → MLX → Torch → NumPy |
+| Native MLX transforms | ✅ | Resize (bilinear/nearest), Normalize |
+| Native Torch transforms | ✅ | Resize (via F.interpolate), Normalize |
+| Native MPS transforms | ✅ | Via Torch MPS backend |
 
 ### Decoding
 | Decoder | Status | Notes |
@@ -107,6 +121,7 @@ All Tier-A and Tier-B items stay verifiable on CI. Tier-C items are feature-gate
 | FFmpeg (CPU) | ✅ | Software decode, fallback |
 | VideoToolbox (macOS) | 🟡 | Built feature-gated; zero-copy MLX blocked |
 | NVDEC (NVIDIA) | 🟡 | Built feature-gated; functional verify pending |
+| NVIDIA benchmark | ✅ | `benches/nvidia_benchmark.py` measures FFmpeg baseline |
 | MLX zero-copy | 🟡 | Blocked on mlx#2855 (IOSurface support) |
 
 ### Data platform

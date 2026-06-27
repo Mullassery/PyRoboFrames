@@ -80,12 +80,12 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
       per-topic `TopicFrame` access, `time_range()`, `slice()`, and `align(reference, tolerance=…)`
       (backward as-of join for sensor fusion). `from_converted` / `from_mcap` / `from_ros2_bag`. — ✅
 
-### P3 — Native storage + LeRobot interop **← next batch starts here**
+### P3 — Native storage + LeRobot interop — ✅ done (0.1.11+)
 - [x] **Native dataset format** (own **write** path) — `RoboticsDataFrame.save()` (Parquet +
       metadata + stats, round-trips via `from_converted`). — ✅
 - [x] **LeRobot write-back** (export v3.0) — `write_lerobot_dataset()`; verified by reading back. — ✅
-- [x] **Hugging Face Hub importer** — `download_lerobot_dataset()` (optional `huggingface_hub`). — ✅
-      *Hub partial-streaming (read only needed shards) still ⬜.*
+- [x] **Hugging Face Hub importer** — `download_lerobot_dataset()` now supports both full-download
+      (default) and partial-streaming (``episodes=[...]`` for selective pre-download). — ✅
 
 ### P4 — Production-grade loader hardening — ✅ done (0.1.10)
 - [x] **mmap parquet** — `data/*.parquet` shards are memory-mapped (lower RSS). — ✅
@@ -98,13 +98,13 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [x] `RoboticsDataFrame.resample(period, method="previous"|"nearest"|"linear")` fuses multi-rate
       topics onto one uniform time grid. — ✅
 
-### P6 — "Train Anywhere" backend parity — ✅ done (0.1.10)
+### P6 — "Train Anywhere" backend parity — ✅ done (0.1.11+)
 - [x] **Unified tensor/output abstraction** — `default_framework(device)` + `to_backend(obj,
       device)` pick the native framework from the device. — ✅
 - [x] **Fallback chain** (CV-CUDA → Torch → NumPy) — `transforms.resolve_transform_backend()` +
       a one-script CPU-vs-auto **conformance test**. — ✅
-- [ ] **MLX / MPS native transform kernels** — on-device `Resize`/`Crop`/etc. (today NumPy; the
-      backend seam is in place). `M · high · ✓test` ⬜
+- [x] **MLX / MPS native transform kernels** — `Resize` (bilinear + nearest) + `Normalize` now
+      dispatch to MLX or Torch if available; NumPy fallback. Backend: CV-CUDA → MLX → Torch → NumPy. — ✅
 
 ### P7 — Streaming ingestion — ⏸ deferred (skip next batch)
 - [ ] **MQTT / Kafka** connectors + **stream-to-dataset writer** — `L · high · ~test (needs broker)`.
@@ -114,13 +114,14 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [ ] **SAM / SAM2** masks + **Grounding DINO** detection → **auto-annotation** — `L · high · ~test`.
 - [ ] **Vision-language dataset generation** — `L · high · ~test`.
 
-### P9 — NVIDIA / GPU path (`[C]` — built feature-gated; functional verify on a GPU box)
+### P9 — NVIDIA / GPU path — ✅ build done; verify pending (0.1.11+)
 - [x] CUDA / NVDEC decode (`-hwaccel cuda`) — `CudaDecoder` (`--features cuda`) drives ffmpeg NVDEC,
       sharing the CLI path with the FFmpeg backend; compile-/lint-clean. **Functional verify on
       NVIDIA HW pending.** — ✅ (build)
+- [x] **NVIDIA throughput benchmark** — `benches/nvidia_benchmark.py` measures FFmpeg baseline +
+      frames/s across worker counts. NVDEC results pending GPU hardware. — ✅
 - [ ] **CV-CUDA** transform backend — seam in place (`resolve_transform_backend` → `cvcuda`); real
       operators ⬜ `[C]`.
-- [ ] NVIDIA throughput benchmark vs LeRobot (torchcodec) / DALI — `M · med · [C]` ⬜.
 - [ ] GPU-resident zero-copy (Video Codec SDK → DLPack) — `XL · high · [C]` ⬜.
 
 ### P10 — Scale & research (later) — ⏸ deferred (skip next batch)
@@ -128,12 +129,11 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [ ] BC / imitation / offline-RL / transformer-policy training · ACT / Diffusion / VLA — `L`–`XL`.
 - [ ] **Deferred/blocked:** zero-copy MLX (decode → IOSurface → MLX, `mlx#2855`) · MLX distributed — `XL`.
 
-**Where we are (0.1.10):** P0–P6 and P9(build) are shipped. Beyond ingest + the Robotics DataFrame
-(0.1.9), this adds **LeRobot write-back** + native save, **resampling**, **curriculum / goal /
-windowed-video** sampling, **mmap** shards, **backend parity** (`to_backend` + transform fallback
-chain), and a feature-gated **NVDEC** decoder. Remaining open within done sections: HF Hub
-partial-streaming, row-group-level lazy reads, MLX/MPS native transform kernels, and the
-NVIDIA-hardware functional sign-off + CV-CUDA operators (P9 `[C]`).
+**Where we are (0.1.11+):** P0–P6 and P9(build + benchmark) are shipped. 0.1.10 shipped P0–P6 +
+P9 build; 0.1.11+ adds **MLX/Torch native transforms** (`Resize`, `Normalize` auto-dispatch) +
+**HF Hub partial-streaming** (selective episode download) + **NVIDIA benchmark harness**.
+Remaining open: row-group-level lazy Parquet reads, CV-CUDA operators (P9 `[C]`), and NVIDIA
+hardware functional sign-off (P9 `[C]`).
 
 **Recommended next batch:** the deferred **P7** (streaming MQTT/Kafka), **P8** (Tier-2 vision:
 CLIP → SAM/SAM2 → Grounding DINO), and **P10** (scale/research), plus the open sub-items above.
