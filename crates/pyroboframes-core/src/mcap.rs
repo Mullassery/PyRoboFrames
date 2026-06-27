@@ -120,16 +120,16 @@ pub struct TopicConversion {
     pub path: PathBuf,
 }
 
-/// Result of [`convert`]: the topics written, and the topics skipped (non-JSON encodings).
+/// Result of a conversion: the topics written, and the topics skipped (undecodable encodings).
 #[derive(Debug, Clone, Default)]
 pub struct ConversionReport {
     pub topics: Vec<TopicConversion>,
     pub skipped_topics: Vec<String>,
 }
 
-/// A scalar leaf flattened from a JSON message.
+/// A scalar leaf flattened from a decoded message. Shared with [`crate::rosbag`].
 #[derive(Clone)]
-enum Leaf {
+pub(crate) enum Leaf {
     Num(f64),
     Bool(bool),
     Str(String),
@@ -143,10 +143,11 @@ enum ColKind {
     Str,
 }
 
-/// Accumulated rows for one topic before it's written out.
-struct TopicAccum {
-    log_times: Vec<i64>,
-    rows: Vec<BTreeMap<String, Leaf>>,
+/// Accumulated rows for one topic before it's written out. Shared with [`crate::rosbag`].
+#[derive(Default)]
+pub(crate) struct TopicAccum {
+    pub(crate) log_times: Vec<i64>,
+    pub(crate) rows: Vec<BTreeMap<String, Leaf>>,
 }
 
 /// Convert an MCAP file at `input` into one Parquet table per JSON topic under `out_dir`
@@ -186,32 +187,96 @@ pub fn convert(input: &Path, out_dir: &Path) -> Result<ConversionReport> {
         acc.rows.push(leaves);
     }
 
-    fs::create_dir_all(out_dir)?;
-    let mut converted = Vec::new();
-    for (topic, acc) in &topics {
-        if acc.rows.is_empty() {
-            continue;
-        }
-        let path = out_dir.join(format!("{}.parquet", sanitize(topic)));
-        let columns = write_topic(&path, acc)?;
-        converted.push(TopicConversion {
-            topic: topic.clone(),
-            messages: acc.rows.len(),
-            columns,
-            path,
-        });
-    }
-
     Ok(ConversionReport {
-        topics: converted,
+        topics: write_all(out_dir, &topics)?,
         skipped_topics: skipped.into_iter().collect(),
     })
 }
 
+/// Write each accumulated topic to `out_dir/<sanitized topic>.parquet` (created if absent),
+/// returning the per-topic [`TopicConversion`]s. Empty topics are skipped. Shared by the MCAP and
+/// ROS 2 bag converters.
+pub(crate) fn write_all(
+    out_dir: &Path,
+    topics: &BTreeMap<String, TopicAccum>,
+) -> Result<Vec<TopicConversion>> {
+    fs::create_dir_all(out_dir)?;
+    let mut converted = Vec::new();
+    // Accumulated metadata + stats for the dataset-level manifests.
+    let mut topic_meta: Vec<Value> = Vec::new();
+    let mut stats = serde_json::Map::new();
+
+    for (topic, acc) in topics {
+        if acc.rows.is_empty() {
+            continue;
+        }
+        let path = out_dir.join(format!("{}.parquet", sanitize(topic)));
+        let infos = write_topic(&path, acc)?;
+
+        // Column dtypes + per-topic numeric stats.
+        let mut columns = serde_json::Map::new();
+        let mut topic_stats = serde_json::Map::new();
+        for info in &infos {
+            columns.insert(info.name.clone(), Value::from(info.dtype));
+            if let Some(s) = &info.stats {
+                topic_stats.insert(
+                    info.name.clone(),
+                    serde_json::json!({
+                        "count": s.count,
+                        "mean": s.mean,
+                        "std": s.std,
+                        "min": s.min,
+                        "max": s.max,
+                    }),
+                );
+            }
+        }
+        if !topic_stats.is_empty() {
+            stats.insert(topic.clone(), Value::Object(topic_stats));
+        }
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        topic_meta.push(serde_json::json!({
+            "topic": topic,
+            "path": file_name,
+            "num_rows": acc.rows.len(),
+            "log_time_start": acc.log_times.iter().min().copied(),
+            "log_time_end": acc.log_times.iter().max().copied(),
+            "columns": Value::Object(columns),
+        }));
+
+        converted.push(TopicConversion {
+            topic: topic.clone(),
+            messages: acc.rows.len(),
+            columns: infos.len(),
+            path,
+        });
+    }
+
+    // Dataset-level manifests: a self-describing metadata.json + a loader-compatible stats.json.
+    let metadata = serde_json::json!({
+        "format": "pyroboframes-columnar",
+        "version": 1,
+        "topics": topic_meta,
+    });
+    write_json(&out_dir.join("metadata.json"), &metadata)?;
+    write_json(&out_dir.join("stats.json"), &Value::Object(stats))?;
+
+    Ok(converted)
+}
+
+/// Write a JSON value to `path`, pretty-printed.
+fn write_json(path: &Path, value: &Value) -> Result<()> {
+    let text = serde_json::to_string_pretty(value)
+        .map_err(|e| Error::Conversion(format!("serializing {}: {e}", path.display())))?;
+    fs::write(path, text)
+        .map_err(|e| Error::Conversion(format!("writing {}: {e}", path.display())))?;
+    Ok(())
+}
+
 /// Recursively flatten a JSON value into `prefix`-keyed scalar leaves. Objects extend the path by
 /// `.key`; arrays by `.index` (so a state vector becomes `state.0`, `state.1`, …). Nulls are
-/// dropped (absent → null column cell).
-fn flatten(prefix: &str, value: &Value, out: &mut BTreeMap<String, Leaf>) {
+/// dropped (absent → null column cell). Shared with [`crate::rosbag`].
+pub(crate) fn flatten(prefix: &str, value: &Value, out: &mut BTreeMap<String, Leaf>) {
     let key = |seg: String| {
         if prefix.is_empty() {
             seg
@@ -243,8 +308,49 @@ fn flatten(prefix: &str, value: &Value, out: &mut BTreeMap<String, Leaf>) {
     }
 }
 
-/// Write one topic's accumulated rows to a Parquet file. Returns the number of data columns.
-fn write_topic(path: &Path, acc: &TopicAccum) -> Result<usize> {
+/// Per-column summary returned by [`write_topic`] for metadata/stats generation.
+pub(crate) struct ColInfo {
+    pub(crate) name: String,
+    /// Parquet dtype: `"float64"`, `"bool"`, or `"string"`.
+    pub(crate) dtype: &'static str,
+    /// Numeric statistics (numeric columns only).
+    pub(crate) stats: Option<ColStats>,
+}
+
+/// Per-feature numeric statistics, mirroring the `meta/stats.json` shape the loader reads for
+/// normalization.
+pub(crate) struct ColStats {
+    pub(crate) count: usize,
+    pub(crate) mean: f64,
+    pub(crate) std: f64,
+    pub(crate) min: f64,
+    pub(crate) max: f64,
+}
+
+/// Compute count / mean / population-std / min / max over the finite values present at `path`.
+fn column_stats(rows: &[BTreeMap<String, Leaf>], path: &str) -> ColStats {
+    let mut values: Vec<f64> = Vec::new();
+    for row in rows {
+        if let Some(Leaf::Num(v)) = row.get(path) {
+            if v.is_finite() {
+                values.push(*v);
+            }
+        }
+    }
+    let count = values.len();
+    if count == 0 {
+        return ColStats { count: 0, mean: 0.0, std: 0.0, min: 0.0, max: 0.0 };
+    }
+    let mean = values.iter().sum::<f64>() / count as f64;
+    let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / count as f64;
+    let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    ColStats { count, mean, std: var.sqrt(), min, max }
+}
+
+/// Write one topic's accumulated rows to a Parquet file. Returns the per-column info (name, dtype,
+/// numeric stats) used to generate dataset metadata.
+fn write_topic(path: &Path, acc: &TopicAccum) -> Result<Vec<ColInfo>> {
     // Union of all leaf paths seen across the topic's messages, sorted for a stable schema.
     let mut paths: BTreeSet<String> = BTreeSet::new();
     for row in &acc.rows {
@@ -254,9 +360,20 @@ fn write_topic(path: &Path, acc: &TopicAccum) -> Result<usize> {
 
     let mut fields = vec![Field::new("log_time", DataType::Int64, false)];
     let mut arrays: Vec<ArrayRef> = vec![Arc::new(Int64Array::from(acc.log_times.clone()))];
+    let mut infos: Vec<ColInfo> = Vec::with_capacity(paths.len());
 
     for p in &paths {
         let kind = infer_kind(&acc.rows, p);
+        let dtype = match kind {
+            ColKind::Num => "float64",
+            ColKind::Bool => "bool",
+            ColKind::Str => "string",
+        };
+        infos.push(ColInfo {
+            name: p.clone(),
+            dtype,
+            stats: matches!(kind, ColKind::Num).then(|| column_stats(&acc.rows, p)),
+        });
         let (field_type, array) = match kind {
             ColKind::Num => {
                 let mut b = Float64Builder::with_capacity(acc.rows.len());
@@ -308,7 +425,7 @@ fn write_topic(path: &Path, acc: &TopicAccum) -> Result<usize> {
         .close()
         .map_err(|e| Error::Conversion(format!("finalizing Parquet: {e}")))?;
 
-    Ok(paths.len())
+    Ok(infos)
 }
 
 /// Decide a column's type from the leaf types present at `path`. Uniform numeric → `Num`, uniform
@@ -503,6 +620,39 @@ mod tests {
             ..Default::default()
         };
         FileDescriptorSet { file: vec![file] }.encode_to_vec()
+    }
+
+    #[test]
+    fn writes_dataset_metadata_and_stats() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mcap_path = tmp.path().join("run.mcap");
+        write_mcap(&mcap_path);
+        let out = tmp.path().join("out");
+        convert(&mcap_path, &out).unwrap();
+
+        // metadata.json: self-describing manifest.
+        let meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("metadata.json")).unwrap()).unwrap();
+        assert_eq!(meta["format"], "pyroboframes-columnar");
+        let topic = &meta["topics"][0];
+        assert_eq!(topic["topic"], "/state");
+        assert_eq!(topic["path"], "state.parquet");
+        assert_eq!(topic["num_rows"], 2);
+        assert_eq!(topic["log_time_start"], 1000);
+        assert_eq!(topic["log_time_end"], 2000);
+        assert_eq!(topic["columns"]["gripper"], "bool");
+        assert_eq!(topic["columns"]["observation.state.0"], "float64");
+
+        // stats.json: loader-compatible mean/std/min/max/count (numeric columns only).
+        let stats: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("stats.json")).unwrap()).unwrap();
+        let s0 = &stats["/state"]["observation.state.0"];
+        assert_eq!(s0["count"], 2);
+        assert_eq!(s0["mean"], 2.0); // (1 + 3) / 2
+        assert_eq!(s0["min"], 1.0);
+        assert_eq!(s0["max"], 3.0);
+        // bool column has no stats entry.
+        assert!(stats["/state"].get("gripper").is_none());
     }
 
     #[test]

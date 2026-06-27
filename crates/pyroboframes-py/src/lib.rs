@@ -652,12 +652,11 @@ impl PrefetchLoader {
     }
 }
 
-/// Convert an MCAP robotics log into one Parquet table per JSON topic under `out_dir` (created if
-/// absent). Returns `{"topics": [{topic, messages, columns, path}], "skipped": [topic, …]}` where
-/// `skipped` lists topics whose message encoding isn't JSON (protobuf / ros2msg / cdr).
-#[pyfunction]
-fn convert_mcap(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResult<Py<PyDict>> {
-    let report = pyroboframes_core::mcap::convert(&input, &out_dir).map_err(core_err)?;
+/// Build the `{"topics": [...], "skipped": [...]}` dict shared by the converters.
+fn conversion_report_to_dict(
+    py: Python<'_>,
+    report: &pyroboframes_core::mcap::ConversionReport,
+) -> PyResult<Py<PyDict>> {
     let out = PyDict::new_bound(py);
     let topics = pyo3::types::PyList::empty_bound(py);
     for t in &report.topics {
@@ -673,12 +672,32 @@ fn convert_mcap(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResult<Py
     Ok(out.unbind())
 }
 
+/// Convert an MCAP robotics log into one Parquet table per topic under `out_dir` (created if
+/// absent). Returns `{"topics": [{topic, messages, columns, path}], "skipped": [topic, …]}`.
+/// Decodes `json` and `protobuf` (via the embedded descriptor set) and `cdr`/`ros2msg` topics;
+/// any other encoding is listed in `skipped`.
+#[pyfunction]
+fn convert_mcap(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResult<Py<PyDict>> {
+    let report = pyroboframes_core::mcap::convert(&input, &out_dir).map_err(core_err)?;
+    conversion_report_to_dict(py, &report)
+}
+
+/// Convert a ROS 2 bag (`rosbag2` SQLite `.db3`) into one Parquet table per CDR topic under
+/// `out_dir`. Same return shape as [`convert_mcap`]; topics without an embedded `ros2msg`
+/// definition or not CDR-serialized are listed in `skipped`.
+#[pyfunction]
+fn convert_ros2_bag(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResult<Py<PyDict>> {
+    let report = pyroboframes_core::rosbag::convert(&input, &out_dir).map_err(core_err)?;
+    conversion_report_to_dict(py, &report)
+}
+
 /// `pyroboframes._core` — the compiled extension module.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", pyroboframes_core::VERSION)?;
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
     m.add_function(wrap_pyfunction!(convert_mcap, m)?)?;
+    m.add_function(wrap_pyfunction!(convert_ros2_bag, m)?)?;
     m.add_class::<RoboFrameDataset>()?;
     m.add_class::<Loader>()?;
     m.add_class::<PrefetchLoader>()?;

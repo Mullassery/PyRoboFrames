@@ -61,27 +61,26 @@ ingest → a typed robotics table → storage/interop, with vision intelligence 
 **Ranking rule:** items float up by **testable-now + high-value + low-effort**; GPU-only (`[C]`,
 can't verify here) and research/heavy items sink. Each line is tagged `effort · value · ✓test`.
 
-### P0 — Housekeeping (do immediately, `XS`)
-- [ ] **Declare runtime deps** in `pyproject.toml` — a bare-venv `pip install pyroboframes` doesn't
-      pull **numpy** (imported at package import via `transforms.py`), so a fresh install crashes on
-      `import pyroboframes`. Add `numpy` (+ `pyarrow` for `convert_mcap` consumers).
-      `XS · high · ✓test (clean-venv import)`.
+### P0 — Housekeeping (do immediately, `XS`) — ✅ done (0.1.9)
+- [x] **Declare runtime deps** in `pyproject.toml` — `numpy` + `pyarrow` are now runtime deps, so a
+      fresh `pip install pyroboframes` imports cleanly. — ✅
 
-### P1 — Finish the ingest path (extends the just-shipped MCAP converter)
-- [ ] **protobuf / ros2msg / CDR decoding** in `convert_mcap` — today only JSON topics convert, but
-      most ROS 2 bags are CDR/protobuf; decode via the channel schema. `M · very-high · ✓test`
-      (the biggest unlock — turns a "JSON demo" into "real robot logs").
-- [ ] **ROS 2 bag (`.db3` / `.mcap`) → PyRoboFrames** converter — the other dominant log source.
-      `M · high · ✓test`.
-- [ ] **Automatic metadata generation** — emit `info.json` + per-feature `stats.json` from the
-      converted topics so the output is a *loadable dataset*, not loose Parquet. `S · high · ✓test`.
+### P1 — Finish the ingest path — ✅ done (0.1.9)
+- [x] **protobuf decoding** in `convert_mcap` — decoded dynamically from the channel's embedded
+      `FileDescriptorSet` (`prost-reflect`), flattened to columns. — ✅
+- [x] **ros2msg / CDR decoding** — `cdr` topics decode against the parsed `ros2msg` schema
+      (primitives, arrays, strings, nested types) via the new `core::ros2` XCDR1 reader. — ✅
+- [x] **ROS 2 bag converter** — `convert_ros2_bag()` reads a rosbag2 SQLite `.db3` (CDR blobs +
+      embedded `message_definitions`) → Parquet per topic. — ✅
+- [x] **Automatic metadata generation** — both converters emit `metadata.json` (manifest) +
+      `stats.json` (per-column count/mean/std/min/max, loader-compatible). — ✅
 
-### P2 — Robotics DataFrame abstraction (keystone identity)
-- [ ] Typed, **time-indexed, multi-sensor** table over the columnar output — the unifying API that
-      ties ingest, query, and the loaders together. `L · very-high · ✓test`. *This is what makes
-      PyRoboFrames a "data platform" rather than a loader; everything below leans on it.*
+### P2 — Robotics DataFrame abstraction (keystone identity) — ✅ done (0.1.9)
+- [x] `RoboticsDataFrame`: typed, **time-indexed, multi-sensor** table over the columnar output —
+      per-topic `TopicFrame` access, `time_range()`, `slice()`, and `align(reference, tolerance=…)`
+      (backward as-of join for sensor fusion). `from_converted` / `from_mcap` / `from_ros2_bag`. — ✅
 
-### P3 — Native storage + LeRobot interop
+### P3 — Native storage + LeRobot interop **← next batch starts here**
 - [ ] **Native Parquet dataset format** (own **write** path, not just reads) — `L · high · ✓test`.
 - [ ] **LeRobot write-back** (export v3.x) — `L · high · ✓test`.
 - [ ] **Hugging Face Hub importer** (download / partial-stream a `LeRobotDataset`) —
@@ -107,10 +106,10 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [ ] **Fallback chain** (CV-CUDA → Torch → NumPy) + a **one-script conformance test** asserting
       identical batch shapes across CPU and this Mac. `S · high · ✓test`.
 
-### P7 — Streaming ingestion
+### P7 — Streaming ingestion — ⏸ deferred (skip next batch)
 - [ ] **MQTT / Kafka** connectors + **stream-to-dataset writer** — `L · high · ~test (needs broker)`.
 
-### P8 — Tier-2 vision intelligence (heavy models, mostly Python)
+### P8 — Tier-2 vision intelligence (heavy models, mostly Python) — ⏸ deferred (skip next batch)
 - [ ] **CLIP embeddings** over frames — `M · high · ✓test` (cheapest entry: run model, store vectors).
 - [ ] **SAM / SAM2** masks + **Grounding DINO** detection → **auto-annotation** — `L · high · ~test`.
 - [ ] **Vision-language dataset generation** — `L · high · ~test`.
@@ -121,14 +120,20 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [ ] NVIDIA throughput benchmark vs LeRobot (torchcodec) / DALI — `M · med · [C]`.
 - [ ] GPU-resident zero-copy (Video Codec SDK → DLPack) — `XL · high · [C]`.
 
-### P10 — Scale & research (later)
+### P10 — Scale & research (later) — ⏸ deferred (skip next batch)
 - [ ] Distributed / multi-node dataloading · Ray / Slurm / RunPod templates — `L`.
 - [ ] BC / imitation / offline-RL / transformer-policy training · ACT / Diffusion / VLA — `L`–`XL`.
 - [ ] **Deferred/blocked:** zero-copy MLX (decode → IOSurface → MLX, `mlx#2855`) · MLX distributed — `XL`.
 
-**Recommended next action:** ship **P0** (the numpy dependency fix — one line, unblocks fresh
-installs), then start **P1** protobuf/ros2msg decoding so `convert_mcap` handles real ROS 2 bags,
-then build **P2** the Robotics DataFrame as the next headline milestone.
+**Where we are (0.1.9):** P0, P1, and P2 are shipped — ingest now handles JSON / protobuf / CDR
+(MCAP) and ROS 2 `.db3` bags, emits self-describing metadata + stats, and the **Robotics DataFrame**
+gives the columnar output a time-indexed, sensor-fusion-ready API.
+
+**Recommended next batch (per the current call, skipping P7 / P8 / P10):** **P3** native Parquet
+write + LeRobot write-back + HF Hub importer (own the storage/interop loop), then **P4** loader
+hardening (lazy/mmap, windowed video sync) and **P5** general multi-sensor fusion on top of the
+DataFrame, and optionally **P6** "Train Anywhere" backend parity. Streaming (P7), Tier-2 vision
+(P8), and scale/research (P10) are parked for a later batch.
 
 ---
 
@@ -264,7 +269,8 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [x] P1.2 Caching (frame LRU + shard cache) · Batch assembly · Frame indexing · Sharding · **off-GIL prefetch pipeline** · throughput harness
 - [x] P1.3 Sequence windows · Future-prediction windows · State–action alignment · Temporal batching · **episode-chunking sampler** · **MLX sequence batches**
 - [x] P2 Backends: CPU · Torch · MLX · **JAX** output · profiling (`stats`/`on_batch`) · MLX benchmarks
-- [x] P3/Tier-1 **MCAP → columnar (Parquet)** converter (`convert_mcap`, JSON topics) — protobuf/ros2msg pending
+- [x] P3/Tier-1 **MCAP → columnar** (`convert_mcap`: JSON + protobuf + cdr/ros2msg) · **ROS 2 bag** (`convert_ros2_bag`) · auto **metadata.json**/**stats.json**
+- [x] P2/Tier-1 **Robotics DataFrame** (`RoboticsDataFrame`: per-topic access, `slice`, as-of `align`) · runtime deps (numpy/pyarrow) declared
 
 ---
 
@@ -274,11 +280,12 @@ A priority lens (from a contributor/user view) over the vision below: what makes
 *itself*, then what makes it *compelling*. Status from the 2026-06-25 audit.
 
 ### Tier 1 — Core identity (what PyRoboFrames *is*)
-- [x] MCAP → columnar (Parquet) conversion — ✅ JSON topics (`convert_mcap`); protobuf/ros2msg next (§P1)
-- [ ] Robotics DataFrame abstraction (typed, time-indexed, multi-sensor) — ⬜ **next headline (§P2)**
-- [ ] Time-synchronized sensor fusion — 🟡 episode/camera ts sync today; general fusion ⬜ (§P5)
-- [ ] Parquet-backed storage — 🟡 reads LeRobot parquet; own write/format ⬜ (§P3)
-- [ ] MQTT / Kafka ingestion — ⬜ (§P7)
+- [x] MCAP → columnar (Parquet) conversion — ✅ JSON + **protobuf** + **cdr/ros2msg** (`convert_mcap`)
+- [x] ROS 2 bag (`.db3`) → columnar conversion — ✅ `convert_ros2_bag`
+- [x] Robotics DataFrame abstraction (typed, time-indexed, multi-sensor) — ✅ `RoboticsDataFrame`
+- [x] Time-synchronized sensor fusion — 🟡 `RoboticsDataFrame.align()` as-of join; multi-rate resample ⬜ (§P5)
+- [ ] Parquet-backed storage — 🟡 reads LeRobot parquet + **writes** converter Parquet/metadata; own dataset write/format ⬜ (§P3)
+- [ ] MQTT / Kafka ingestion — ⬜ (§P7, deferred)
 - [ ] LeRobot interoperability — 🟡 read v3.0 (local); Hub + write-back ⬜ (§P3)
 - [x] MLX / PyTorch / JAX data loaders — ✅ MLX/Torch/JAX output + `DataLoader` (native on-device transforms §P6)
 

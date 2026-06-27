@@ -168,18 +168,34 @@ for batch in loader:
     ...
 ```
 
-### Convert an MCAP log to columnar Parquet (works today)
+### Convert a robotics log to columnar Parquet (works today)
 
-Turn a raw robotics log ([MCAP](https://mcap.dev) — ROS 2 bags, Foxglove, teleop stacks) into one
-flattened Parquet table per JSON topic:
+Turn a raw robotics log ([MCAP](https://mcap.dev) — Foxglove/teleop — or a ROS 2 `.db3` bag) into
+one flattened Parquet table per topic, plus a self-describing `metadata.json` and a loader-ready
+`stats.json`. MCAP `json`, `protobuf` (via the embedded descriptor set), and `cdr`/`ros2msg`
+encodings all decode; ROS 2 bags decode their CDR against the embedded message definitions:
 
 ```python
 import pyroboframes as prf
 
-report = prf.convert_mcap("run.mcap", "out/")
+report = prf.convert_mcap("run.mcap", "out/")          # or prf.convert_ros2_bag("bag.db3", "out/")
 for t in report["topics"]:
     print(t["topic"], t["messages"], "msgs ->", t["path"])  # e.g. /state 2 msgs -> out/state.parquet
-print("skipped (non-JSON):", report["skipped"])
+print("skipped (undecodable):", report["skipped"])
+```
+
+### Query + time-align sensors with a Robotics DataFrame (works today)
+
+Load the converted output as a typed, time-indexed, multi-sensor table — then slice by time or
+snap every sensor onto a reference topic's timestamps (backward as-of join = time-synced fusion):
+
+```python
+df = prf.RoboticsDataFrame.from_mcap("run.mcap")   # or .from_converted("out/") / .from_ros2_bag(...)
+print(df.topics, df.time_range())
+
+window = df.slice(start_ns, end_ns)                # every topic restricted to a time window
+fused = df.align("/joint_states", tolerance=10_000_000)  # 10 ms; columns like "imu.accel.x"
+print(fused.log_time, fused["imu.accel.x"])        # NaN where no sample within tolerance
 ```
 
 ### Validate a dataset before training
@@ -211,7 +227,10 @@ print(report.ok, report.warnings)
 | **Off-GIL prefetch pipeline** (`loader(num_workers=…)`) | ✅ |
 | **Balanced sampling** (`loader(balanced=True)`, by episode) | ✅ |
 | **Episode-chunking sampler** (`loader(chunk_size=N)`, sequence-friendly) | ✅ |
-| **MCAP → columnar (Parquet)** converter (`convert_mcap()`, JSON topics) | ✅ |
+| **MCAP → columnar (Parquet)** converter (`convert_mcap()`) | ✅ JSON · protobuf · cdr/ros2msg |
+| **ROS 2 bag → columnar** converter (`convert_ros2_bag()`, `.db3`) | ✅ |
+| Converter **metadata.json + stats.json** (self-describing, loader-ready) | ✅ |
+| **Robotics DataFrame** (`RoboticsDataFrame`: time-index, slice, as-of `align`) | ✅ |
 | **Image transforms + augments** (Resize bilinear, Flip/Crop/ColorJitter) | ✅ (NumPy; GPU later) |
 | **Device/backend selection** (`resolve_device`, `DataLoader`, MPS) | ✅ |
 | **Loader profiling** (`DataLoader(on_batch=…)`, `loader.stats`) | ✅ |

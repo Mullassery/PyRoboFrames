@@ -11,8 +11,9 @@ engine version so wheels and the build can be smoke-tested end to end.
 from __future__ import annotations
 
 from . import _core, backend, transforms
-from ._core import Loader, RoboFrameDataset, convert_mcap
+from ._core import Loader, RoboFrameDataset, convert_mcap, convert_ros2_bag
 from .backend import available_backends, resolve_device
+from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
 
 __all__ = [
@@ -22,6 +23,10 @@ __all__ = [
     "Loader",
     "DataLoader",
     "convert_mcap",
+    "convert_ros2_bag",
+    "RoboticsDataFrame",
+    "TopicFrame",
+    "AlignedFrame",
     "transforms",
     "backend",
     "resolve_device",

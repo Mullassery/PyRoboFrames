@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-06-27
+
+### Added
+- **protobuf MCAP decoding** — `convert_mcap` now decodes `protobuf` topics dynamically from the
+  channel's embedded `FileDescriptorSet` (no codegen), flattening to columns like JSON.
+- **ros2msg / CDR decoding** — `cdr` topics decode against the parsed `ros2msg` schema (primitives,
+  fixed/bounded/unbounded arrays, strings, nested message types) via a new `core::ros2` XCDR1 reader.
+- **ROS 2 bag converter** — `convert_ros2_bag(input, out_dir)` reads a rosbag2 SQLite `.db3` (topics
+  + CDR blobs + embedded `message_definitions`) and writes one Parquet table per CDR topic.
+- **Automatic dataset metadata** — both converters now emit `metadata.json` (a self-describing
+  manifest: per-topic path, row count, `log_time` range, column dtypes) and `stats.json`
+  (per-column count/mean/std/min/max, loader-compatible) alongside the Parquet.
+- **`RoboticsDataFrame`** — a typed, time-indexed, multi-sensor view over converted output:
+  per-topic `TopicFrame` access, `time_range()`, `slice(start, end)`, and `align(reference,
+  tolerance=…)` (backward as-of join for time-synchronized multi-sensor fusion). Construct via
+  `from_converted` / `from_mcap` / `from_ros2_bag`.
+
+### Fixed
+- Declared `numpy` + `pyarrow` as runtime dependencies — a bare-venv `pip install pyroboframes`
+  previously crashed on `import pyroboframes` (numpy is imported at package import time).
+
 ## [0.1.8] - 2026-06-27
 
 ### Added
