@@ -24,12 +24,29 @@ def download_lerobot_dataset(
     By default, downloads the entire dataset (``snapshot_download``). If ``episodes`` is
     specified, downloads only metadata + the given episode indices, streaming others on-demand.
 
+    Full download example::
+
+        import pyroboframes as prf
+        local_path = prf.download_lerobot_dataset("lerobot/aloha_mobile_cabinet")
+        ds = prf.RoboFrameDataset.from_path(local_path)
+
+    Partial download with on-demand streaming::
+
+        # Download only episodes 0 and 1; others stream when accessed
+        local_path = prf.download_lerobot_dataset(
+            "lerobot/aloha_mobile_cabinet",
+            episodes=[0, 1],
+        )
+        ds = prf.RoboFrameDataset.from_path(local_path)
+        # Accessing episode 2 will download it on-demand
+        loader = ds.loader(episodes=[0, 1, 2])
+
     Args:
         repo_id: Hugging Face dataset repo (e.g., "lerobot/aloha_mobile_cabinet")
-        local_dir: Cache directory (default: HF cache)
+        local_dir: Cache directory (default: HF cache at `~/.cache/huggingface/datasets/`)
         revision: Git revision (default: "main")
         episodes: List of episode indices to pre-download; others stream on-demand. None = full
-                  dataset. Requires `huggingface_hub >= 0.21.0` for allow_patterns.
+                  dataset. Requires `huggingface_hub >= 0.21.0`.
 
     Returns:
         Local path to the dataset (can be opened with :class:`pyroboframes.RoboFrameDataset`).

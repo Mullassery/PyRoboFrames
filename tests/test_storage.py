@@ -86,3 +86,47 @@ def test_lerobot_write_back_validates_inputs(tmp_path):
 def test_hub_importer_is_exported():
     # Network-dependent; just assert the entrypoint exists and errors clearly without the dep.
     assert callable(prf.download_lerobot_dataset)
+
+
+def test_lerobot_partial_download_creates_dataset_structure(tmp_path):
+    """Test that partial download creates a valid dataset structure for streaming."""
+    from unittest.mock import patch
+    from pyroboframes.hub import _download_lerobot_partial
+
+    # Create a fake LeRobot dataset structure locally
+    repo_id = "test/dataset"
+    ep_table = pa.table({
+        "episode_index": [0, 1],
+        "length": [3, 3],
+        "data/chunk_index": [0, 0],
+        "data/file_index": [0, 0],
+        "videos/cam0/chunk_index": [0, 0],
+        "videos/cam0/file_index": [0, 1],
+    })
+
+    def mock_hf_download(repo_id, filename, **kwargs):
+        local_dir = kwargs.get("local_dir", "/mock")
+        if "info.json" in filename:
+            # Return path to mock info.json
+            return f"{local_dir}/meta/info.json"
+        elif "episodes" in filename:
+            # Return path to episodes parquet; write a real file so we can test reading
+            full_path = tmp_path / "episodes.parquet"
+            pq.write_table(ep_table, str(full_path))
+            return str(full_path)
+        else:
+            # Other files (data, videos) — just return a path
+            return f"{local_dir}/{filename}"
+
+    with patch("huggingface_hub.hf_hub_download", side_effect=mock_hf_download):
+        # Request episodes [0, 1]; should call hf_hub_download for each
+        result_dir = _download_lerobot_partial(
+            repo_id=repo_id,
+            episodes=[0, 1],
+            local_dir=str(tmp_path / "local"),
+            revision="main",
+        )
+        # Verify the function returns a directory (actual downloads depend on network)
+        assert result_dir is not None
+        # Verify local dir was created
+        assert (tmp_path / "local").exists()
