@@ -151,6 +151,37 @@ for batch in loader:
 > memory. Decoding straight into MLX on the Apple Media Engine with **zero copies** (no NumPy
 > hop) is the next milestone — see [Roadmap](#roadmap).
 
+### Sequence batches for sequence models (works today)
+
+`chunk_size` draws contiguous, in-episode chunks (never crossing a boundary) and shuffles them as
+units — sequence-friendly batches with decode locality. Pair it with `delta_timestamps` and MLX:
+
+```python
+loader = ds.loader(
+    batch_size=32,
+    chunk_size=16,                                          # contiguous 16-frame chunks
+    delta_timestamps={"observation.state": [-0.2, -0.1, 0.0]},
+    output="mlx",
+)
+for batch in loader:
+    seq = batch["observation.state"]   # mlx.core.array [32, 3, state_dim]
+    ...
+```
+
+### Convert an MCAP log to columnar Parquet (works today)
+
+Turn a raw robotics log ([MCAP](https://mcap.dev) — ROS 2 bags, Foxglove, teleop stacks) into one
+flattened Parquet table per JSON topic:
+
+```python
+import pyroboframes as prf
+
+report = prf.convert_mcap("run.mcap", "out/")
+for t in report["topics"]:
+    print(t["topic"], t["messages"], "msgs ->", t["path"])  # e.g. /state 2 msgs -> out/state.parquet
+print("skipped (non-JSON):", report["skipped"])
+```
+
 ### Validate a dataset before training
 
 ```python
@@ -179,6 +210,8 @@ print(report.ok, report.warnings)
 | Loader **checkpoint/resume** (`loader.position` / `seek()`) | ✅ |
 | **Off-GIL prefetch pipeline** (`loader(num_workers=…)`) | ✅ |
 | **Balanced sampling** (`loader(balanced=True)`, by episode) | ✅ |
+| **Episode-chunking sampler** (`loader(chunk_size=N)`, sequence-friendly) | ✅ |
+| **MCAP → columnar (Parquet)** converter (`convert_mcap()`, JSON topics) | ✅ |
 | **Image transforms + augments** (Resize bilinear, Flip/Crop/ColorJitter) | ✅ (NumPy; GPU later) |
 | **Device/backend selection** (`resolve_device`, `DataLoader`, MPS) | ✅ |
 | **Loader profiling** (`DataLoader(on_batch=…)`, `loader.stats`) | ✅ |

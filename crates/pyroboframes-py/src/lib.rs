@@ -24,7 +24,7 @@ use pyroboframes_core::dataset::Dataset;
 use pyroboframes_core::decode::{Decoder, FrameCache};
 use pyroboframes_core::loader::{Sample, TabularLoader, WindowedSample};
 use pyroboframes_core::pipeline::{AssemblerConfig, Prefetcher, RustBatch};
-use pyroboframes_core::sampler::{weighted_with_replacement, Sampler};
+use pyroboframes_core::sampler::{chunked_order, weighted_with_replacement, Sampler};
 use pyroboframes_core::window::WindowSpec;
 
 /// Core-typed decoder factory handed to prefetch workers (each builds its own decoder).
@@ -215,7 +215,14 @@ impl RoboFrameDataset {
     ///
     /// `balanced=True` draws frames so every episode is sampled equally regardless of its length
     /// (weighted sampling with replacement) — useful for length-imbalanced demonstration sets.
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4, balanced=false))]
+    ///
+    /// `chunk_size` > 0 switches to **episode-chunking** sampling: the population is cut into
+    /// contiguous chunks of that many frames *within* each episode (never crossing a boundary),
+    /// the chunks are shuffled as units (when `shuffle`), and frames stay in temporal order inside
+    /// a chunk. This keeps decode locality and produces sequence-friendly batches; pair it with a
+    /// matching `delta_timestamps` window for MLX/PyTorch sequence models. Ignored when
+    /// `balanced=True`.
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4, balanced=false, chunk_size=0))]
     #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
@@ -234,6 +241,7 @@ impl RoboFrameDataset {
         num_workers: usize,
         prefetch: usize,
         balanced: bool,
+        chunk_size: usize,
     ) -> PyResult<Py<PyAny>> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
@@ -266,13 +274,14 @@ impl RoboFrameDataset {
             inner.enable_normalization(&normalize).map_err(core_err)?;
         }
         // Population of global frame indices to draw from: all frames, or just the chosen episodes.
-        let base: Vec<usize> = match episodes {
-            Some(eps) => inner.frame_indices_for_episodes(&eps),
+        let base: Vec<usize> = match &episodes {
+            Some(eps) => inner.frame_indices_for_episodes(eps),
             None => (0..inner.total_frames()).collect(),
         };
         // Build the per-epoch order over positions in `base`, then map to global frame indices.
         // `balanced` weights each frame by 1/episode_len so episodes are drawn equally (with
-        // replacement); otherwise the sampler permutes the frames (optionally shuffled).
+        // replacement); `chunk_size` shuffles contiguous within-episode chunks (sequence-friendly,
+        // decode-local); otherwise the sampler permutes the frames (optionally shuffled).
         let positions: Vec<usize> = if balanced {
             let weights: Vec<f64> = base
                 .iter()
@@ -282,6 +291,9 @@ impl RoboFrameDataset {
                 })
                 .collect();
             weighted_with_replacement(&weights, base.len(), seed)
+        } else if chunk_size >= 1 {
+            let runs = inner.episode_runs(episodes.as_deref());
+            chunked_order(&runs, chunk_size, shuffle, seed)
         } else {
             Sampler::new(shuffle, shuffle_buffer, seed).order(base.len(), 0)
         };
@@ -640,11 +652,33 @@ impl PrefetchLoader {
     }
 }
 
+/// Convert an MCAP robotics log into one Parquet table per JSON topic under `out_dir` (created if
+/// absent). Returns `{"topics": [{topic, messages, columns, path}], "skipped": [topic, …]}` where
+/// `skipped` lists topics whose message encoding isn't JSON (protobuf / ros2msg / cdr).
+#[pyfunction]
+fn convert_mcap(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResult<Py<PyDict>> {
+    let report = pyroboframes_core::mcap::convert(&input, &out_dir).map_err(core_err)?;
+    let out = PyDict::new_bound(py);
+    let topics = pyo3::types::PyList::empty_bound(py);
+    for t in &report.topics {
+        let d = PyDict::new_bound(py);
+        d.set_item("topic", &t.topic)?;
+        d.set_item("messages", t.messages)?;
+        d.set_item("columns", t.columns)?;
+        d.set_item("path", t.path.to_string_lossy())?;
+        topics.append(d)?;
+    }
+    out.set_item("topics", topics)?;
+    out.set_item("skipped", report.skipped_topics.clone())?;
+    Ok(out.unbind())
+}
+
 /// `pyroboframes._core` — the compiled extension module.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", pyroboframes_core::VERSION)?;
     m.add_function(wrap_pyfunction!(engine_version, m)?)?;
+    m.add_function(wrap_pyfunction!(convert_mcap, m)?)?;
     m.add_class::<RoboFrameDataset>()?;
     m.add_class::<Loader>()?;
     m.add_class::<PrefetchLoader>()?;

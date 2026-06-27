@@ -13,6 +13,7 @@ pub mod decode;
 pub mod episodes;
 pub mod info;
 pub mod loader;
+pub mod mcap;
 pub mod pipeline;
 pub mod rng;
 pub mod sampler;
@@ -32,6 +33,8 @@ pub enum Error {
     Decode(String),
     #[error("validation failed with {0} error(s)")]
     Validation(usize),
+    #[error("conversion error: {0}")]
+    Conversion(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 }

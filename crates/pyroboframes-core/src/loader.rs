@@ -149,6 +149,29 @@ impl TabularLoader {
         out
     }
 
+    /// Position-runs partitioning the population by episode, in population order. Each entry is
+    /// `(start_position, length)` into the population that [`frame_indices_for_episodes`] /
+    /// `0..total_frames` produces (all frames when `episodes` is `None`, else just the selected
+    /// episodes' frames). Feeds [`chunked_order`](crate::sampler::chunked_order) so chunks never
+    /// cross an episode boundary. Unknown episode indices are ignored.
+    pub fn episode_runs(&self, episodes: Option<&[usize]>) -> Vec<(usize, usize)> {
+        let wanted: Option<HashSet<usize>> = episodes.map(|e| e.iter().copied().collect());
+        let mut runs = Vec::new();
+        let mut pos = 0usize;
+        for ep in self.index.episodes() {
+            let keep = wanted
+                .as_ref()
+                .map(|w| w.contains(&ep.episode_index))
+                .unwrap_or(true);
+            if keep {
+                let len = ep.to_index - ep.from_index;
+                runs.push((pos, len));
+                pos += len;
+            }
+        }
+        runs
+    }
+
     /// Ensure a data shard is open (cached) so subsequent reads don't reopen the file.
     fn ensure_open(&mut self, key: (usize, usize)) -> Result<()> {
         if !self.open.contains_key(&key) {
@@ -458,6 +481,22 @@ mod tests {
             (0..100).collect::<Vec<_>>()
         );
         assert!(loader.frame_indices_for_episodes(&[]).is_empty());
+    }
+
+    #[test]
+    fn episode_runs_partition_the_population() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_dataset(tmp.path());
+        let ds = Dataset::open(tmp.path()).unwrap();
+        let loader = TabularLoader::open(Arc::new(ds)).unwrap();
+
+        // All frames: two episodes of 50, contiguous from position 0.
+        assert_eq!(loader.episode_runs(None), vec![(0, 50), (50, 50)]);
+        // Just episode 1: its 50 frames map to positions [0, 50) of the filtered population.
+        assert_eq!(loader.episode_runs(Some(&[1])), vec![(0, 50)]);
+        // Unknown indices ignored; empty selection -> no runs.
+        assert_eq!(loader.episode_runs(Some(&[0, 99])), vec![(0, 50)]);
+        assert!(loader.episode_runs(Some(&[])).is_empty());
     }
 
     #[test]

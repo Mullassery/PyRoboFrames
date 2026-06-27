@@ -86,6 +86,44 @@ pub fn weighted_with_replacement(weights: &[f64], n: usize, seed: u64) -> Vec<us
     out
 }
 
+/// Episode-chunking order. Splits each episode's contiguous position-run (`runs` are
+/// `(start_position, length)` partitioning the population by episode, in population order) into
+/// fixed-size chunks of up to `chunk_size` consecutive positions, optionally shuffles the
+/// **chunks as whole units** (seeded Fisher–Yates), then flattens. Positions within a chunk stay
+/// in temporal order — yielding sequence-friendly, decode-local batches while still randomizing
+/// across the set. Returns positions into the population (the same space [`Sampler::order`] uses),
+/// covering every position exactly once. `chunk_size <= 1` shuffles individual positions.
+pub fn chunked_order(
+    runs: &[(usize, usize)],
+    chunk_size: usize,
+    shuffle: bool,
+    seed: u64,
+) -> Vec<usize> {
+    let chunk_size = chunk_size.max(1);
+    // Cut each episode run into contiguous (start, len) chunks; the last chunk may be shorter.
+    let mut chunks: Vec<(usize, usize)> = Vec::new();
+    for &(start, len) in runs {
+        let mut off = 0;
+        while off < len {
+            let clen = chunk_size.min(len - off);
+            chunks.push((start + off, clen));
+            off += clen;
+        }
+    }
+    if shuffle && chunks.len() > 1 {
+        let mut rng = SplitMix64::new(seed);
+        for i in (1..chunks.len()).rev() {
+            chunks.swap(i, rng.below(i + 1));
+        }
+    }
+    let total: usize = chunks.iter().map(|(_, l)| l).sum();
+    let mut out = Vec::with_capacity(total);
+    for (start, clen) in chunks {
+        out.extend(start..start + clen);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +192,54 @@ mod tests {
         let a = weighted_with_replacement(&[1.0, 2.0, 3.0], 100, 1);
         assert_eq!(a, weighted_with_replacement(&[1.0, 2.0, 3.0], 100, 1));
         assert_ne!(a, weighted_with_replacement(&[1.0, 2.0, 3.0], 100, 2));
+    }
+
+    #[test]
+    fn chunked_order_covers_all_positions_once() {
+        // Two episodes: positions [0,10) and [10,25).
+        let runs = [(0usize, 10usize), (10, 15)];
+        let order = chunked_order(&runs, 4, true, 7);
+        assert_eq!(sorted(order.clone()), (0..25).collect::<Vec<_>>());
+        assert_eq!(order.len(), 25);
+    }
+
+    #[test]
+    fn chunked_order_keeps_chunks_contiguous_within_episodes() {
+        // Even division (two episodes of 8, chunk 4 -> exactly 4 chunks of 4) makes chunk
+        // boundaries unambiguous: each consecutive group of `chunk_size` output positions must be
+        // one ascending contiguous chunk lying wholly inside a single episode (boundary at 8).
+        let runs = [(0usize, 8usize), (8, 8)];
+        let chunk = 4;
+        let order = chunked_order(&runs, chunk, true, 1);
+        assert_eq!(order.len(), 16);
+        for group in order.chunks(chunk) {
+            for w in group.windows(2) {
+                assert_eq!(w[1], w[0] + 1, "chunk not contiguous: {group:?}");
+            }
+            let in_ep0 = group.iter().all(|&p| p < 8);
+            let in_ep1 = group.iter().all(|&p| p >= 8);
+            assert!(in_ep0 || in_ep1, "chunk crossed episode boundary: {group:?}");
+        }
+    }
+
+    #[test]
+    fn chunked_order_is_deterministic_and_seed_sensitive() {
+        let runs = [(0usize, 20usize), (20, 20)];
+        let a = chunked_order(&runs, 5, true, 3);
+        assert_eq!(a, chunked_order(&runs, 5, true, 3));
+        assert_ne!(a, chunked_order(&runs, 5, true, 4));
+        // No shuffle -> exactly sequential.
+        assert_eq!(
+            chunked_order(&runs, 5, false, 0),
+            (0..40).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn chunked_order_actually_reorders_chunks() {
+        let runs = [(0usize, 40usize)];
+        let order = chunked_order(&runs, 4, true, 9);
+        assert_ne!(order, (0..40).collect::<Vec<_>>());
     }
 
     #[test]

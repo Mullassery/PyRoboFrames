@@ -11,7 +11,7 @@ engine version so wheels and the build can be smoke-tested end to end.
 from __future__ import annotations
 
 from . import _core, backend, transforms
-from ._core import Loader, RoboFrameDataset
+from ._core import Loader, RoboFrameDataset, convert_mcap
 from .backend import available_backends, resolve_device
 from .dataloader import DataLoader
 
@@ -21,6 +21,7 @@ __all__ = [
     "RoboFrameDataset",
     "Loader",
     "DataLoader",
+    "convert_mcap",
     "transforms",
     "backend",
     "resolve_device",

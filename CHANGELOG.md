@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Episode-chunking sampler** — `loader(chunk_size=N)` cuts each episode into contiguous
+  N-frame chunks, shuffles the chunks as units, and keeps frames in temporal order inside a chunk.
+  Sequence-friendly batches with decode locality; never crosses an episode boundary. Core
+  `sampler::chunked_order` + `TabularLoader::episode_runs`.
+- **MLX sequence batching + benchmarks** — temporal-window (`delta_timestamps`) + episode-chunked
+  `[batch, steps, dim]` sequences now feed `output="mlx"` directly; `benches/throughput.py` gains
+  an output-framework (numpy/mlx/torch/jax) comparison and a sequence-batching section.
+- **MCAP → columnar (Parquet) converter** (Tier-1 data-platform milestone) — `convert_mcap(input,
+  out_dir)` reads an MCAP robotics log and writes one flattened Parquet table per JSON topic
+  (dot-path leaf columns + `log_time`); non-JSON topics (protobuf/ros2msg/cdr) are reported as
+  skipped. Core `mcap::convert`.
+
 ## [0.1.7] - 2026-06-25
 
 ### Added

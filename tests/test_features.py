@@ -220,6 +220,54 @@ def test_balanced_sampling_smoke(tmp_path):
     assert episodes_hit == {0, 1, 2, 3}
 
 
+def test_episode_chunking_keeps_sequences_contiguous(tmp_path):
+    # 3 episodes x 8 frames; state[i, 0] == global frame index i. chunk_size=4 divides 8 evenly,
+    # so the epoch is exactly 6 shuffled chunks of 4 contiguous in-episode frames.
+    make_dataset(str(tmp_path), episodes=3, length=8)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    loader = ds.loader(batch_size=4, shuffle=True, seed=0, chunk_size=4)
+
+    seen = []
+    for b in loader:
+        seen.extend(int(round(x)) for x in b["observation.state"][:, 0])
+
+    assert sorted(seen) == list(range(24))  # every frame exactly once
+    for g in (seen[i : i + 4] for i in range(0, 24, 4)):
+        assert g == list(range(g[0], g[0] + 4))  # ascending + contiguous
+        assert g[0] // 8 == g[-1] // 8  # never crosses an episode boundary
+    assert seen != list(range(24))  # chunks were actually shuffled
+
+
+def test_episode_chunking_respects_episode_filter(tmp_path):
+    make_dataset(str(tmp_path), episodes=4, length=10)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    # Restrict to episodes 1 and 3, episode-chunked.
+    loader = ds.loader(batch_size=5, shuffle=True, seed=1, chunk_size=5, episodes=[1, 3])
+    seen = sorted(int(round(x)) for b in loader for x in b["observation.state"][:, 0])
+    expected = sorted(list(range(10, 20)) + list(range(30, 40)))
+    assert seen == expected
+
+
+def test_mlx_sequence_batching(tmp_path):
+    mx = pytest.importorskip("mlx.core")  # skip cleanly if MLX isn't installed
+    make_dataset(str(tmp_path), episodes=2, length=20)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+
+    # Temporal window (3 steps) + episode chunking -> [batch, steps, dim] sequences as MLX arrays.
+    loader = ds.loader(
+        batch_size=4,
+        shuffle=True,
+        seed=0,
+        chunk_size=5,
+        delta_timestamps={"observation.state": [-0.2, -0.1, 0.0]},
+        output="mlx",
+    )
+    b = next(iter(loader))
+    seq = b["observation.state"]
+    assert isinstance(seq, mx.array)
+    assert seq.shape == (4, 3, 3)  # [batch, num_steps, feature_dim]
+
+
 def test_loader_filters_to_split_episodes(tmp_path):
     # 4 episodes x 25 frames; episode e owns global frames [e*25, (e+1)*25).
     make_dataset(str(tmp_path), episodes=4, length=25)

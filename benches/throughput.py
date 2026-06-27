@@ -95,12 +95,28 @@ def make_dataset(root: str, episodes: int, length: int, with_video: bool, vw: in
     return total
 
 
-def time_epoch(ds, total: int, *, cameras, batch_size: int, num_workers: int) -> float:
-    """Frames/s for one full epoch (median of 3 runs)."""
+def time_epoch(
+    ds,
+    total: int,
+    *,
+    cameras=None,
+    batch_size: int,
+    num_workers: int = 0,
+    output: str = "numpy",
+    delta_timestamps=None,
+    chunk_size: int = 0,
+) -> float:
+    """Frames/s for one full epoch (best of 3 runs)."""
     best = 0.0
     for _ in range(3):
         loader = ds.loader(
-            batch_size=batch_size, shuffle=True, cameras=cameras, num_workers=num_workers
+            batch_size=batch_size,
+            shuffle=True,
+            cameras=cameras,
+            num_workers=num_workers,
+            output=output,
+            delta_timestamps=delta_timestamps,
+            chunk_size=chunk_size,
         )
         t0 = time.perf_counter()
         n = 0
@@ -109,6 +125,18 @@ def time_epoch(ds, total: int, *, cameras, batch_size: int, num_workers: int) ->
         dt = time.perf_counter() - t0
         best = max(best, n / dt if dt > 0 else 0.0)
     return best
+
+
+def available_outputs() -> list[str]:
+    """Output frameworks installed in this environment, NumPy first."""
+    outs = ["numpy"]
+    for name, mod in (("torch", "torch"), ("mlx", "mlx.core"), ("jax", "jax")):
+        try:
+            __import__(mod)
+            outs.append(name)
+        except ImportError:
+            pass
+    return outs
 
 
 def main() -> None:
@@ -149,6 +177,37 @@ def main() -> None:
                 tag = "sync" if w == 0 else f"{w}"
                 print(f"{tag:>12} | {fps:>12,.0f} | {fps / base:>7.2f}x")
             print()
+
+        # Output-framework comparison (tabular): how much the per-batch conversion to MLX / Torch /
+        # JAX costs vs the native NumPy form. MLX is the Apple-Silicon path of interest.
+        outs = available_outputs()
+        print(f"== output framework (tabular, batch={args.batch_size}) ==")
+        print(f"{'output':>12} | {'frames/s':>12} | {'vs numpy':>8}")
+        print("-" * 38)
+        base = None
+        for out in outs:
+            fps = time_epoch(ds, total, batch_size=args.batch_size, output=out)
+            base = base or fps
+            print(f"{out:>12} | {fps:>12,.0f} | {fps / base:>7.2f}x")
+        print(f"   (available: {', '.join(outs)})\n")
+
+        # Sequence batching: temporal-window + episode-chunking sampler, producing
+        # [batch, steps, dim] sequences, in NumPy vs MLX (the MLX sequence-model feed path).
+        steps = [-0.2, -0.1, 0.0]
+        deltas = {"observation.state": steps, "action": steps}
+        seq_outs = [o for o in outs if o in ("numpy", "mlx")]
+        print(f"== sequence batching ({len(steps)}-step window, episode-chunked) ==")
+        print(f"{'output':>12} | {'frames/s':>12} | {'vs numpy':>8}")
+        print("-" * 38)
+        base = None
+        for out in seq_outs:
+            fps = time_epoch(
+                ds, total, batch_size=args.batch_size, output=out,
+                delta_timestamps=deltas, chunk_size=args.length // 4 or 1,
+            )
+            base = base or fps
+            print(f"{out:>12} | {fps:>12,.0f} | {fps / base:>7.2f}x")
+        print()
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

@@ -64,8 +64,9 @@ GPU-only (`[C]`, can't verify here) and research/heavy items sink. Each line is 
 - [x] **JAX** output adapter (`output="jax"`) — ✅
 - [x] Bilinear **Resize** + **flip/crop/color** augments (`transforms.*`) — ✅
 - [x] **Performance reporting** + **profiling hooks** (`DataLoader.stats` / `on_batch`) — ✅
-- [ ] **Episode-chunking** sampler — `S · med-high · ✓test` (remaining)
-- [ ] **MLX** sequence batching + MLX benchmarks — `S · med-high · ✓test` (remaining)
+- [x] **Episode-chunking** sampler — `loader(chunk_size=N)`, contiguous in-episode chunks — ✅
+- [x] **MLX** sequence batching + MLX benchmarks — windowed/chunked `[batch, steps, dim]` → MLX;
+      `benches/throughput.py` output-framework + sequence sections — ✅
 
 ### P2 — High-value, medium effort (testable now, `M`)
 - [ ] **Lazy loading / mmap parquet** — `M · high · ✓test` (datasets > RAM)
@@ -75,8 +76,9 @@ GPU-only (`[C]`, can't verify here) and research/heavy items sink. Each line is 
 
 ### P3 — Tier-1 platform identity (testable, high value, large `L`)
 *High strategic value but bigger builds, so they sit below the cheap wins.*
-- [ ] **MCAP → columnar (Parquet)** converter — `L · very-high · ✓test` (most identity-defining,
-      self-contained → recommended first big milestone)
+- [x] **MCAP → columnar (Parquet)** converter — `convert_mcap()`: JSON topics → one flattened
+      Parquet table each (`core::mcap`); non-JSON encodings reported as skipped — ✅
+      *Next here:* protobuf/ros2msg decoding, then the Robotics DataFrame abstraction.
 - [ ] **Robotics DataFrame** abstraction — `L · high · ✓test`
 - [ ] **LeRobot write-back** (+ HF Hub streaming) — `L · high · ✓test` (streaming part is network)
 - [ ] **Time-synchronized multi-sensor fusion** / multi-rate alignment — `L · high · ✓test`
