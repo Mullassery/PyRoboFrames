@@ -15,9 +15,13 @@ from ._core import Loader, RoboFrameDataset, convert_mcap, convert_ros2_bag
 from .backend import available_backends, default_framework, resolve_device, to_backend
 from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
+from .distributed import DistributedLoader, DistributedSampler
+from .filtering import EpisodeFilter, EpisodeFilterBuilder
 from .hub import download_lerobot_dataset
 from .lazy_parquet import LazyDataFrameShards, LazyParquetReader
 from .lerobot import write_lerobot_dataset
+from .quality import EpisodeScorer, quality_percentile_filter
+from .versioning import DatasetManifest, DatasetVersion
 
 __all__ = [
     "__version__",
@@ -25,6 +29,8 @@ __all__ = [
     "RoboFrameDataset",
     "Loader",
     "DataLoader",
+    "DistributedLoader",
+    "DistributedSampler",
     "convert_mcap",
     "convert_ros2_bag",
     "RoboticsDataFrame",
@@ -34,6 +40,12 @@ __all__ = [
     "download_lerobot_dataset",
     "LazyParquetReader",
     "LazyDataFrameShards",
+    "EpisodeScorer",
+    "quality_percentile_filter",
+    "EpisodeFilter",
+    "EpisodeFilterBuilder",
+    "DatasetVersion",
+    "DatasetManifest",
     "transforms",
     "backend",
     "resolve_device",

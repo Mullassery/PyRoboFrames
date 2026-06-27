@@ -1316,7 +1316,7 @@ dependencies = [
 
 [[package]]
 name = "pyroboframes-core"
-version = "0.1.10"
+version = "0.1.12"
 dependencies = [
  "arrow",
  "bytes",
@@ -1337,7 +1337,7 @@ dependencies = [
 
 [[package]]
 name = "pyroboframes-py"
-version = "0.1.10"
+version = "0.1.12"
 dependencies = [
  "numpy",
  "pyo3",
