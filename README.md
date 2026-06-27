@@ -6,7 +6,7 @@
 
 **A robotics data platform for training robots from recorded demonstrations — ingest, query, and a fast dataloader, built for Apple Silicon and Linux.**
 
-> **Status: v0.4.0-rc** — Video codec selection + depth camera support + GPU decode backends. **What works today:**
+> **Status: v0.4.1-rc** — Camera calibration + depth I/O + codec selection + depth camera support + GPU decode backends. **What works today:**
 > the LeRobot **dataloader** (state/action + camera frames, temporal windows, **video**, **off-GIL prefetch**,
 > NumPy / MLX / PyTorch / JAX output); **ingest** (MCAP JSON/protobuf/CDR, ROS 2 `.db3` bags);
 > **data-ops** (quality scoring, episode filtering, delta compression, sparse/masked data, versioning,
@@ -253,6 +253,8 @@ print(report.ok, report.warnings)
 | **LeRobot write-back** (`write_lerobot_dataset()`, v3.0) | ✅ |
 | **Video codec selection** (H.264, HEVC, AV1) | ✅ (v0.4.0) 30-40% storage savings with HEVC |
 | **Depth camera support** (point clouds: .xyz, .ply, .pcd) | ✅ (v0.4.0) Oak-D, RealSense, generic depth sensors |
+| **Camera calibration** (intrinsics, distortion, poses) | ✅ (v0.4.1) Projection/unprojection with world transforms |
+| **Depth I/O utilities** (depth→point cloud, filtering, downsampling) | ✅ (v0.4.1) NumPy arrays, depth maps, ICP alignment (scipy) |
 | **HF Hub importer** (`download_lerobot_dataset()`) | ✅ (needs `huggingface_hub`) |
 | **Memory-mapped** data shards (lower RSS on large datasets) | ✅ |
 | **Image transforms + augments** (Resize bilinear, Flip/Crop/ColorJitter) | ✅ (NumPy/MLX/Torch; CV-CUDA requires GPU) |
