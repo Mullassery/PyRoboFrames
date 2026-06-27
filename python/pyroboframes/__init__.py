@@ -12,7 +12,16 @@ from __future__ import annotations
 
 from . import _core, backend, transforms
 from ._core import Loader, RoboFrameDataset, convert_mcap, convert_ros2_bag
+from .augmentation import (
+    AugmentationPipeline,
+    RandomBrightness,
+    RandomCrop,
+    RandomFlip,
+    RandomNoise,
+    RandomRotate,
+)
 from .backend import available_backends, default_framework, resolve_device, to_backend
+from .compression import CompressionPipeline, DeltaEncoder, SparseArray
 from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
 from .distributed import DistributedLoader, DistributedSampler
@@ -20,7 +29,10 @@ from .filtering import EpisodeFilter, EpisodeFilterBuilder
 from .hub import download_lerobot_dataset
 from .lazy_parquet import LazyDataFrameShards, LazyParquetReader
 from .lerobot import write_lerobot_dataset
+from .masking import MaskedDataFrame, SensorHealthMonitor, interpolate_missing
 from .quality import EpisodeScorer, quality_percentile_filter
+from .streaming import KafkaStreamer, MQTTStreamer, StreamingRoboticsDataset
+from .tensorflow_support import KerasDataAdapter, create_keras_model_for_robotics, to_tf_dataset
 from .versioning import DatasetManifest, DatasetVersion
 
 __all__ = [
@@ -46,6 +58,24 @@ __all__ = [
     "EpisodeFilterBuilder",
     "DatasetVersion",
     "DatasetManifest",
+    "DeltaEncoder",
+    "SparseArray",
+    "CompressionPipeline",
+    "MaskedDataFrame",
+    "SensorHealthMonitor",
+    "interpolate_missing",
+    "AugmentationPipeline",
+    "RandomRotate",
+    "RandomBrightness",
+    "RandomNoise",
+    "RandomCrop",
+    "RandomFlip",
+    "to_tf_dataset",
+    "KerasDataAdapter",
+    "create_keras_model_for_robotics",
+    "MQTTStreamer",
+    "KafkaStreamer",
+    "StreamingRoboticsDataset",
     "transforms",
     "backend",
     "resolve_device",
