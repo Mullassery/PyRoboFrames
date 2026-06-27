@@ -6,14 +6,15 @@
 
 **A robotics data platform for training robots from recorded demonstrations — ingest, query, and a fast dataloader, built for Apple Silicon and Linux.**
 
-> **Status: v0.2.0** — production-ready core + high-priority data-ops features. **What works today:**
+> **Status: v0.3.0** — GPU decode & transform backends. **What works today:**
 > the LeRobot **dataloader** (state/action + camera frames, temporal windows, **video**, **off-GIL prefetch**,
 > NumPy / MLX / PyTorch / JAX output); **ingest** (MCAP JSON/protobuf/CDR, ROS 2 `.db3` bags);
 > **data-ops** (quality scoring, episode filtering, delta compression, sparse/masked data, versioning,
 > distributed loading, MQTT/Kafka streaming); a time-indexed **Robotics DataFrame**; **LeRobot write-back**;
-> **curriculum** + **goal-conditioned** sampling; **batched augmentation**; **Keras/TensorFlow adapter**; memory-mapped shards.
-> In progress: Apple-Silicon **zero-copy MLX** (decode → IOSurface, gated on
-> [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and **NVIDIA CUDA/NVDEC**. See [What works today](#what-works-today).
+> **curriculum** + **goal-conditioned** sampling; **batched augmentation**; **Keras/TensorFlow adapter**; memory-mapped shards;
+> **GPU decode** (VideoToolbox on macOS, NVDEC on Linux+CUDA); **CV-CUDA transforms**. Next:
+> Apple-Silicon **zero-copy MLX** (decode → IOSurface, gated on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)).
+> See [What works today](#what-works-today).
 
 ---
 
@@ -38,10 +39,11 @@ It's also growing into a small **data platform**: convert raw robot logs (**MCAP
 bags**) into columnar Parquet, work with them through a time-indexed **Robotics DataFrame**
 (slice, time-align, resample), and **write datasets back out** in LeRobot v3.0 format.
 
-> **Honest status on speed:** decode today is **FFmpeg** (the Apple Media-Engine hardware path is
-> planned). The **off-GIL prefetch pipeline** works: `num_workers=4` shows measurable improvement
-> over synchronous decoding on a Mac; a published throughput benchmark vs other libraries is
-> planned. See [What works today](#what-works-today).
+> **Honest status on speed:** decode uses **FFmpeg with hardware acceleration** (VideoToolbox on macOS,
+> NVDEC on Linux+CUDA; GPU verification pending hardware access). **Zero-copy MLX** (no NumPy hop)
+> is next (awaiting [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)). The **off-GIL
+> prefetch pipeline** works: `num_workers=4` shows measurable improvement over synchronous decoding.
+> See [What works today](#what-works-today) and [GPU_VERIFICATION.md](./docs/GPU_VERIFICATION.md).
 
 ### When would I use it?
 
@@ -251,7 +253,7 @@ print(report.ok, report.warnings)
 | **LeRobot write-back** (`write_lerobot_dataset()`, v3.0) | ✅ |
 | **HF Hub importer** (`download_lerobot_dataset()`) | ✅ (needs `huggingface_hub`) |
 | **Memory-mapped** data shards (lower RSS on large datasets) | ✅ |
-| **Image transforms + augments** (Resize bilinear, Flip/Crop/ColorJitter) | ✅ (NumPy; GPU later) |
+| **Image transforms + augments** (Resize bilinear, Flip/Crop/ColorJitter) | ✅ (NumPy/MLX/Torch; CV-CUDA requires GPU) |
 | **Episode quality scoring** (diversity, sharpness, state_variance, action_magnitude) | ✅ (v0.2) |
 | **Episode filtering** (SQL-like WHERE clauses for curriculum learning) | ✅ (v0.2) |
 | **Dataset versioning** (incremental append w/ metadata tracking) | ✅ (v0.2) |
@@ -266,10 +268,11 @@ print(report.ok, report.warnings)
 | **Loader profiling** (`DataLoader(on_batch=…)`, `loader.stats`) | ✅ |
 | **Throughput benchmark** harness (`benches/throughput.py`) | ✅ |
 | **NumPy / MLX / PyTorch / JAX output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
-| **NVIDIA NVDEC** decode (`CudaDecoder`, `--features cuda`) | 🚧 built; [verify on a GPU box](./docs/GPU_VERIFICATION.md) |
-| Native **VideoToolbox** decode (macOS) | 🚧 implemented; uses FFmpeg `-hwaccel videotoolbox` |
-| **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 infrastructure ready; blocked by upstream [mlx#2855](https://github.com/ml-explore/mlx/issues/2855) |
-| **CV-CUDA** transform operators (Resize, Normalize) · **HF Hub streaming** | ✅ CV-CUDA implemented; HF Hub fully working |
+| **NVIDIA NVDEC** decode (`CudaDecoder`, `--features cuda`) | ✅ implemented; [GPU verification pending](./docs/GPU_VERIFICATION.md) |
+| Native **VideoToolbox** decode (macOS) | ✅ implemented; uses FFmpeg `-hwaccel videotoolbox` |
+| **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | ✅ infrastructure ready; gated on upstream [mlx#2855](https://github.com/ml-explore/mlx/issues/2855) |
+| **CV-CUDA** transform operators (Resize, Normalize) | ✅ implemented; [GPU verification pending](./docs/GPU_VERIFICATION.md) |
+| **HF Hub streaming** (partial download, on-demand) | ✅ fully working |
 
 The 🚧 rows are the honest gaps — see the [Roadmap](#roadmap) for sequencing.
 
@@ -302,11 +305,10 @@ environment picks the backend (`device="auto"`), not your code. See
 
 | Target | Decode | Compute / transforms | Output | Status |
 |---|---|---|---|---|
-| macOS (Apple Silicon) — MLX | FFmpeg | MLX | `mlx.core.array` | ✅ output · ⏳ transforms |
-| macOS (Apple Silicon) — MPS | FFmpeg | Torch (MPS) | `torch.Tensor` | ⏳ |
-| RTX 5090 / H100 / RunPod | NVDEC | **CV-CUDA** | `torch.Tensor` (cuda) | ⏳ |
-| Local CPU | FFmpeg (software) | NumPy / Torch | `np.ndarray` / `torch.Tensor` | ✅ |
-| macOS (Apple Silicon) | FFmpeg | — | NumPy · MLX · PyTorch | ✅ · VideoToolbox→zero-copy MLX ⏳ |
+| macOS (Apple Silicon) — MLX | VideoToolbox / FFmpeg | MLX | `mlx.core.array` | ✅ (decode FFmpeg; zero-copy MLX ⏳) |
+| macOS (Apple Silicon) — Torch | VideoToolbox / FFmpeg | Torch (MPS) | `torch.Tensor` | ✅ |
+| NVIDIA GPU (RTX 5090 / H100 / RunPod) | NVDEC | CV-CUDA | `torch.Tensor` (cuda) | ✅ (GPU verification ⏳) |
+| Local CPU (Linux/macOS) | FFmpeg (software) | NumPy / Torch / MLX | `np.ndarray` / `torch.Tensor` / `mlx.core.array` | ✅ |
 
 ---
 
@@ -372,6 +374,11 @@ encoding compression (30–50% storage savings), batched on-the-fly augmentation
 Noise, Crop, Flip for VLA models), Keras/TensorFlow adapter (parity w/ PyTorch/MLX/JAX), and
 streaming ingestion (MQTT/Kafka for online learning & closed-loop data collection).
 
+**Shipped (v0.3.0):** **GPU decode & transform backends:** native **VideoToolbox** decoder for macOS
+(Apple Media Engine H.264/HEVC), **NVIDIA NVDEC** decoder for Linux+CUDA (feature-gated), and
+**CV-CUDA** operators (Resize, Normalize) for GPU-accelerated transforms. IOSurface infrastructure
+for zero-copy MLX (awaiting mlx#2855). Comprehensive GPU verification tooling (docs + automated checks).
+
 **Next (v0.2.1 — Humanoid-Ready, 1 week):**
 
 - **Action-space validation** — prevent joint-limit violations, torque saturation; catch unsafe trajectories at load time
@@ -380,11 +387,10 @@ streaming ingestion (MQTT/Kafka for online learning & closed-loop data collectio
 
 **Next+ (v1.0 — Full Humanoid + Ecosystem, multi-week):**
 
+- **GPU verification.** End-to-end benchmarks for NVDEC decode and CV-CUDA transforms on NVIDIA hardware.
+- **Zero-copy MLX.** VideoToolbox/NVDEC → IOSurface/GPU buffer → MLX (once mlx#2855 lands).
 - **Depth camera support** — point clouds (Oak-D, Kinect, structured light), memory-mapped storage, transforms
 - **Camera calibration** — intrinsics/distortion registry for multi-camera alignment
-- **Publish throughput benchmarks.** Off-GIL prefetch pipeline vs FFmpeg/CPU baseline.
-- **Apple hardware decode.** Native **VideoToolbox** (macOS) → zero-copy MLX (gated on
-  [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and NVIDIA **NVDEC**.
 - **Video codec selection.** Choose H.264, HEVC, or AV1 (40–50% storage savings).
 - **Streaming & scale.** Multi-node distributed loading (S3/GCS streaming, Ray integration).
 - **More formats.** RLDS / Open X-Embodiment, HDF5, and other robotics log formats.
@@ -398,16 +404,19 @@ original v0.1 build sequence.
 ## Documentation
 
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — design, the gap, and decisions.
+- [`docs/GPU_VERIFICATION.md`](./docs/GPU_VERIFICATION.md) — GPU setup, verification, benchmarking.
 - [`docs/COMPARISON.md`](./docs/COMPARISON.md) — alternatives and adopted techniques.
 - [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) — phased build plan.
+- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — feature priorities and build sequence.
 - [`AGENTS.md`](./AGENTS.md) — orientation for contributors and AI coding agents.
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) · [`CHANGELOG.md`](./CHANGELOG.md)
 
 ## Contributing
 
 Contributions welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). The highest-impact work
-right now is the video-decode backends and the MLX zero-copy path
-([mlx#2855](https://github.com/ml-explore/mlx/issues/2855)).
+right now is: (1) GPU verification (NVDEC & CV-CUDA benchmarks on NVIDIA hardware), and
+(2) MLX zero-copy path when [mlx#2855](https://github.com/ml-explore/mlx/issues/2855) lands.
+Run `scripts/verify_gpu_support.py` to check your environment.
 
 ## License
 
