@@ -1205,7 +1205,7 @@ dependencies = [
 
 [[package]]
 name = "pyroboframes-core"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "arrow",
  "crossbeam-channel",
@@ -1220,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "pyroboframes-py"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "numpy",
  "pyo3",
