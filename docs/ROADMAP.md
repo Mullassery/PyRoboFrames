@@ -43,126 +43,114 @@ for batch in loader:        # tensors already on the right device, in the right 
 
 ---
 
-## Prioritized plan (current — 2026-06-25, after 0.1.6)
+## Prioritized plan (current — 2026-06-27, after 0.1.8)
 
-This is the **authoritative ordering**. The sections below it (test-first P0–P2, ease-sorted
-backlog, Tier 1/2 lens, long-range vision) are kept as reference/detail. Effort: `S`≈1–2d ·
-`M`≈3–7d · `L`≈1–2wk+ · `XL`=research/blocked. `[C]` = needs NVIDIA hardware to verify.
+This is the **authoritative ordering**; the sections below it (verification tiers, ease-sorted
+backlog, Tier 1/2 lens, long-range vision) are reference/detail. Effort: `S`≈1–2d · `M`≈3–7d ·
+`L`≈1–2wk+ · `XL`=research/blocked. `[C]` = needs NVIDIA hardware to verify.
 
-**Where we are (0.1.6):** the *fast LeRobot loader* is largely built — read v3.0, state/action +
-camera frames, windows, shuffle/balanced sampling, train/val split, stats + normalization,
-checkpoint/resume, off-GIL prefetch (~2.7× on decode), NumPy/MLX/PyTorch output, device seam
-(`resolve_device`/`DataLoader`), CPU image transforms, throughput harness. So the next priorities
-shift from *loader plumbing* to **(a) making the loader production-grade, then (b) the Tier-1
-"data platform" identity, then (c) Tier-2 vision intelligence.**
+**Where we are (0.1.8):** the *fast LeRobot loader* is essentially complete — read v3.0,
+state/action + camera frames, temporal windows, shuffle / balanced / **episode-chunking**
+sampling, train/val split, stats + normalization, checkpoint/resume, off-GIL prefetch (~2.7× on
+decode), **NumPy / MLX / PyTorch / JAX** output incl. MLX sequence batches, device seam
+(`resolve_device` / `DataLoader`), CPU image transforms + augments, throughput harness. The first
+**Tier-1 platform** brick landed: **`convert_mcap()`** turns MCAP JSON topics into columnar
+Parquet. So the work now pivots from *loader plumbing* (done) to the **data-platform identity**:
+ingest → a typed robotics table → storage/interop, with vision intelligence and the GPU path after.
 
-**Ranking rule (per your call):** items float up by **testable-now + high-value + low-effort**;
-GPU-only (`[C]`, can't verify here) and research/heavy items sink. Each line is tagged
-`effort · value · ✓test (or [C])`.
+**Ranking rule:** items float up by **testable-now + high-value + low-effort**; GPU-only (`[C]`,
+can't verify here) and research/heavy items sink. Each line is tagged `effort · value · ✓test`.
 
-### P1 — Quick high-value wins (testable now, `S`/`XS`) — do first
-- [x] **JAX** output adapter (`output="jax"`) — ✅
-- [x] Bilinear **Resize** + **flip/crop/color** augments (`transforms.*`) — ✅
-- [x] **Performance reporting** + **profiling hooks** (`DataLoader.stats` / `on_batch`) — ✅
-- [x] **Episode-chunking** sampler — `loader(chunk_size=N)`, contiguous in-episode chunks — ✅
-- [x] **MLX** sequence batching + MLX benchmarks — windowed/chunked `[batch, steps, dim]` → MLX;
-      `benches/throughput.py` output-framework + sequence sections — ✅
+### P0 — Housekeeping (do immediately, `XS`)
+- [ ] **Declare runtime deps** in `pyproject.toml` — a bare-venv `pip install pyroboframes` doesn't
+      pull **numpy** (imported at package import via `transforms.py`), so a fresh install crashes on
+      `import pyroboframes`. Add `numpy` (+ `pyarrow` for `convert_mcap` consumers).
+      `XS · high · ✓test (clean-venv import)`.
 
-### P2 — High-value, medium effort (testable now, `M`)
-- [ ] **Lazy loading / mmap parquet** — `M · high · ✓test` (datasets > RAM)
-- [ ] Multi-camera batch transforms + **windowed video sync** — `M · high · ✓test`
-- [ ] **Curriculum** + **goal-conditioned** sampling — `M · med-high · ✓test`
-- [ ] **CLIP embeddings** over frames — `M · high · ✓test` (Tier-2 entry: run model, store vectors)
+### P1 — Finish the ingest path (extends the just-shipped MCAP converter)
+- [ ] **protobuf / ros2msg / CDR decoding** in `convert_mcap` — today only JSON topics convert, but
+      most ROS 2 bags are CDR/protobuf; decode via the channel schema. `M · very-high · ✓test`
+      (the biggest unlock — turns a "JSON demo" into "real robot logs").
+- [ ] **ROS 2 bag (`.db3` / `.mcap`) → PyRoboFrames** converter — the other dominant log source.
+      `M · high · ✓test`.
+- [ ] **Automatic metadata generation** — emit `info.json` + per-feature `stats.json` from the
+      converted topics so the output is a *loadable dataset*, not loose Parquet. `S · high · ✓test`.
 
-### P3 — Tier-1 platform identity (testable, high value, large `L`)
-*High strategic value but bigger builds, so they sit below the cheap wins.*
-- [x] **MCAP → columnar (Parquet)** converter — `convert_mcap()`: JSON topics → one flattened
-      Parquet table each (`core::mcap`); non-JSON encodings reported as skipped — ✅
-      *Next here:* protobuf/ros2msg decoding, then the Robotics DataFrame abstraction.
-- [ ] **Robotics DataFrame** abstraction — `L · high · ✓test`
-- [ ] **LeRobot write-back** (+ HF Hub streaming) — `L · high · ✓test` (streaming part is network)
-- [ ] **Time-synchronized multi-sensor fusion** / multi-rate alignment — `L · high · ✓test`
-- [ ] **MQTT / Kafka ingestion** + stream-to-dataset writer — `L · high · ~test (needs broker)`
+### P2 — Robotics DataFrame abstraction (keystone identity)
+- [ ] Typed, **time-indexed, multi-sensor** table over the columnar output — the unifying API that
+      ties ingest, query, and the loaders together. `L · very-high · ✓test`. *This is what makes
+      PyRoboFrames a "data platform" rather than a loader; everything below leans on it.*
 
-### P4 — Tier-2 vision intelligence (heavy models)
-- [ ] **SAM/SAM2** masks + **Grounding DINO** detection → auto-annotation — `L · high · ~test`
-- [ ] **Vision-language dataset generation** — `L · high · ~test`
+### P3 — Native storage + LeRobot interop
+- [ ] **Native Parquet dataset format** (own **write** path, not just reads) — `L · high · ✓test`.
+- [ ] **LeRobot write-back** (export v3.x) — `L · high · ✓test`.
+- [ ] **Hugging Face Hub importer** (download / partial-stream a `LeRobotDataset`) —
+      `L · high · ~test (network)`.
 
-### P5 — NVIDIA / GPU path (can't verify here) `[C]`
-- [ ] CUDA/NVDEC decode (`-hwaccel cuda`) — `S · med · [C]`
-- [ ] **CV-CUDA** transform backend — `M · high · [C]`
-- [ ] NVIDIA throughput benchmark — `M · med · [C]`
-- [ ] GPU-resident zero-copy (Video Codec SDK → DLPack) — `XL · high · [C]`
+### P4 — Production-grade loader hardening (testable, fills known gaps)
+- [ ] **Lazy loading / mmap parquet** — datasets > RAM. `M · high · ✓test`.
+- [ ] **Multi-camera windowed video sync** — temporal windows for *video*, not just tabular.
+      `M · high · ✓test`.
+- [ ] **Curriculum** + **goal-conditioned** sampling — `M · med-high · ✓test`.
 
-### P6 — Scale, training & research (later)
-- [ ] Checkpointing/eval — `M` · BC/fine-tuning — `L` · distributed dataloading / multi-GPU — `L` ·
-      Ray/Slurm/RunPod — `L`
-- [ ] **Deferred/research:** zero-copy MLX (blocked `mlx#2855`) · MLX distributed · ACT/Diffusion/VLA — `XL`
+### P5 — Time-synchronized multi-sensor fusion
+- [ ] Multi-rate alignment / resampling across sensors (IMU / GPS / LiDAR / audio), building on the
+      Robotics DataFrame. `L · high · ✓test`.
 
-**Recommended next action:** clear **P1** (JAX + real transforms/augments + sampling — all cheap,
-testable, user-visible), then take **MCAP→columnar** (P3) as the first platform milestone.
+### P6 — "Train Anywhere" backend parity (Tier B — verify on this Mac)
+- [ ] **Unified tensor/output abstraction** — auto-select the native framework per backend (Torch on
+      cuda/mps/cpu, MLX on Apple-MLX, NumPy fallback); keep `output=` as an override.
+      `S · high · ✓test`.
+- [ ] **MLX / MPS native transforms** — run `Resize`/`Crop`/`Normalize`/augments on-device so the
+      transform script is identical on every backend (today transforms are NumPy/CPU).
+      `M · high · ✓test`.
+- [ ] **Fallback chain** (CV-CUDA → Torch → NumPy) + a **one-script conformance test** asserting
+      identical batch shapes across CPU and this Mac. `S · high · ✓test`.
+
+### P7 — Streaming ingestion
+- [ ] **MQTT / Kafka** connectors + **stream-to-dataset writer** — `L · high · ~test (needs broker)`.
+
+### P8 — Tier-2 vision intelligence (heavy models, mostly Python)
+- [ ] **CLIP embeddings** over frames — `M · high · ✓test` (cheapest entry: run model, store vectors).
+- [ ] **SAM / SAM2** masks + **Grounding DINO** detection → **auto-annotation** — `L · high · ~test`.
+- [ ] **Vision-language dataset generation** — `L · high · ~test`.
+
+### P9 — NVIDIA / GPU path (`[C]` — build feature-gated now, verify on a GPU box)
+- [ ] CUDA / NVDEC decode (`-hwaccel cuda`) — `S · med · [C]`.
+- [ ] **CV-CUDA** transform backend — `M · high · [C]`.
+- [ ] NVIDIA throughput benchmark vs LeRobot (torchcodec) / DALI — `M · med · [C]`.
+- [ ] GPU-resident zero-copy (Video Codec SDK → DLPack) — `XL · high · [C]`.
+
+### P10 — Scale & research (later)
+- [ ] Distributed / multi-node dataloading · Ray / Slurm / RunPod templates — `L`.
+- [ ] BC / imitation / offline-RL / transformer-policy training · ACT / Diffusion / VLA — `L`–`XL`.
+- [ ] **Deferred/blocked:** zero-copy MLX (decode → IOSurface → MLX, `mlx#2855`) · MLX distributed — `XL`.
+
+**Recommended next action:** ship **P0** (the numpy dependency fix — one line, unblocks fresh
+installs), then start **P1** protobuf/ros2msg decoding so `convert_mcap` handles real ROS 2 bags,
+then build **P2** the Robotics DataFrame as the next headline milestone.
 
 ---
 
-## Prioritization principle: test-first
+## Verification tiers (cross-cutting)
 
-Work is ordered by **how it can be verified**, not by how exciting it is. Anything we can prove
-correct on commodity hardware (this Mac, any CPU) ships and lands first; anything that needs
-NVIDIA silicon is built behind a feature/fallback now but its *functional* sign-off waits for a
-GPU box. This keeps every merged change verifiable by CI / the maintainer's laptop.
+Work is ordered by **how it can be verified**, not by how exciting it is. Anything provable on
+commodity hardware (this Mac, any CPU) ships first; anything needing NVIDIA silicon is built behind
+a feature/fallback now, with *functional* sign-off deferred to a GPU box — so every merged change
+stays verifiable on CI / the maintainer's laptop. Each item in the plan above carries `✓test`
+(Tier A/B) or `[C]` (Tier C) accordingly.
 
 | Tier | Verifiable on | Meaning |
 |---|---|---|
 | **A** | Any CPU / this Mac (no GPU) | Build **and** functionally test now. Highest priority. |
-| **B** | Apple-Silicon GPU (MLX / MPS) | Testable on the maintainer's MacBook. |
-| **C** | NVIDIA GPU (RTX 5090 / H100 / RunPod) | Code + compile + lint now; **functional verify deferred** to a GPU box. |
+| **B** | Apple-Silicon GPU (MLX / MPS) | Testable on the maintainer's MacBook (plan §P6). |
+| **C** | NVIDIA GPU (RTX 5090 / H100 / RunPod) | Code + compile + lint now; functional verify deferred (plan §P9). |
 
----
-
-## P0 — Backend-agnostic core (Tier A — no GPU needed, do first)
-
-The seam that makes "Train Anywhere" possible. All of this is unit-testable on CPU/this Mac.
-
-- [ ] **Backend detection** (`backend.py`): resolve `device="auto"` → one of `cuda | mps | mlx |
-      cpu` at runtime; honor `device=` arg and `PYROBOFRAMES_DEVICE` env override. *Test:* monkeypatch
-      capability probes → assert the resolved backend + override precedence.
-- [ ] **Unified tensor/output abstraction**: loader auto-selects the native framework per backend
-      (Torch on cuda/mps/cpu, MLX on Apple-MLX, NumPy fallback) instead of a manual `output=`.
-      Keep `output=` as an explicit override. *Test:* numpy + torch-cpu + mlx paths on this Mac.
-- [ ] **Unified transforms API** (`transforms.py`): `Compose`, `Resize`, `CenterCrop`,
-      `RandomCrop`, `Normalize`, `RandomHorizontalFlip` — one API, backend-dispatched. Ship the
-      **CPU/Torch** implementation first. *Test:* shape/dtype/value correctness vs a NumPy reference.
-- [ ] **Automatic fallback chain** + capability detection: `CV-CUDA → Torch → NumPy`; a missing
-      `cvcuda`/GPU degrades gracefully with a clear log, never an error. *Test:* force each rung.
-- [ ] **Rust `CudaDecoder` (NVDEC via FFmpeg `-hwaccel cuda`)**: replace the stub with a real
-      implementation that reuses the existing FFmpeg-CLI path plus CUDA hwaccel flags; wire
-      `Backend::preferred()` runtime selection. *Test here:* `cargo clippy --features cuda` +
-      structural unit tests (the CLI/parse logic is shared with the verified FFmpeg path). Real
-      NVDEC decode verification is Tier C.
-- [ ] **"Same script" conformance example + test**: one example that runs end-to-end unchanged on
-      CPU and on this Mac (asserts identical batch shapes across backends).
-
-## P1 — Apple-Silicon GPU parity (Tier B — verify on this MacBook)
-
-- [ ] **MPS path**: Torch tensors moved to `mps`; transforms run on MPS.
-- [ ] **MLX transforms**: native `Resize`/`Crop`/`Normalize`/`Flip` in MLX so the transform script
-      is identical on the MLX backend (today only MLX *output* conversion exists).
-- [ ] **Throughput harness (Apple)**: frames/s on MLX & MPS vs CPU baseline; publish the table.
-
-## P2 — NVIDIA path (Tier C — build now, functional verify on a GPU box)
-
-- [ ] **CV-CUDA transform backend**: real `cvcuda` operators (resize/crop/normalize/augment,
-      multi-camera batch transforms) behind the unified transforms API. *Verify on RTX 5090 / H100.*
-- [ ] **NVDEC real-decode verification**: confirm the `-hwaccel cuda` path uses the Media/NVDEC
-      engine (not software) on a real GPU; byte-correctness vs the CPU decode.
-- [ ] **GPU-resident zero-copy** (`decode → DLPack → CV-CUDA`, no CPU hop): NVIDIA Video Codec SDK
-      path so frames never leave the GPU. The CUDA analogue of the Apple `mlx#2855` zero-copy goal.
-- [ ] **NVIDIA throughput benchmarks**: RTX 5090 / H100 / RunPod, vs LeRobot (torchcodec) + DALI.
-
-> **Verification note:** P2 is implemented in this repo as feature-gated, compile-/lint-clean code
-> with CPU fallbacks (so CI stays green on non-NVIDIA runners), but its functional pass/fail is
-> only meaningful on NVIDIA hardware. Target a RunPod instance for sign-off before any release that
-> claims a working CUDA/CV-CUDA path.
+> **GPU verification note:** the Tier-C items (§P9) are implemented as feature-gated, compile-/lint-
+> clean code with CPU fallbacks (CI stays green on non-NVIDIA runners), but their pass/fail is only
+> meaningful on NVIDIA hardware. Target a RunPod instance for sign-off before any release that claims
+> a working CUDA / CV-CUDA path. The `Backend::preferred()` seam + stubbed `CudaDecoder` are already
+> in place; §P9 replaces the stubs.
 
 ---
 
@@ -187,8 +175,8 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [x] `XS` P2 Automatic backend selection, Python-exposed (`resolve_device("auto")`) — ✅
 - [x] `XS` P2 Device movement (`DataLoader(device=…)`) — ✅
 - [x] `XS` P2 Backend: MPS (Torch on `mps` via `DataLoader`) — ✅
-- [ ] `XS` P2 Performance reporting (per-batch timings) — ⬜
-- [ ] `XS` P2 Profiling hooks (callbacks) — ⬜
+- [x] `XS` P2 Performance reporting (per-batch timings; `loader.stats`) — ✅
+- [x] `XS` P2 Profiling hooks (`DataLoader(on_batch=…)`) — ✅
 
 ### S — small self-contained modules
 - [ ] `S` P2 Unified tensor/output abstraction (auto framework per backend) — 🟡
@@ -199,11 +187,11 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [x] `S` P3 Crop (NumPy impl; `transforms.CenterCrop`) — ✅
 - [x] `S` P3 Normalize (NumPy impl; `transforms.Normalize`) — ✅
 - [ ] `S` P3 Tensor conversion (DLPack / `__cuda_array_interface__`) — ⬜
-- [ ] `S` P1.3 Episode chunking (chunked sampler) — 🟡
+- [x] `S` P1.3 Episode chunking (`loader(chunk_size=N)`) — ✅
 - [x] `S` P1.3 Balanced sampling (`loader(balanced=True)`) — ✅
-- [ ] `S` P4 MLX sequence batching — 🟡
+- [x] `S` P4 MLX sequence batching (windowed/chunked `[batch, steps, dim]` → MLX) — ✅
 - [ ] `S` P4 MLX mixed precision — ⬜
-- [ ] `S` P4 MLX benchmarks — ⬜
+- [x] `S` P4 MLX benchmarks (`benches/throughput.py` output-framework + sequence sections) — ✅
 - [ ] `S` P6 Metadata tracking — ⬜
 - [ ] `S` P7 Experiment tracking (W&B) — ⬜
 - [ ] `S` P2 Backend: CUDA decode (FFmpeg `-hwaccel cuda`) — 🟡 build S, `[C]` verify
@@ -274,8 +262,9 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [x] P1.1 Load LeRobotDataset v3.x · Frame extraction · Action/state extraction · Metadata · `validate()`
 - [x] P1.1 `ds.stats()` · `train_val_split` + `loader(episodes=)` · `ds.episodes()` · normalization · checkpoint/resume
 - [x] P1.2 Caching (frame LRU + shard cache) · Batch assembly · Frame indexing · Sharding · **off-GIL prefetch pipeline** · throughput harness
-- [x] P1.3 Sequence windows · Future-prediction windows · State–action alignment · Temporal batching
-- [x] P2 Backends: CPU · Torch · MLX output
+- [x] P1.3 Sequence windows · Future-prediction windows · State–action alignment · Temporal batching · **episode-chunking sampler** · **MLX sequence batches**
+- [x] P2 Backends: CPU · Torch · MLX · **JAX** output · profiling (`stats`/`on_batch`) · MLX benchmarks
+- [x] P3/Tier-1 **MCAP → columnar (Parquet)** converter (`convert_mcap`, JSON topics) — protobuf/ros2msg pending
 
 ---
 
@@ -285,13 +274,13 @@ A priority lens (from a contributor/user view) over the vision below: what makes
 *itself*, then what makes it *compelling*. Status from the 2026-06-25 audit.
 
 ### Tier 1 — Core identity (what PyRoboFrames *is*)
-- [ ] MCAP → columnar (Parquet) conversion — ⬜
-- [ ] Robotics DataFrame abstraction (typed, time-indexed, multi-sensor) — ⬜
-- [ ] Time-synchronized sensor fusion — 🟡 episode/camera ts sync today; general fusion ⬜
-- [ ] Parquet-backed storage — 🟡 reads LeRobot parquet; own write/format ⬜
-- [ ] MQTT / Kafka ingestion — ⬜
-- [ ] LeRobot interoperability — 🟡 read v3.0 (local); Hub + write-back ⬜
-- [ ] MLX / PyTorch / JAX data loaders — 🟡 MLX+Torch output & `DataLoader`; JAX ⬜
+- [x] MCAP → columnar (Parquet) conversion — ✅ JSON topics (`convert_mcap`); protobuf/ros2msg next (§P1)
+- [ ] Robotics DataFrame abstraction (typed, time-indexed, multi-sensor) — ⬜ **next headline (§P2)**
+- [ ] Time-synchronized sensor fusion — 🟡 episode/camera ts sync today; general fusion ⬜ (§P5)
+- [ ] Parquet-backed storage — 🟡 reads LeRobot parquet; own write/format ⬜ (§P3)
+- [ ] MQTT / Kafka ingestion — ⬜ (§P7)
+- [ ] LeRobot interoperability — 🟡 read v3.0 (local); Hub + write-back ⬜ (§P3)
+- [x] MLX / PyTorch / JAX data loaders — ✅ MLX/Torch/JAX output + `DataLoader` (native on-device transforms §P6)
 
 ### Tier 2 — Differentiators (what makes it *compelling*)
 - [ ] SAM / SAM2 segmentation integration — ⬜
@@ -300,22 +289,22 @@ A priority lens (from a contributor/user view) over the vision below: what makes
 - [ ] Automatic annotation pipelines — ⬜
 - [ ] Vision-language dataset generation — ⬜
 
-> Read against the near-term plan: Tier 1's **Robotics DataFrame** + **MLX/PyTorch/JAX loaders**
-> extend work already underway (loaders, transforms, device seam); **MCAP/Kafka/MQTT** and the
-> Tier 2 **vision-model integrations** are larger, mostly-Python efforts that would each be their
-> own milestone. None are scheduled yet — they sharpen the "why" for the backlog above.
+> Read against the near-term plan above: **MCAP → columnar** has shipped (JSON topics, §P1 finishes
+> it); the **Robotics DataFrame** (§P2) is the next headline; **MLX/PyTorch/JAX loaders** are done as
+> output adapters, with native on-device transforms in §P6. **Kafka/MQTT** (§P7) and the Tier-2
+> **vision-model integrations** (§P8) are larger, mostly-Python milestones now placed in the plan.
 
 ## Long-range vision (full product surface)
 
 A superset of the prioritized backlog above, capturing where PyRoboFrames could go as a complete
-robotics data platform. Status from the 2026-06-25 audit (✅ done · 🟡 partial · ⬜ not started).
-Most of this is **not yet scheduled** — it's the vision, not a commitment; the prioritized P0–P2
+robotics data platform. Status from the 2026-06-27 audit (✅ done · 🟡 partial · ⬜ not started).
+Most of this is **not yet scheduled** — it's the vision, not a commitment; the prioritized P0–P10
 plan and ease-sorted backlog above remain the near-term work.
 
 ### Core data layer
-- [ ] Native Parquet-based robotics dataset format — ⬜
-- [ ] MCAP → PyRoboFrames converter — ⬜
-- [ ] ROS 2 bag → PyRoboFrames converter — ⬜
+- [ ] Native Parquet-based robotics dataset format — ⬜ (§P3)
+- [x] MCAP → PyRoboFrames converter — 🟡 JSON topics done (`convert_mcap`); protobuf/ros2msg pending (§P1)
+- [ ] ROS 2 bag → PyRoboFrames converter — ⬜ (§P1)
 - [ ] Hugging Face LeRobotDataset importer — 🟡 local path today; Hub download/stream ⬜
 - [ ] Dataset versioning and snapshots — ⬜
 - [ ] Time-synchronized multi-sensor indexing — 🟡 episode/camera ts sync exists
@@ -387,7 +376,7 @@ plan and ease-sorted backlog above remain the near-term work.
 ### ML & AI
 - [ ] PyTorch dataset adapter — 🟡 torch output today
 - [ ] MLX dataset adapter — 🟡 mlx output today
-- [ ] JAX dataset adapter — ⬜
+- [x] JAX dataset adapter — 🟡 jax output today (`output="jax"`)
 - [ ] TensorFlow dataset adapter — ⬜
 - [ ] RL replay-buffer export — ⬜
 - [ ] Imitation-learning dataset export — ⬜
