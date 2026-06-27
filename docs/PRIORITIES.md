@@ -4,9 +4,9 @@ High-level summary of work organized by priority tier. For detailed breakdown, s
 
 ---
 
-## 🎯 Current Status: v0.2 (Critical Features)
+## 🎯 Current Status: v0.2.1 (Humanoid-Ready)
 
-**Shipped (P0–P9 + v0.2 Critical):**
+**Shipped (v0.2.0 — Production Data-Ops):**
 - ✅ LeRobot v3.0 dataloader (state/action + camera frames, temporal windows, off-GIL prefetch)
 - ✅ MCAP ingestion (JSON, protobuf, CDR/ros2msg)
 - ✅ ROS 2 bag converter (`.db3` SQLite + embedded message definitions)
@@ -14,21 +14,25 @@ High-level summary of work organized by priority tier. For detailed breakdown, s
 - ✅ LeRobot write-back + HF Hub importer (full-download or partial-streaming)
 - ✅ Memory-mapped shards + curriculum/goal-conditioned sampling
 - ✅ Backend parity (NumPy / MLX / PyTorch / JAX output, unified abstraction)
-- ✅ **MLX/Torch native transforms** (Resize, Normalize with device dispatch)
-- ✅ **HF Hub partial-streaming** (selective episode download for faster startup)
-- ✅ **Row-group-level lazy Parquet** (streaming large shards without full load)
-- ✅ **CV-CUDA GPU transforms** (Resize, Normalize, CenterCrop operators)
-- ✅ **Vision integration** (CLIP embeddings, SAM2 segmentation, Grounding DINO detection)
-- ✅ **NVIDIA throughput benchmark** (FFmpeg baseline + frame timing)
-- ✅ NVDEC decode path (built feature-gated, awaiting GPU verification)
 - ✅ **Quality scoring** (diversity, sharpness, state_variance, action_magnitude, motion_smoothness)
 - ✅ **Episode filtering** (SQL-like where clauses, range queries, set membership)
 - ✅ **Dataset versioning** (incremental append, version history, rollback support)
 - ✅ **Distributed loading** (PyTorch multi-GPU sampler, synchronized shuffling)
+- ✅ **Delta encoding** (30–50% compression, optional int8 quantization)
+- ✅ **Sparse/masked data** (sensor failure handling, interpolation modes)
+- ✅ **Batched augmentation** (Rotate, Brightness, Noise, Crop, Flip)
+- ✅ **Keras/TensorFlow adapter** (seamless model.fit() integration)
+- ✅ **Streaming ingestion** (MQTT/Kafka for online learning)
+
+**Next (v0.2.1 — Humanoid Safety & Precision):**
+- 🔴 **Action-space validation** (check joint limits, torque bounds) — 1 day
+- 🔴 **Deterministic reproducibility** (RNG state tracking, frame extraction order) — 1 day
+- 🔴 **Trajectory-level metadata** (per-trajectory task/success labels, not just episode-level) — 1 day
 
 **In progress or blocked:**
 - 🟡 Apple Silicon zero-copy MLX (blocked on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855))
 - 🟡 NVIDIA CUDA/NVDEC functional verification (needs GPU hardware)
+- 🟡 Depth camera support (point clouds, point-cloud transforms) — v1.0
 - ⬜ Vision-language dataset generation (auto-labeling utility)
 
 ---
@@ -49,12 +53,19 @@ High-level summary of work organized by priority tier. For detailed breakdown, s
 | **P6a** | **MLX / MPS native transforms** | M | High | ✓ | ✅ |
 | **P9a** | **NVIDIA throughput benchmark** | M | Medium | [C] | ✅ |
 
-### Next (in backlog order)
+### Next (v0.2.1 — Humanoid Safety, 1 week)
 | Priority | Item | Effort | Impact | Test | Status |
 |----------|------|--------|--------|------|--------|
+| **H1** | **Action-space validation** (joint limits, torque bounds) | S | Critical | ✓ | 🔴 Planned |
+| **H2** | **Deterministic reproducibility** (RNG + frame extraction order) | S | Critical | ✓ | 🔴 Planned |
+| **H3** | **Trajectory-level metadata** (per-trajectory task/success labels) | S | High | ✓ | 🔴 Planned |
+
+### Future (in backlog order)
+| Priority | Item | Effort | Impact | Test | Status |
+|----------|------|--------|--------|------|--------|
+| **P11** | **Depth camera support** (point clouds, transforms) | L | Critical (humanoids) | ~test | ⬜ v1.0 |
 | **P8b** | **Vision-language dataset generation** | M | High | ✓ | ⬜ |
 | **P10** | **Scale & research** (Ray, Slurm, multi-node) | L | Medium | ~test | ⬜ |
-| **P7** | **Streaming** (MQTT / Kafka) | L | Medium | ~test | ⬜ |
 
 ### Nice-to-have (larger scope)
 | Priority | Item | Effort | Impact | Test | Status |

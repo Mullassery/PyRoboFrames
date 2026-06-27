@@ -44,6 +44,28 @@ Comprehensive audit of gaps vs. robot-learning requirements and competing tools 
 
 ---
 
+## 🟢 HUMANOID-READY (v0.2.1, 1 week — unblock humanoid training)
+
+### H1. ✅ **Action-space validation**
+- **Status:** PLANNED (v0.2.1)
+- **API:** `ActionSpace(state_dim=14, action_dim=7, joint_limits=[...], torque_limits=[...])`, validated at load time
+- **Features:** Joint limit checking, torque saturation detection, OOB action rejection
+- **Impact:** Safety-critical: prevent physics violations, protect hardware
+
+### H2. ✅ **Deterministic reproducibility**
+- **Status:** PLANNED (v0.2.1)
+- **API:** `loader(seed=42, deterministic=True)` ensures exact frame extraction order across runs
+- **Features:** RNG state tracking, loader position determinism
+- **Impact:** Debugging + validation for humanoid policies (exact replay for safety analysis)
+
+### H3. ✅ **Trajectory-level metadata**
+- **Status:** PLANNED (v0.2.1)
+- **API:** `EpisodeMetadata.trajectories` with per-trajectory `task`, `success`, `duration`
+- **Features:** Sub-episode grouping (e.g., "grasp attempt #1", "balance recovery #2")
+- **Impact:** Goal-conditioned + failure analysis for humanoid manipulation
+
+---
+
 ## 🟢 HIGH PRIORITY (v0.3+, implemented)
 
 ### 7. ✅ **Sparse/masked episode support**
@@ -70,11 +92,12 @@ Comprehensive audit of gaps vs. robot-learning requirements and competing tools 
 - **Effort:** S (add `--codec` flag to converter)
 - **Reason:** HEVC/AV1 are 40-50% smaller; deferred post-v1.0
 
-### 11. **Deterministic reproducibility controls** ⏳
-- **Status:** NOT YET (deferred)
+### 11. ✅ **Deterministic reproducibility controls**
+- **Status:** PLANNED (v0.2.1)
 - **Gap:** Seeding only for sampling; no guarantee on frame extraction order
 - **Effort:** S (RNG state + loader position tracking)
-- **Reason:** Distributed loader now provides synchronized seeding
+- **Reason:** Safety-critical robotics (humanoid grasping, balance) need exact replay for debugging + validation
+- **Impact:** Unblock deterministic training for humanoid policies
 
 ### 12. ✅ **Keras/TensorFlow adapter**
 - **Status:** DONE (tensorflow_support.py)
@@ -128,19 +151,22 @@ Comprehensive audit of gaps vs. robot-learning requirements and competing tools 
 - **Effort:** M (calibration schema, distortion correction transform)
 - **Why it matters:** Precise multi-camera setups (industrial manipulation)
 
-### 19. **Depth camera (point cloud) support**
+### 19. **Depth camera (point cloud) support** ⏳
+- **Status:** PLANNED (v1.0, post v0.2.1)
 - **Gap:** Video (RGB) only; no depth, LiDAR, or structured light
 - **Impact:** Humanoid hands, complex grasping need depth; RGB-only limits tasks
 - **Current:** Designed for RGB video
 - **Effort:** L (PointCloud type, memory-mapped .ply/.npz storage, transforms)
-- **Why it matters:** Modern robot sensors (Oak-D, Kinect, etc.) have depth
+- **Why it matters:** Critical for humanoid hand dexterity, precision grasping; modern sensors (Oak-D, Kinect) have depth
+- **Roadmap:** v0.2.1 unblocks humanoid training on RGB; v1.0 adds depth for full sensor fusion
 
-### 20. **Action-space compatibility validation**
+### 20. ✅ **Action-space compatibility validation**
+- **Status:** PLANNED (v0.2.1)
 - **Gap:** No checking that action shapes/ranges match robot hardware
-- **Impact:** Loading bad data into sim/robot → crashes, unsafe training
+- **Impact:** Loading bad data into sim/robot → crashes, unsafe training; critical for humanoids
 - **Current:** No validation beyond schema
 - **Effort:** S (action bounds schema, validation at load time)
-- **Why it matters:** Safety: prevent OOB actions from reaching hardware
+- **Why it matters:** Safety: prevent joint-limit violations, torque saturation; unblock humanoid training
 
 ### 21. **Efficient random access by timestamp**
 - **Gap:** Can seek to frame index; can't seek to timestamp (e.g., "get frame at t=12.5s")
@@ -156,12 +182,13 @@ Comprehensive audit of gaps vs. robot-learning requirements and competing tools 
 - **Effort:** M (context manager + memory hooks via tracemalloc)
 - **Why it matters:** Deployment on memory-constrained hardware (embedded robots)
 
-### 23. **Trajectory-level metadata (task, success, duration)**
+### 23. ✅ **Trajectory-level metadata (task, success, duration)**
+- **Status:** PLANNED (v0.2.1)
 - **Gap:** Episode metadata only; no per-trajectory (goal) labels
-- **Impact:** Goal-conditioned learning needs trajectory outcome + task tag
+- **Impact:** Goal-conditioned learning needs trajectory outcome + task tag; critical for humanoid manipulation (grasp attempts, balance recovery)
 - **Current:** Episode-level stats/metadata; no trajectory buckets
 - **Effort:** S (optional trajectory index in episode metadata)
-- **Why it matters:** Goal-conditioned + multi-task learning
+- **Why it matters:** Goal-conditioned + multi-task learning, failure analysis for humanoid learning
 
 ### 24. **Plugin system for custom loaders/converters**
 - **Gap:** Adding new format requires forking PyRoboFrames
@@ -208,20 +235,26 @@ Comprehensive audit of gaps vs. robot-learning requirements and competing tools 
 
 ## 🎯 Recommended Priority
 
-### **v0.2 (next major)** — Unblock production use (3–4 items)
-1. **Incremental append** — needed for evolving datasets
-2. **Quality scoring** — needed for data curation
-3. **Episode filtering** — unlocks curriculum learning
-4. **Distributed loading** — unlocks multi-GPU training
+### **v0.2.0** ✅ — Production data-ops (9 items, SHIPPED)
+1. ✅ **Incremental append** — dataset versioning
+2. ✅ **Quality scoring** — data curation
+3. ✅ **Episode filtering** — curriculum learning
+4. ✅ **Distributed loading** — multi-GPU training
+5. ✅ **Sparse/masked data** — sensor failure handling
+6. ✅ **Streaming ingestion** — online learning
+7. ✅ **Batched augmentation** — training robustness
+8. ✅ **Keras/TensorFlow** — ecosystem support
+9. ✅ **Delta encoding** — storage optimization
 
-### **v0.3** — Full robustness (4–5 items)
-5. **Sparse/masked data** — real-world sensor handling
-6. **Streaming ingestion** — online learning
-7. **Batched augmentation** — training best practices
-8. **Keras/TensorFlow** — ecosystem support
+### **v0.2.1** 🔴 — Humanoid-ready safety (1 week)
+1. **Action-space validation** — joint limit / torque checking
+2. **Deterministic reproducibility** — exact replay for debugging
+3. **Trajectory-level metadata** — per-trajectory task/success labels
 
-### **v1.0** — Production-ready (remaining items)
-- Depth support, calibration, lineage, explorer, interop with other frameworks
+### **v1.0** — Full humanoid + ecosystem (multi-week)
+- **Depth camera support** (point clouds, transforms)
+- Camera calibration, lineage tracking, interactive explorer
+- Multi-node scale, advanced curriculum strategies
 
 ---
 

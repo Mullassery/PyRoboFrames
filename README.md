@@ -369,18 +369,22 @@ encoding compression (30–50% storage savings), batched on-the-fly augmentation
 Noise, Crop, Flip for VLA models), Keras/TensorFlow adapter (parity w/ PyTorch/MLX/JAX), and
 streaming ingestion (MQTT/Kafka for online learning & closed-loop data collection).
 
-**Next up (v0.3+):**
+**Next (v0.2.1 — Humanoid-Ready, 1 week):**
 
-- **Publish throughput benchmarks.** The off-GIL prefetch pipeline works (`num_workers=…`); a
-  reproducible benchmark vs FFmpeg/CPU baseline will justify the "fast" claim.
+- **Action-space validation** — prevent joint-limit violations, torque saturation; catch unsafe trajectories at load time
+- **Deterministic reproducibility** — RNG state tracking, exact frame extraction order for debugging + safety analysis
+- **Trajectory-level metadata** — per-trajectory task/success labels for goal-conditioned learning + failure analysis
+
+**Next+ (v1.0 — Full Humanoid + Ecosystem, multi-week):**
+
+- **Depth camera support** — point clouds (Oak-D, Kinect, structured light), memory-mapped storage, transforms
+- **Camera calibration** — intrinsics/distortion registry for multi-camera alignment
+- **Publish throughput benchmarks.** Off-GIL prefetch pipeline vs FFmpeg/CPU baseline.
 - **Apple hardware decode.** Native **VideoToolbox** (macOS) → zero-copy MLX (gated on
-  [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and NVIDIA **NVDEC** (built,
-  awaiting GPU verification).
-- **Video codec selection.** Choose H.264, HEVC, or AV1 (40–50% storage savings w/ modern codecs).
-- **Streaming & scale.** Download partial LeRobot datasets from the Hub on-the-fly; multi-node
-  distributed loading (S3/GCS streaming).
+  [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)) and NVIDIA **NVDEC**.
+- **Video codec selection.** Choose H.264, HEVC, or AV1 (40–50% storage savings).
+- **Streaming & scale.** Multi-node distributed loading (S3/GCS streaming, Ray integration).
 - **More formats.** RLDS / Open X-Embodiment, HDF5, and other robotics log formats.
-- **Depth camera support.** Point clouds (Oak-D, Kinect, structured light) alongside RGB video.
 
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the "Train Anywhere" multi-backend plan and
 priority tiers, and [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) for the
