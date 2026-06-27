@@ -266,10 +266,10 @@ print(report.ok, report.warnings)
 | **Loader profiling** (`DataLoader(on_batch=…)`, `loader.stats`) | ✅ |
 | **Throughput benchmark** harness (`benches/throughput.py`) | ✅ |
 | **NumPy / MLX / PyTorch / JAX output** (`output=`) | ✅ (torch is zero-copy from NumPy) |
-| **NVIDIA NVDEC** decode (`CudaDecoder`, `--features cuda`) | 🚧 built; verify on a GPU box |
-| Native **VideoToolbox** decode | 🚧 |
-| **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 (upstream `mlx#2855`) |
-| **CV-CUDA** compute · **HF Hub streaming** | 🚧 |
+| **NVIDIA NVDEC** decode (`CudaDecoder`, `--features cuda`) | 🚧 built; [verify on a GPU box](./docs/GPU_VERIFICATION.md) |
+| Native **VideoToolbox** decode (macOS) | 🚧 implemented; uses FFmpeg `-hwaccel videotoolbox` |
+| **Zero-copy MLX** (decode → IOSurface → MLX, no NumPy hop) | 🚧 infrastructure ready; blocked by upstream [mlx#2855](https://github.com/ml-explore/mlx/issues/2855) |
+| **CV-CUDA** transform operators (Resize, Normalize) · **HF Hub streaming** | ✅ CV-CUDA implemented; HF Hub fully working |
 
 The 🚧 rows are the honest gaps — see the [Roadmap](#roadmap) for sequencing.
 
@@ -285,7 +285,10 @@ LeRobotDataset            PyRoboFrames (Rust core)                 your training
 │ + mp4 video  │   │ windows                                │   │                     │
 └──────────────┘   └──────────────────────────────────────┘   └────────────────────┘
 ```
-Decode today uses FFmpeg; the Apple VideoToolbox / NVIDIA NVDEC hardware paths are planned.
+**Decode paths:**
+- **macOS**: FFmpeg with `-hwaccel videotoolbox` (Apple Media Engine); zero-copy MLX pending [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)
+- **Linux**: FFmpeg with VAAPI (where available) or software decode
+- **Linux + CUDA**: NVIDIA NVDEC (compiled with `--features cuda`; [verify on GPU](./docs/GPU_VERIFICATION.md))
 
 The engine is Rust (crate `pyroboframes-core`); the Python package is a thin
 [PyO3](https://pyo3.rs)/[maturin](https://www.maturin.rs) binding. Full design,
