@@ -48,12 +48,22 @@ pub struct Info {
     pub data_path: String,
     /// Template like `videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:03d}.mp4`.
     pub video_path: String,
+    /// Video codec: "h264" (default), "hevc", "av1".
+    #[serde(default = "default_video_codec")]
+    pub video_codec: String,
+    /// Video codec profile (e.g., "main" for HEVC).
+    #[serde(default)]
+    pub video_profile: Option<String>,
     /// Feature schema keyed by feature name (e.g. `observation.images.top`).
     pub features: BTreeMap<String, Feature>,
 }
 
 fn default_chunks_size() -> usize {
     1000
+}
+
+fn default_video_codec() -> String {
+    "h264".to_string()
 }
 
 impl Info {
@@ -87,6 +97,15 @@ impl Info {
         file_index: usize,
     ) -> String {
         render_path(&self.video_path, Some(camera_key), chunk_index, file_index)
+    }
+
+    /// Get the video codec (defaults to "h264" for backwards compatibility).
+    pub fn get_video_codec(&self) -> &str {
+        if self.video_codec.is_empty() {
+            "h264"
+        } else {
+            &self.video_codec
+        }
     }
 }
 

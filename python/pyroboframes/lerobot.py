@@ -36,15 +36,26 @@ def write_lerobot_dataset(
     episode_lengths: list[int],
     fps: float = 30.0,
     robot_type: str | None = None,
+    video_codec: str = "h264",
+    video_profile: str | None = None,
 ) -> None:
     """Write a tabular LeRobotDataset v3.0 at ``path``.
 
     ``features`` maps each feature name (e.g. ``observation.state``, ``action``) to a ``[N, D]``
     array; all features must share ``N``, the total frame count. ``episode_lengths`` partitions the
     ``N`` frames into episodes (in order) and must sum to ``N``.
+
+    Args:
+        video_codec: Video codec for video features (``"h264"`` [default], ``"hevc"``, ``"av1"``).
+        video_profile: Codec profile (e.g., ``"main"`` for HEVC). None = default per codec.
+
+    Note: Currently used for metadata only; actual video encoding via external FFmpeg CLI.
     """
     if not features:
         raise ValueError("at least one feature is required")
+    if video_codec not in ("h264", "hevc", "av1"):
+        raise ValueError(f"video_codec must be 'h264', 'hevc', or 'av1', got {video_codec!r}")
+
     arrays = {name: np.asarray(v, dtype=np.float32) for name, v in features.items()}
     for name, arr in arrays.items():
         if arr.ndim != 2:
@@ -62,7 +73,7 @@ def write_lerobot_dataset(
 
     _write_data(path, arrays)
     _write_episodes(path, episode_lengths)
-    _write_info(path, arrays, episode_lengths, total, fps, robot_type)
+    _write_info(path, arrays, episode_lengths, total, fps, robot_type, video_codec, video_profile)
     _write_stats(path, arrays)
 
 
@@ -105,6 +116,8 @@ def _write_info(
     total: int,
     fps: float,
     robot_type: str | None,
+    video_codec: str = "h264",
+    video_profile: str | None = None,
 ) -> None:
     info = {
         "codebase_version": "v3.0",
@@ -115,10 +128,13 @@ def _write_info(
         "chunks_size": 1000,
         "data_path": DATA_PATH,
         "video_path": VIDEO_PATH,
-        "features": {
-            name: {"dtype": "float32", "shape": [arr.shape[1]]}
-            for name, arr in arrays.items()
-        },
+        "video_codec": video_codec,
+    }
+    if video_profile:
+        info["video_profile"] = video_profile
+    info["features"] = {
+        name: {"dtype": "float32", "shape": [arr.shape[1]]}
+        for name, arr in arrays.items()
     }
     with open(os.path.join(path, "meta", "info.json"), "w") as fh:
         json.dump(info, fh, indent=2)
