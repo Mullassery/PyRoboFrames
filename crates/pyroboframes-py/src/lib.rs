@@ -22,6 +22,7 @@ use pyo3::types::PyDict;
 
 use pyroboframes_core::dataset::Dataset;
 use pyroboframes_core::decode::{Decoder, FrameCache};
+use pyroboframes_core::depth::PointCloud;
 use pyroboframes_core::loader::{Sample, TabularLoader, WindowedSample};
 use pyroboframes_core::pipeline::{AssemblerConfig, Prefetcher, RustBatch};
 use pyroboframes_core::sampler::{chunked_order, weighted_with_replacement, Sampler};
@@ -776,6 +777,58 @@ fn convert_ros2_bag(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResul
 }
 
 /// `pyroboframes._core` — the compiled extension module.
+/// Python wrapper for a point cloud (depth camera data).
+#[pyclass]
+struct PointCloudPy {
+    inner: PointCloud,
+}
+
+#[pymethods]
+impl PointCloudPy {
+    /// Load a point cloud from file (.xyz, .ply, .pcd, .npy).
+    #[staticmethod]
+    fn load(path: &str) -> PyResult<Self> {
+        let cloud = PointCloud::load(std::path::Path::new(path))
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner: cloud })
+    }
+
+    /// Number of points in the cloud.
+    #[getter]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Check if the point cloud is empty.
+    #[getter]
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Get point positions as a NumPy array [N, 3].
+    fn points(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let mut data: Vec<f32> = Vec::with_capacity(self.inner.points.len() * 3);
+        for p in &self.inner.points {
+            data.extend_from_slice(&p[..]);
+        }
+        let arr = Array2::from_shape_vec((self.inner.points.len(), 3), data)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(arr.into_pyarray_bound(py).unbind().into())
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PointCloud(points={}, colors={}, normals={})",
+            self.inner.len(),
+            self.inner.colors.is_some(),
+            self.inner.normals.is_some()
+        )
+    }
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", pyroboframes_core::VERSION)?;
@@ -786,6 +839,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Loader>()?;
     m.add_class::<PrefetchLoader>()?;
     m.add_class::<ValidationReport>()?;
+    m.add_class::<PointCloudPy>()?;
     Ok(())
 }
 

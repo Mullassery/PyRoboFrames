@@ -10,6 +10,7 @@ use thiserror::Error;
 pub mod data;
 pub mod dataset;
 pub mod decode;
+pub mod depth;
 pub mod episodes;
 pub mod info;
 pub mod loader;

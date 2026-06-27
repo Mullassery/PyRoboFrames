@@ -11,7 +11,7 @@ engine version so wheels and the build can be smoke-tested end to end.
 from __future__ import annotations
 
 from . import _core, backend, transforms
-from ._core import Loader, RoboFrameDataset, convert_mcap, convert_ros2_bag
+from ._core import Loader, PointCloudPy, RoboFrameDataset, convert_mcap, convert_ros2_bag
 from .augmentation import (
     AugmentationPipeline,
     RandomBrightness,
@@ -35,11 +35,15 @@ from .streaming import KafkaStreamer, MQTTStreamer, StreamingRoboticsDataset
 from .tensorflow_support import KerasDataAdapter, create_keras_model_for_robotics, to_tf_dataset
 from .versioning import DatasetManifest, DatasetVersion
 
+# Public alias for the point cloud class
+PointCloud = PointCloudPy
+
 __all__ = [
     "__version__",
     "engine_version",
     "RoboFrameDataset",
     "Loader",
+    "PointCloud",
     "DataLoader",
     "DistributedLoader",
     "DistributedSampler",
