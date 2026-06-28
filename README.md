@@ -214,6 +214,15 @@ pyroboframes/
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — Design and implementation
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — How to contribute
 - [CHANGELOG.md](./CHANGELOG.md) — Version history
+- [ROADMAP.md](./ROADMAP.md) — Future priorities
+
+---
+
+## Community
+
+- **GitHub Issues** — [Ask questions, report bugs](https://github.com/Mullassery/PyRoboFrames/issues)
+- **GitHub Discussions** — [Share ideas and best practices](https://github.com/Mullassery/PyRoboFrames/discussions)
+- **Code of Conduct** — [Be respectful and constructive](./CODE_OF_CONDUCT.md)
 
 ---
 
