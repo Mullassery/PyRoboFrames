@@ -10,7 +10,7 @@ engine version so wheels and the build can be smoke-tested end to end.
 
 from __future__ import annotations
 
-from . import _core, backend, depth_io, transforms
+from . import _core, backend, depth_io, sensor_fusion, transforms
 from ._core import (
     CameraCalibrationPy,
     CameraIntrinsicsPy,
