@@ -32,6 +32,7 @@ from .backend import available_backends, default_framework, resolve_device, to_b
 from .compression import CompressionPipeline, DeltaEncoder, SparseArray
 from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
+from .proprioceptive_loader import ProprioceptiveLoader, ProprioceptiveDataFrame
 from .distributed import DistributedLoader, DistributedSampler
 from .filtering import EpisodeFilter, EpisodeFilterBuilder
 from .hub import download_lerobot_dataset
@@ -57,6 +58,8 @@ __all__ = [
     "CameraIntrinsics",
     "CameraCalibration",
     "DataLoader",
+    "ProprioceptiveLoader",
+    "ProprioceptiveDataFrame",
     "DistributedLoader",
     "DistributedSampler",
     "convert_mcap",
