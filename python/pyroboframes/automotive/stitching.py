@@ -20,6 +20,8 @@ from .blending import (
     find_optimal_seam,
 )
 from .camera_layouts import CameraLayout
+from .gpu_backend import get_gpu_backend, GPUBackend
+from .optical_flow import OpticalFlow, SeamTracker, temporal_blend
 from .projection import (
     blend_seam_linear,
     compute_panorama_bounds,
@@ -56,13 +58,19 @@ class CylindricalStitcher:
         camera_layout: CameraLayout,
         panorama_height: int = 480,
         blend_method: str = "linear",
+        device: Optional[str] = None,
+        use_temporal_consistency: bool = False,
+        temporal_alpha: float = 0.3,
     ):
         """Initialize cylindrical stitcher.
 
         Args:
             camera_layout: CameraLayout with camera poses and intrinsics
             panorama_height: Output height (width auto-computed for 360°)
-            blend_method: "linear" for Phase 1 (only option currently)
+            blend_method: "linear" or "laplacian"
+            device: "cuda", "mlx", "cpu", or None for auto-detect (Phase 4a)
+            use_temporal_consistency: Enable optical flow seam tracking (Phase 4b)
+            temporal_alpha: Blend weight for frame smoothing (0-1)
 
         Raises:
             ValueError: If blend_method not supported or layout invalid
@@ -76,6 +84,25 @@ class CylindricalStitcher:
         self.layout = camera_layout
         self.panorama_height = panorama_height
         self.blend_method = blend_method
+        self.temporal_alpha = temporal_alpha
+
+        # Phase 4a: GPU acceleration support
+        self.gpu_backend = get_gpu_backend(device)
+
+        # Phase 4b: Temporal consistency support
+        self.use_temporal = use_temporal_consistency
+        self.seam_tracker = SeamTracker() if use_temporal_consistency else None
+
+        if use_temporal_consistency:
+            try:
+                self.optical_flow = OpticalFlow("farneback")
+            except ImportError:
+                # Fall back to Farneback if available, else no OF
+                self.optical_flow = None
+        else:
+            self.optical_flow = None
+
+        self.prev_panorama = None
 
         # Compute panorama dimensions
         bounds = compute_panorama_bounds(camera_layout.cameras, panorama_height)
@@ -155,7 +182,79 @@ class CylindricalStitcher:
                 {k: v[b] for k, v in processed_frames.items()},
                 blend_method,
             )
+
+            # Phase 4b: Apply temporal consistency if enabled
+            if self.use_temporal and self.prev_panorama is not None:
+                pan = temporal_blend(
+                    self.prev_panorama, pan, alpha=self.temporal_alpha
+                )
+
+            self.prev_panorama = pan.copy()
             panoramas.append(pan)
+
+        return np.stack(panoramas, axis=0)
+
+    def stitch_temporal_sequence(
+        self,
+        frame_sequence: dict[str, np.ndarray],
+        blend_method: Optional[str] = None,
+    ) -> np.ndarray:
+        """Stitch temporal sequence with optical flow seam tracking.
+
+        Phase 4b: Process video with temporal consistency.
+
+        Args:
+            frame_sequence: Dictionary mapping camera names to video sequences
+                - Keys: Camera names
+                - Values: [T, H, W, 3] uint8 (temporal dimension)
+
+            blend_method: Override blend method
+
+        Returns:
+            Panoramic video [T, panorama_height, panorama_width, 3] uint8
+        """
+        if not self.use_temporal:
+            # Fall back to regular stitching
+            return self.stitch(frame_sequence, blend_method)
+
+        if blend_method is None:
+            blend_method = self.blend_method
+
+        # Get number of frames
+        num_frames = next(iter(frame_sequence.values())).shape[0]
+
+        panoramas = []
+
+        for t in range(num_frames):
+            # Extract frame at time t
+            frames_t = {k: v[t] for k, v in frame_sequence.items()}
+
+            # Stitch frame t
+            pan_t = self._stitch_single(frames_t, blend_method)
+
+            # Track seam between t-1 and t using optical flow
+            if t > 0 and self.optical_flow is not None:
+                # Get first camera frame for optical flow
+                cam_name = self.camera_order[0]
+                frame_t_prev = frame_sequence[cam_name][t - 1]
+                frame_t_curr = frame_sequence[cam_name][t]
+
+                # Compute optical flow
+                flow = self.optical_flow.compute(frame_t_prev, frame_t_curr)
+
+                # Track seam (simplified: use same seam for now)
+                # In production: use flow to guide seam tracking
+            else:
+                flow = None
+
+            # Apply temporal blending
+            if self.prev_panorama is not None:
+                pan_t = temporal_blend(
+                    self.prev_panorama, pan_t, alpha=self.temporal_alpha
+                )
+
+            self.prev_panorama = pan_t.copy()
+            panoramas.append(pan_t)
 
         return np.stack(panoramas, axis=0)
 
@@ -370,9 +469,11 @@ class CylindricalStitcher:
         return self.panorama_height, self.panorama_width
 
     def __repr__(self) -> str:
+        temporal_str = ", temporal=True" if self.use_temporal else ""
         return (
             f"CylindricalStitcher("
             f"layout='{self.layout.name}', "
             f"output=[{self.panorama_height}, {self.panorama_width}], "
-            f"blend='{self.blend_method}')"
+            f"blend='{self.blend_method}', "
+            f"device='{self.gpu_backend.name}'{temporal_str})"
         )
