@@ -65,6 +65,7 @@ from .perception_3d import (
     OccupancyGrid,
     RadarFusion,
 )
+from .clip_embeddings import CLIPEmbedding
 from .sam3_segmentation import SAM3Segmenter
 from .stitching import CylindricalStitcher
 
@@ -93,6 +94,7 @@ __all__ = [
     "OccupancyGrid",
     # Phase 7: Foundation models (v0.5.3)
     "SAM3Segmenter",
+    "CLIPEmbedding",
     # Camera layouts
     "CAMERA_LAYOUTS",
     "get_waymo_layout",
