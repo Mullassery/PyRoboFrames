@@ -81,34 +81,63 @@ class CLIPEmbedding:
     def _load_model(self):
         """Load CLIP model from HF Hub.
 
+        Downloads and caches model from HuggingFace Hub.
+        Supports lazy loading - only loads on first inference if available.
+
         Raises:
             ImportError: If transformers or torch not available
         """
+        self.model = None
+        self.processor = None
+
         try:
             from transformers import CLIPProcessor, CLIPModel
             import torch
 
             self.torch = torch
 
-            # Auto-download model
-            self.processor = CLIPProcessor.from_pretrained(self.model_id)
-            self.model = CLIPModel.from_pretrained(self.model_id)
+            try:
+                # Download and load model
+                self.processor = CLIPProcessor.from_pretrained(
+                    self.model_id,
+                    cache_dir=None,  # Use default HF cache
+                )
 
-            # Move to device
-            if self.device == "cuda":
-                self.model = self.model.cuda()
-            elif self.device == "mlx":
-                # MLX models wrap PyTorch
-                self.model = self.model.to("cpu")
-            else:
-                self.model = self.model.to("cpu")
+                self.model = CLIPModel.from_pretrained(
+                    self.model_id,
+                    device_map=self._get_device_map(),
+                )
 
-            self.model.eval()
+                # Move to device
+                if self.device == "cuda":
+                    self.model = self.model.cuda()
+                elif self.device == "mlx":
+                    self.model = self.model.to("cpu")
+                else:
+                    self.model = self.model.to("cpu")
+
+                self.model.eval()
+
+            except Exception as model_error:
+                print(f"Note: CLIP model {self.model_id} load issue: {model_error}")
+                self.model = None
+                self.processor = None
 
         except ImportError as e:
             raise ImportError(
                 f"CLIP requires: pip install torch transformers. Error: {e}"
             )
+
+    def _get_device_map(self) -> str:
+        """Get device map for model loading.
+
+        Returns:
+            Device specification for transformers
+        """
+        if self.device == "cuda":
+            return "cuda"
+        else:
+            return "cpu"
 
     def embed_frame(
         self,

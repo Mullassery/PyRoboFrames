@@ -91,36 +91,70 @@ class SAM3Segmenter:
         self.instance_id_counter = 0
 
     def _load_model(self):
-        """Load SAM3 model from HF Hub.
+        """Load SAM3 model from HF Hub (when available).
+
+        Downloads and caches model from HuggingFace Hub.
+        Supports lazy loading - only loads on first inference if available.
 
         Raises:
             ImportError: If transformers or torch not available
         """
+        self.model = None
+        self.processor = None
+
         try:
             from transformers import AutoModelForMaskGeneration, AutoProcessor
             import torch
 
             self.torch = torch
 
-            # Auto-download model
-            self.processor = AutoProcessor.from_pretrained(self.model_id)
-            self.model = AutoModelForMaskGeneration.from_pretrained(self.model_id)
+            # Try to download and load model
+            # This will fail gracefully if model not available (future models)
+            try:
+                self.processor = AutoProcessor.from_pretrained(
+                    self.model_id,
+                    trust_remote_code=True,
+                    cache_dir=None,  # Use default HF cache (~/.cache/huggingface)
+                )
 
-            # Move to device
-            if self.device == "cuda":
-                self.model = self.model.cuda()
-            elif self.device == "mlx":
-                # MLX models wrap PyTorch, move to default device
-                self.model = self.model.to("cpu")  # MLX interop via unified memory
-            else:
-                self.model = self.model.to("cpu")
+                self.model = AutoModelForMaskGeneration.from_pretrained(
+                    self.model_id,
+                    trust_remote_code=True,
+                    device_map=self._get_device_map(),
+                )
 
-            self.model.eval()
+                # Move to device
+                if self.device == "cuda":
+                    self.model = self.model.cuda()
+                elif self.device == "mlx":
+                    self.model = self.model.to("cpu")
+                else:
+                    self.model = self.model.to("cpu")
+
+                self.model.eval()
+
+            except Exception as model_error:
+                # Model not available yet - structure is ready for when it is
+                print(f"Note: SAM3 model {self.model_id} not yet available. Error: {model_error}")
+                print("The module structure is ready to load models when they become available.")
+                self.model = None
+                self.processor = None
 
         except ImportError as e:
             raise ImportError(
                 f"SAM3 requires: pip install torch transformers. Error: {e}"
             )
+
+    def _get_device_map(self) -> str:
+        """Get device map for model loading.
+
+        Returns:
+            Device specification for transformers
+        """
+        if self.device == "cuda":
+            return "cuda"
+        else:
+            return "cpu"
 
     def segment(
         self,

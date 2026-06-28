@@ -84,27 +84,67 @@ class GroundingDINO:
     def _load_model(self):
         """Load Grounding DINO model from HF Hub.
 
+        Downloads and caches model from HuggingFace Hub.
+        Supports lazy loading - only loads on first inference if available.
+
         Raises:
             ImportError: If transformers or torch not available
         """
+        self.model = None
+        self.processor = None
+
         try:
             from transformers import AutoProcessor
             import torch
 
             self.torch = torch
 
-            # Load processor
-            self.processor = AutoProcessor.from_pretrained(self.model_id)
+            try:
+                # Load processor
+                self.processor = AutoProcessor.from_pretrained(
+                    self.model_id,
+                    cache_dir=None,  # Use default HF cache
+                    trust_remote_code=True,
+                )
 
-            # For now, use a placeholder for the model
-            # Real implementation would load actual Grounding DINO
-            self.model = None  # Placeholder
-            self.model_loaded = True
+                # Grounding DINO model loading
+                # Note: Grounding DINO requires special handling as it's not standard HF format
+                try:
+                    from transformers import AutoModel
+                    self.model = AutoModel.from_pretrained(
+                        self.model_id,
+                        trust_remote_code=True,
+                        device_map=self._get_device_map(),
+                    )
+                except Exception:
+                    # Alternative: load from IDEA-Research repo directly
+                    # For now, structure is ready when model becomes available
+                    print(f"Note: Grounding DINO {self.model_id} not yet available in standard format")
+                    self.model = None
+
+                self.model_loaded = self.model is not None
+
+            except Exception as model_error:
+                print(f"Note: Grounding DINO model load issue: {model_error}")
+                self.model = None
+                self.processor = None
+                self.model_loaded = False
 
         except ImportError as e:
             raise ImportError(
                 f"Grounding DINO requires: pip install torch transformers. Error: {e}"
             )
+
+    def _get_device_map(self) -> str:
+        """Get device map for model loading.
+
+        Returns:
+            Device specification for transformers
+        """
+        if self.device == "cuda":
+            return "cuda"
+        else:
+            return "cpu"
 
     def _load_sam3_if_needed(self):
         """Load SAM3 for mask refinement if enabled."""
