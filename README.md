@@ -4,17 +4,17 @@
 [![Python](https://img.shields.io/pypi/pyversions/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-**A robotics data platform for training robots from recorded demonstrations — ingest, query, and a fast dataloader, built for Apple Silicon and Linux.**
+**Multi-task robotics and autonomous driving platform:**
+- **v0.4.x: Robot learning dataloader** — LeRobot datasets, video decode, multi-sensor fusion
+- **v0.5.x: Autonomous driving 360° perception** — Panoramic stitching, 3D sensor fusion, occupancy grids
 
-> **Status: v0.4.1-rc** — Camera calibration + depth I/O + codec selection + depth camera support + GPU decode backends. **What works today:**
-> the LeRobot **dataloader** (state/action + camera frames, temporal windows, **video**, **off-GIL prefetch**,
-> NumPy / MLX / PyTorch / JAX output); **ingest** (MCAP JSON/protobuf/CDR, ROS 2 `.db3` bags);
-> **data-ops** (quality scoring, episode filtering, delta compression, sparse/masked data, versioning,
-> distributed loading, MQTT/Kafka streaming); a time-indexed **Robotics DataFrame**; **LeRobot write-back** with **codec selection** + **depth cameras**;
-> **curriculum** + **goal-conditioned** sampling; **batched augmentation**; **Keras/TensorFlow adapter**; memory-mapped shards;
-> **GPU decode** (VideoToolbox on macOS, NVDEC on Linux+CUDA); **CV-CUDA transforms**. Next:
-> **camera calibration**, time-aligned depth/RGB, and Apple-Silicon **zero-copy MLX** (decode → IOSurface, gated on [mlx#2855](https://github.com/ml-explore/mlx/issues/2855)).
-> See [What works today](#what-works-today).
+> **Status: v0.4.1 + v0.5.2** 
+>
+> **Robot Learning (v0.4.1):** LeRobot **dataloader** (state/action + camera frames, temporal windows, **video**, **off-GIL prefetch**, NumPy/MLX/PyTorch/JAX); **ingest** (MCAP, ROS 2); **Robotics DataFrame** (time-align, resample); **data-ops** (quality scoring, curriculum, augmentation); **GPU decode** (VideoToolbox, NVDEC); **codec selection** + **depth cameras**.
+>
+> **Autonomous Driving (v0.5.2):** ✅ **Phase 1-4** — Cylindrical panoramic stitching, Laplacian pyramid blending, BEV 3D projection, GPU acceleration (CuPy/MLX), temporal consistency (optical flow + Kalman); ✅ **Phase 5-6** — Real-world dataset loaders (Waymo, nuScenes, KITTI), advanced 3D perception (lidar fusion, radar fusion, Bayesian occupancy grids). **Next:** Foundation models (Phase 7, SAM3 segmentation + CLIP embeddings + Grounding DINO).
+>
+> See [What works today](#what-works-today) and [Automotive Module](#autonomous-driving-v052).
 
 ---
 
@@ -226,6 +226,111 @@ print(report.ok, report.warnings)
 
 ---
 
+## Autonomous Driving: v0.5.2
+
+**Complete 360° panoramic stitching + 3D sensor fusion stack for autonomous vehicles.**
+
+### Quickstart: Panoramic Stitching
+
+```python
+from pyroboframes.automotive import (
+    CylindricalStitcher,
+    get_waymo_layout,
+)
+
+# Stitch 5-camera Waymo dataset into 360° panorama
+layout = get_waymo_layout()
+stitcher = CylindricalStitcher(layout, blend_method="laplacian")
+
+# Input: 5 camera frames (FRONT, FRONT_LEFT, FRONT_RIGHT, SIDE_LEFT, SIDE_RIGHT)
+frames = {
+    "FRONT": np.zeros((720, 1280, 3), dtype=np.uint8),
+    "FRONT_LEFT": np.zeros((720, 1280, 3), dtype=np.uint8),
+    # ... other cameras
+}
+
+# Output: Seamless 360° panorama [480, 1728, 3]
+panorama = stitcher.stitch(frames, blend_method="laplacian")
+```
+
+### 3D Perception Pipeline
+
+```python
+from pyroboframes.automotive import (
+    WaymoDatasetLoader,
+    LidarFusion,
+    RadarFusion,
+    OccupancyGrid,
+)
+
+# Phase 5: Load real-world datasets
+waymo = WaymoDatasetLoader("/path/to/waymo", split="training")
+
+for batch in waymo:
+    frames = batch["frames"]         # 5 cameras
+    lidar = batch["lidar"]           # 100k points
+    radar = batch["radar"]           # Velocity detections
+    
+    # Phase 6: Fuse sensors
+    lidar_fusion = LidarFusion(num_lidars=5, voxel_size=0.1)
+    fused_lidar = lidar_fusion.fuse(lidar, transforms)
+    
+    radar_fusion = RadarFusion(num_radars=2)
+    fused_radar = radar_fusion.fuse(radar, transforms)
+    
+    # Build occupancy grid
+    occupancy = OccupancyGrid(size=(-50, 50), resolution=0.2)
+    occupancy.update(
+        lidar_points=fused_lidar[:, :3],
+        radar_detections=fused_radar,
+    )
+    occupancy_map = occupancy.get_occupancy_map()  # [500, 500]
+```
+
+### Features
+
+**Phase 1-3: Video Stitching**
+- Cylindrical projection math (360° panorama)
+- Linear seam blending (Phase 1)
+- Laplacian pyramid + graph-cut seams (Phase 2)
+- Bird's-eye-view (BEV) projection for 3D objects (Phase 3)
+
+**Phase 4: GPU & Temporal**
+- GPU acceleration (CuPy, MLX, NumPy fallback)
+- Optical flow seam tracking (RAFT, LiteFlowNet, Farneback)
+- Kalman filtering for temporal smoothness
+
+**Phase 5: Real-World Datasets**
+- **Waymo Open Dataset** — 5 cameras, 5 lidar, TFRecord format
+- **nuScenes** — 6 cameras, lidar, radar, JSON metadata
+- **KITTI** — Stereo pairs, 3D detection annotations
+
+**Phase 6: 3D Perception**
+- **Lidar fusion** — Multi-sensor point cloud registration, voxel downsampling, ground segmentation
+- **Radar fusion** — Velocity fusion with coordinate transformation
+- **Occupancy grid** — Bayesian probabilistic mapping (log-odds representation)
+
+**Phase 7 (v0.5.3):** Foundation models — SAM3 segmentation, CLIP embeddings, Grounding DINO detection
+
+### Test Coverage: 97 automotive tests passing ✓
+
+```bash
+pytest tests/test_automotive*.py -v
+# 97 passed, 2 skipped (100% success)
+# - Phase 1-4: 70 tests
+# - Phase 5-6: 27 tests
+```
+
+### Documentation
+
+- [`docs/AUTOMOTIVE_STITCHING_PHASE1.md`](./docs/AUTOMOTIVE_STITCHING_PHASE1.md) — Phase 1 implementation
+- [`docs/AUTOMOTIVE_STITCHING_PHASE2_3.md`](./docs/AUTOMOTIVE_STITCHING_PHASE2_3.md) — Blending & BEV
+- [`docs/VERSION_0.5.2_SUMMARY.md`](./docs/VERSION_0.5.2_SUMMARY.md) — Complete v0.5.2 reference
+- [`docs/ROADMAP_V0.5.3_SAM_MODELS.md`](./docs/ROADMAP_V0.5.3_SAM_MODELS.md) — Phase 7 foundation models (SAM3 vs SAM2)
+- [`examples/autonomous_driving_dataset_3d_perception.py`](./examples/autonomous_driving_dataset_3d_perception.py) — Full example
+
+---
+
 ## What works today
 
 | Capability | Status |
@@ -278,7 +383,28 @@ print(report.ok, report.warnings)
 | **CV-CUDA** transform operators (Resize, Normalize) | ✅ implemented; [GPU verification pending](./docs/GPU_VERIFICATION.md) |
 | **HF Hub streaming** (partial download, on-demand) | ✅ fully working |
 
-The 🚧 rows are the honest gaps — see the [Roadmap](#roadmap) for sequencing.
+### Autonomous Driving (v0.5.x)
+
+| Capability | v0.5.0 | v0.5.1 | v0.5.2 |
+|---|:--:|:--:|:--:|
+| Cylindrical panoramic projection | ✅ | ✅ | ✅ |
+| Linear seam blending | ✅ | ✅ | ✅ |
+| Laplacian pyramid + graph-cut seams | ✅ | ✅ | ✅ |
+| Bird's-eye-view (BEV) 3D projection | ✅ | ✅ | ✅ |
+| GPU acceleration (CuPy / MLX / NumPy) | — | ✅ | ✅ |
+| Optical flow seam tracking (RAFT, LiteFlowNet, Farneback) | — | ✅ | ✅ |
+| Temporal consistency (Kalman smoothing) | — | ✅ | ✅ |
+| **Waymo Open Dataset loader** | — | — | ✅ |
+| **nuScenes dataset loader** | — | — | ✅ |
+| **KITTI dataset loader** | — | — | ✅ |
+| **Lidar point cloud fusion** | — | — | ✅ |
+| **Radar velocity fusion** | — | — | ✅ |
+| **Bayesian occupancy grid mapping** | — | — | ✅ |
+| Foundation models (SAM3, CLIP, Grounding DINO) | — | — | ⏳ (v0.5.3) |
+
+**Test coverage:** 97 automotive tests passing (Phases 1-6 complete) ✅
+
+The rows are the honest gaps — see the [Roadmap](#roadmap) for sequencing.
 
 ---
 
@@ -394,33 +520,64 @@ for zero-copy MLX (awaiting mlx#2855). Comprehensive GPU verification tooling (d
 - **Depth camera support** — point clouds (Oak-D, RealSense, Kinect), memory-mapped, time-aligned with RGB
 - **Camera calibration** — intrinsics/distortion registry, undistortion, multi-camera alignment
 
-**Next (v0.5.0 — Humanoid Fusion, 2 weeks):**
+**Shipped (v0.5.0-v0.5.2 — Autonomous Driving 360° Perception):**
 
-- **Multimodal sensor fusion** — RGB + depth + IMU synchronized batches
-- **Humanoid training example** — arm + gripper + wrist camera full pipeline
+- **Phase 1-3:** Cylindrical panoramic stitching, Laplacian pyramid blending, BEV 3D projection for autonomous vehicles
+- **Phase 4:** GPU acceleration (CuPy/MLX/NumPy), temporal consistency (optical flow + Kalman filtering)
+- **Phase 5:** Real-world dataset loaders (Waymo, nuScenes, KITTI) with auto-calibration
+- **Phase 6:** Advanced 3D perception (lidar fusion, radar fusion, Bayesian occupancy grids)
 
-**Next+ (v1.0 — Full Humanoid + Ecosystem, 3 weeks):**
+**Next (v0.5.3 — Foundation Models, 2 weeks):**
 
-- **Zero-copy MLX.** VideoToolbox/NVDEC → IOSurface/GPU buffer → MLX (once mlx#2855 lands) — 3× speedup.
-- **Distributed loading** — S3/GCS streaming, multi-node Ray integration for 1M+ frame training.
-- **Ecosystem support** — RLDS / Open X-Embodiment, HDF5, NetCDF format converters.
-- **Action-space validation** — joint-limit, torque saturation checks at load time.
-- **Enhanced quality scoring** — motion blur detection, scene diversity, trajectory smoothness.
+- **Phase 7:** SAM3 segmentation (temporal consistency), CLIP embeddings (scene understanding), Grounding DINO (open-vocabulary detection)
+- **Semantic occupancy grids** — Annotate occupancy with detected object classes
+- **Multi-modal reasoning** — Vision + language + 3D sensor fusion
+
+**Next+ (v0.6.0 — Full Autonomous Stack + Robotics Integration, 3 weeks):**
+
+- **Lidar voxel-SLAM** — Real-time localization + mapping from lidar sequence
+- **Trajectory optimization** — Motion planning with occupancy constraints
+- **Cross-modal transfer** — Apply autonomous driving models to robotics scenes (and vice versa)
+- **Zero-copy MLX** (robot learning) — VideoToolbox/NVDEC → IOSurface/GPU buffer → MLX (once mlx#2855 lands)
+- **Distributed loading** — S3/GCS streaming, multi-node Ray integration for 1M+ frame training
+
+### Roadmap Tiers
+
+**Robot Learning (v0.4.x → v1.0):**
+1. Dataloader (DONE v0.1-v0.4.1) → Data-ops (DONE v0.2) → GPU decode (DONE v0.3) → **Zero-copy MLX (v1.0)**
+
+**Autonomous Driving (v0.5.0 → v1.0):**
+1. Stitching + Blending (DONE v0.5.0) → GPU + Temporal (DONE v0.5.1) → Real-world datasets (DONE v0.5.2) → **Foundation models (v0.5.3)** → **SLAM + planning (v0.6.0)**
 
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the "Train Anywhere" multi-backend plan and
-priority tiers, and [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) for the
-original v0.1 build sequence.
+priority tiers, and [`docs/ROADMAP_V0.5.3_SAM_MODELS.md`](./docs/ROADMAP_V0.5.3_SAM_MODELS.md) for Phase 7 planning.
 
 ---
 
 ## Documentation
 
+### Core
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — design, the gap, and decisions.
-- [`docs/GPU_VERIFICATION.md`](./docs/GPU_VERIFICATION.md) — GPU setup, verification, benchmarking.
-- [`docs/COMPARISON.md`](./docs/COMPARISON.md) — alternatives and adopted techniques.
-- [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) — phased build plan.
 - [`docs/ROADMAP.md`](./docs/ROADMAP.md) — feature priorities and build sequence.
 - [`AGENTS.md`](./AGENTS.md) — orientation for contributors and AI coding agents.
+
+### Robot Learning (v0.4.x)
+- [`docs/GPU_VERIFICATION.md`](./docs/GPU_VERIFICATION.md) — GPU setup, verification, benchmarking.
+- [`docs/COMPARISON.md`](./docs/COMPARISON.md) — alternatives and adopted techniques.
+- [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) — phased build plan (v0.1 original).
+
+### Autonomous Driving (v0.5.x)
+- [`docs/AUTOMOTIVE_STITCHING_PHASE1.md`](./docs/AUTOMOTIVE_STITCHING_PHASE1.md) — Cylindrical projection + linear blending (v0.5.0)
+- [`docs/AUTOMOTIVE_STITCHING_PHASE2_3.md`](./docs/AUTOMOTIVE_STITCHING_PHASE2_3.md) — Laplacian blending + BEV projection (v0.5.0)
+- [`docs/VERSION_0.5.2_SUMMARY.md`](./docs/VERSION_0.5.2_SUMMARY.md) — Complete API reference + algorithms (Phases 5-6)
+- [`docs/ROADMAP_V0.5.3_SAM_MODELS.md`](./docs/ROADMAP_V0.5.3_SAM_MODELS.md) — Foundation models planning: SAM3 vs SAM2 analysis (Phase 7)
+
+### Examples
+- [`examples/autonomous_driving_360_perception.py`](./examples/autonomous_driving_360_perception.py) — Phase 1 stitching demo
+- [`examples/autonomous_driving_advanced_perception.py`](./examples/autonomous_driving_advanced_perception.py) — Phase 2-3 blending + BEV demo
+- [`examples/autonomous_driving_dataset_3d_perception.py`](./examples/autonomous_driving_dataset_3d_perception.py) — Phase 5-6 full pipeline (datasets + 3D perception)
+
+### Community
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) · [`CHANGELOG.md`](./CHANGELOG.md)
 
 ## Contributing
