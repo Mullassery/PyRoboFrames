@@ -65,6 +65,7 @@ from .perception_3d import (
     OccupancyGrid,
     RadarFusion,
 )
+from .sam3_segmentation import SAM3Segmenter
 from .stitching import CylindricalStitcher
 
 __all__ = [
@@ -90,6 +91,8 @@ __all__ = [
     "LidarFusion",
     "RadarFusion",
     "OccupancyGrid",
+    # Phase 7: Foundation models (v0.5.3)
+    "SAM3Segmenter",
     # Camera layouts
     "CAMERA_LAYOUTS",
     "get_waymo_layout",
