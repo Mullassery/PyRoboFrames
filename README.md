@@ -365,7 +365,148 @@ PyRoboFrames (Rust core + Python bindings via PyO3)
 
 ---
 
+## Cross-Domain Integration: The Real Power
+
+PyRoboFrames' unique strength is **applying techniques from both domains** to solve complex problems:
+
+### Robot Learning → Autonomous Driving
+
+```python
+# Use robot imitation learning to improve AV decision-making
+from pyroboframes.automotive import OccupancyGrid, SAM3Segmenter
+from pyroboframes import RoboFrameDataset
+
+# Train a robot policy from demos
+robot_dataset = RoboFrameDataset.from_path("/robot/data")
+robot_policy = train_policy(robot_dataset)  # Your training loop
+
+# Apply same architecture to driving
+occupancy = OccupancyGrid(size=(-50, 50), resolution=0.2)
+# Now interpret occupancy grid as "robot workspace"
+# Use same Kalman filtering, temporal consistency, etc.
+```
+
+### Autonomous Driving → Robot Learning
+
+```python
+# Use AV perception for robotic manipulation
+from pyroboframes.automotive import SAM3Segmenter, CLIPEmbedding
+from pyroboframes import RoboFrameDataset
+
+# Segment robot workspace with SAM3
+segmenter = SAM3Segmenter("facebook/sam3-small", device="mlx")
+gripper_view = robot_camera_frame()
+object_masks = segmenter.segment(gripper_view)
+
+# Understand scene semantics with CLIP
+clip = CLIPEmbedding("openai/clip-vit-b32")
+grasp_scores = clip.classify(gripper_view, 
+    ["graspable object", "fragile item", "tool", "empty space"])
+
+# Now do policy learning with semantic understanding
+loader = robot_dataset.loader(cameras=["gripper_cam"], ...)
+```
+
+### Shared Infrastructure
+
+Both domains benefit from **unified implementations of:**
+
+1. **GPU acceleration** (CuPy, MLX, NumPy) - works for video decode, stitching, segmentation
+2. **Temporal consistency** (Kalman filtering) - smooth robot trajectories AND stitching
+3. **Multi-sensor fusion** (as-of join) - robot sensors AND vehicle sensors
+4. **Occupancy representation** - robot workspace AND driving scene
+5. **Foundation models** (SAM3, CLIP, Grounding DINO) - work for both perception tasks
+
+### Real-World Examples
+
+**Mobile Manipulation Robot:**
+```python
+# Fuse robot arm + mobile base + camera
+from pyroboframes import RoboFrameDataset
+from pyroboframes.automotive import SAM3Segmenter, OccupancyGrid
+
+ds = RoboFrameDataset.from_path("/mobile_manip_data")
+
+for batch in ds.loader(
+    cameras=["mobile_base_cam", "arm_cam"],
+    temporal_windows=[-0.5, 0],  # historical context
+):
+    # Segment gripper view with SAM3
+    segmenter = SAM3Segmenter("facebook/sam3-small")
+    arm_mask = segmenter.segment(batch["arm_cam"])
+    
+    # Build workspace occupancy grid
+    workspace = OccupancyGrid(size=(-2, 2), resolution=0.05)
+    workspace.update_with_mask(arm_mask)
+    
+    # Train policy with spatial awareness
+    policy_output = policy_network(
+        state=batch["arm_state"],
+        semantics=workspace.get_occupancy_map()
+    )
+```
+
+**Autonomous Delivery Robot:**
+```python
+# Combine autonomous driving (navigation) + robotics (manipulation)
+from pyroboframes.automotive import (
+    WaymoDatasetLoader,
+    CylindricalStitcher,
+    SAM3Segmenter,
+)
+from pyroboframes import RoboFrameDataset
+
+# Learn navigation from autonomous driving data
+av_dataset = WaymoDatasetLoader("/waymo/data")
+for av_batch in av_dataset:
+    # Panoramic view for navigation
+    stitcher = CylindricalStitcher(get_waymo_layout())
+    nav_view = stitcher.stitch(av_batch["frames"])
+    
+    # Segment obstacles with SAM3
+    segmenter = SAM3Segmenter("facebook/sam3-small")
+    obstacles = segmenter.segment(nav_view[0])
+    
+    # Learn to navigate around obstacles
+    nav_policy.train_step(nav_view, obstacles)
+
+# Learn manipulation from robot demos
+robot_dataset = RoboFrameDataset.from_path("/robot/delivery")
+for robot_batch in robot_dataset.loader():
+    # Segment package to pick up
+    masks = segmenter.segment(robot_batch["camera"])
+    
+    # Learn to manipulate with semantic understanding
+    manip_policy.train_step(robot_batch, masks)
+```
+
+---
+
 ## Which Should I Use?
+
+### Use **v0.4.x (Robot Learning)** if:
+- Training a policy from LeRobot datasets
+- You need fast video loading on Mac, NVIDIA, or CPU
+- You want multi-camera temporal windows for sequence models
+- **You're building robot manipulation systems**
+
+### Use **v0.5.x (Autonomous Driving)** if:
+- Building 360° autonomous driving perception
+- You need real-world dataset support (Waymo, nuScenes, KITTI)
+- You want sensor fusion (lidar + radar + camera)
+- You need semantic scene understanding
+- **You're building autonomous vehicle systems**
+
+### Use **BOTH** if (The Real Opportunity):
+- **Building mobile manipulation systems** (Stretch, Boston Dynamics, TRI systems)
+- **Building autonomous delivery robots** (combining navigation + manipulation)
+- **Building humanoid robots** with scene understanding
+- **Researching embodied AI** (sim-to-real, multi-task learning)
+- **Transferring knowledge** between domains (navigation→manipulation, vice versa)
+
+The cross-domain capabilities enable **next-generation robotics applications** that require both autonomous navigation AND intelligent manipulation in real-world scenes.
+
+---
 
 ### Use **v0.4.x (Robot Learning)** if:
 - Training a policy from LeRobot datasets
