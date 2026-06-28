@@ -66,6 +66,7 @@ from .perception_3d import (
     RadarFusion,
 )
 from .clip_embeddings import CLIPEmbedding
+from .grounding_dino import GroundingDINO
 from .sam3_segmentation import SAM3Segmenter
 from .stitching import CylindricalStitcher
 
@@ -95,6 +96,7 @@ __all__ = [
     # Phase 7: Foundation models (v0.5.3)
     "SAM3Segmenter",
     "CLIPEmbedding",
+    "GroundingDINO",
     # Camera layouts
     "CAMERA_LAYOUTS",
     "get_waymo_layout",
