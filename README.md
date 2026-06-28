@@ -3,11 +3,11 @@
 [![PyPI](https://img.shields.io/pypi/v/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![Python](https://img.shields.io/pypi/pyversions/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-115%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-175%20passing-brightgreen)]()
 
-**Fast ML dataloader for robot learning on Apple Silicon, NVIDIA, and CPU.**
+**Fast ML dataloader for robot learning — LeRobot, RLDS, HDF5, NetCDF, hardware video decode, distributed S3/GCS streaming.**
 
-PyRoboFrames is a **foundation library**—load LeRobot datasets, accelerate video decode with hardware (VideoToolbox/NVDEC), and output to NumPy/MLX/PyTorch/JAX.
+PyRoboFrames is a **foundation library** — load any robot learning dataset, accelerate video decode with hardware (VideoToolbox/NVDEC), validate data quality, and stream to NumPy/MLX/PyTorch/JAX. The heavy lifting runs in a Rust engine; Python is the ergonomic surface.
 
 **For autonomous driving perception and foundation models, see [PyRoboVision](https://github.com/Mullassery/PyRoboVision).**
 
@@ -28,6 +28,17 @@ uv add pyroboframes
 **Prebuilt wheels:** macOS (Apple Silicon), Linux (x86_64)  
 **From source:** Rust 1.78+ required
 
+Optional extras (install as needed):
+
+```bash
+pip install pyroboframes h5py               # HDF5 datasets
+pip install pyroboframes xarray netCDF4     # NetCDF datasets
+pip install pyroboframes tensorflow-datasets  # RLDS / Open X-Embodiment
+pip install pyroboframes fsspec s3fs        # S3 remote streaming
+pip install pyroboframes fsspec gcsfs       # GCS remote streaming
+pip install pyroboframes ray                # Ray distributed loading
+```
+
 ---
 
 ## Quick Start
@@ -37,94 +48,202 @@ uv add pyroboframes
 ```python
 import pyroboframes as prf
 
-# Open a LeRobot dataset
 ds = prf.RoboFrameDataset.from_path("/path/to/lerobot_dataset")
-print(ds)  # RoboFrameDataset(episodes=…, frames=…, cameras=[…])
 
-# Create a dataloader with hardware-accelerated video decode
 loader = ds.loader(
     batch_size=64,
     cameras=["observation.images.top"],
-    output="torch",  # or "mlx", "numpy", "jax"
-    num_workers=4,  # parallel video decode
+    output="torch",       # or "mlx", "numpy", "jax"
+    num_workers=4,
+    cache_size=4096,      # LRU frame cache (frames)
+    episode_prefetch=True,
 )
 
-# Train
 for batch in loader:
-    state = batch["observation.state"]    # [64, state_dim]
-    frames = batch["observation.images.top"]  # [64, H, W, 3]
-    action = batch["action"]               # [64, action_dim]
-    # your training step...
+    state  = batch["observation.state"]          # [64, state_dim]
+    frames = batch["observation.images.top"]     # [64, H, W, 3]
+    action = batch["action"]                     # [64, action_dim]
 ```
 
-### Proprioceptive-Only (No Video) for 10x Speedup
+### Proprioceptive-Only (No Video) for 10× Speedup
 
 ```python
-# For policies that only use state/action (no camera)
 loader = prf.ProprioceptiveLoader(
     dataset_path="/path/to/lerobot_dataset",
     batch_size=256,
-    device="mlx",  # or "cuda", "cpu"
+    device="mlx",
 )
 
 for batch in loader:
-    state = batch["state"]    # [256, state_dim]
-    action = batch["action"]  # [256, action_dim]
-    # ~10x faster than loading video frames
+    state  = batch["state"]    # [256, state_dim]
+    action = batch["action"]   # [256, action_dim]
 ```
 
 ### Temporal Windows for Sequence Models
 
 ```python
-# Multi-timestep windows for RNN/Transformer policies
 loader = ds.loader(
     batch_size=32,
-    chunk_size=16,  # 16-frame sequences
+    chunk_size=16,
     delta_timestamps={"observation.state": [-0.2, -0.1, 0.0]},
     output="mlx",
 )
 for batch in loader:
     seq = batch["observation.state"]  # [32, 3, state_dim]
-    # Perfect for temporal policies
 ```
 
 ---
 
-## Features
+## What's New in v1.1
+
+### Video Codec Selection — 40–50% Storage Savings
+
+```python
+# Write with HEVC (H.265) instead of the H.264 default
+prf.write_lerobot_dataset(
+    path="/out/dataset",
+    features={"observation.state": state_arr, "action": action_arr},
+    episode_lengths=[500, 500],
+    video_codec="hevc",   # "h264" | "hevc" | "av1"
+    video_crf=23,         # lower = better quality, larger file
+)
+
+# Standalone video encoding
+prf.encode_video_frames(frames, "output.mp4", codec="av1", crf=30)
+```
+
+### Data Validation Toolkit
+
+```python
+from pyroboframes import DatasetValidator
+
+validator = DatasetValidator(
+    ds,
+    check_frames=True,    # frame count vs. metadata
+    check_temporal=True,  # timestamp gap detection
+    check_codec=True,     # sample-decode health check
+    sample_rate=0.1,      # probe 10% of episodes
+)
+report = validator.validate()
+print(report.summary())
+report.raise_if_errors()
+```
+
+### Episode-Level Caching for Repeated Epochs
+
+```python
+from pyroboframes import EpisodeCache
+
+cache = EpisodeCache(ds, max_episodes=8)
+
+for epoch in range(10):
+    for ep_idx in range(ds.num_episodes()):
+        ep = cache.get_episode(ep_idx)   # decoded once, cached after
+        states = ep["observation.state"]  # [T, D]
+
+cache.prefetch([0, 1, 2, 3])  # background pre-decode
+```
+
+### Cross-Dataset Quality Comparison
+
+```python
+from pyroboframes import EpisodeScorer, DatasetQualityProfile, CrossDatasetComparator
+
+scorer = EpisodeScorer()
+profile_a = DatasetQualityProfile.from_scores("dataset_a", scorer.score_episodes(df_a))
+profile_b = DatasetQualityProfile.from_scores("dataset_b", scorer.score_episodes(df_b))
+
+comparator = CrossDatasetComparator(reference=profile_a)
+print(comparator.compare(profile_b))            # Cohen's d, percentile overlap
+print(comparator.recommend_mixing_ratio(profile_b))  # curriculum mixing weight
+```
+
+### HDF5 / NetCDF / RLDS Format Support
+
+```python
+# HDF5 (ROBOMIMIC, ACT, custom) — pip install h5py
+from pyroboframes import HDF5Dataset, convert_hdf5
+convert_hdf5("robomimic.hdf5", "/out/lerobot")
+
+# NetCDF (scientific/simulation datasets) — pip install xarray netCDF4
+from pyroboframes import NetCDFDataset, convert_netcdf
+convert_netcdf("sim_data.nc", "/out/lerobot", episode_breaks=[0, 500, 1200])
+
+# RLDS / Open X-Embodiment — pip install tensorflow-datasets
+from pyroboframes import RLDSDataset, convert_rlds
+convert_rlds("fractal20220817_data", "/out/lerobot", split="train")
+```
+
+### Remote S3/GCS Streaming + Ray Distributed Loading
+
+```python
+# Stream from S3
+from pyroboframes import RemoteDataset
+ds = RemoteDataset.from_s3("s3://my-bucket/lerobot_dataset").open()
+ds.prefetch_episodes([0, 1, 2, 3])   # background download
+loader = ds.loader(batch_size=32)
+
+# Ray distributed — pip install ray
+from pyroboframes import RayDistributedLoader, shard_episodes
+loader = RayDistributedLoader(
+    "/path/to/dataset", num_workers=4, rank=0, world_size=4, batch_size=32
+)
+
+# Or just shard episodes yourself
+my_episodes = shard_episodes(total_episodes=200, world_size=4, rank=0)
+# → [0, 4, 8, …, 196]
+```
+
+---
+
+## Full Feature Table
 
 | Feature | Status | Notes |
-|---------|--------|-------|
+|---|---|---|
 | **LeRobot v3.0 loading** | ✅ | Full schema support |
-| **Video frame decoding** | ✅ | FFmpeg + hardware acceleration |
-| **Proprioceptive-only loader** | ✅ | 10x speedup (no video) |
+| **Video decode** | ✅ | FFmpeg + VideoToolbox + NVDEC |
+| **Proprioceptive loader** | ✅ | 10× speedup (no video) |
 | **Temporal windows** | ✅ | Multi-timestep sequences |
 | **Multi-camera batching** | ✅ | Arbitrary camera combinations |
 | **Output formats** | ✅ | NumPy, MLX, PyTorch, JAX |
 | **Parallel prefetch** | ✅ | num_workers for async loading |
 | **Data augmentation** | ✅ | Rotate, flip, crop, color jitter |
-| **Dataset validation** | ✅ | Frame integrity checks |
+| **Video codec selection** | ✅ | H.264 / HEVC / AV1 + CRF control |
+| **Dataset validation** | ✅ | Temporal gaps, missing frames, codec health |
+| **Episode caching** | ✅ | RAM-based LRU cache, background prefetch |
 | **MCAP ingestion** | ✅ | JSON, protobuf, CDR support |
 | **ROS 2 bag ingestion** | ✅ | .db3 native format |
-| **GPU decode** | ✅ | VideoToolbox (macOS), NVDEC (CUDA) |
-| **Distributed loading** | ✅ | Multi-GPU synchronized sampling |
+| **HDF5 ingestion** | ✅ | ROBOMIMIC, ACT, custom layouts |
+| **NetCDF ingestion** | ✅ | Scientific/simulation datasets |
+| **RLDS / Open X-Embodiment** | ✅ | tensorflow-datasets integration |
 | **Episode quality scoring** | ✅ | Diversity, sharpness, state variance |
-| **Streaming** | ✅ | Kafka, MQTT real-time data |
+| **Cross-dataset comparison** | ✅ | Cohen's d, percentile ranking, mixing ratio |
+| **S3/GCS streaming** | ✅ | fsspec-backed remote datasets |
+| **Ray distributed loading** | ✅ | Episode sharding across Ray workers |
+| **Streaming ingestion** | ✅ | Kafka, MQTT real-time data |
+| **Distributed loading** | ✅ | Multi-GPU synchronized sampling |
 
 ---
 
-## Test Coverage: 115 Tests Passing ✅
+## Test Coverage: 175 Tests Passing ✅
 
 ```
-Dataloader:     30 tests
-Video decode:   25 tests
-Proprioceptive: 16 tests
-Augmentation:   15 tests
-Temporal ops:   12 tests
-Quality/scoring: 10 tests
-Streaming:       7 tests
+Dataloader:       30 tests
+Video decode:     25 tests
+Proprioceptive:   16 tests
+Augmentation:     15 tests
+Temporal ops:     12 tests
+Quality/scoring:  17 tests    (+7 cross-dataset)
+Validation:       13 tests
+Caching:           5 tests
+HDF5:              7 tests
+NetCDF:            7 tests
+Distributed:       8 tests
+Streaming:         7 tests
+Codecs:            7 tests    (+3 round-trip)
+Other:             6 tests
 ```
 
-Run all tests:
 ```bash
 pytest tests/ -v
 ```
@@ -135,14 +254,11 @@ pytest tests/ -v
 
 - **Apple Silicon**: VideoToolbox hardware decode, MLX zero-copy arrays
 - **NVIDIA**: NVDEC hardware decode, PyTorch CUDA acceleration
-- **CPU**: NumPy fallback (works everywhere, ~10× slower)
+- **CPU**: NumPy fallback (~10× slower than hardware)
 
 ```python
-# Auto-detect device
-loader = ds.loader(device="auto", ...)
-
-# Or explicit
-loader = ds.loader(device="mlx", ...)  # Apple Silicon
+loader = ds.loader(device="auto", ...)   # auto-detect
+loader = ds.loader(device="mlx", ...)   # Apple Silicon
 loader = ds.loader(device="cuda", ...)  # NVIDIA
 loader = ds.loader(device="cpu", ...)   # CPU
 ```
@@ -152,17 +268,20 @@ loader = ds.loader(device="cpu", ...)   # CPU
 ## Use Cases
 
 - **LeRobot policy training** — Fast loading for imitation learning
-- **Robot manipulation** — Multi-camera, temporal windows, state/action
-- **Robotdog navigation** — Proprioceptive-only loaders for low-latency inference
-- **Mobile base control** — Egocentric perception + proprioceptive fusion
+- **Open X-Embodiment fine-tuning** — RLDS ingestion + LeRobot conversion
+- **Large-scale cloud training** — S3/GCS streaming + Ray distribution
+- **Multi-dataset curriculum** — Cross-dataset quality comparison + mixing ratios
+- **Data quality auditing** — Validate integrity before long training runs
+- **Legacy dataset migration** — HDF5/NetCDF → LeRobot conversion
 
 ---
 
 ## Performance
 
 - **Video decode:** 100+ FPS (hardware-accelerated on macOS/CUDA)
-- **Dataloader throughput:** 50-100 images/sec (PyTorch, Mac M3)
+- **Dataloader throughput:** 50–100 images/sec (PyTorch, Mac M3)
 - **Proprioceptive loader:** 1,000+ batch/sec (no video decode)
+- **Storage savings:** 40–50% with HEVC vs H.264 at equivalent quality
 
 ---
 
@@ -171,13 +290,15 @@ loader = ds.loader(device="cpu", ...)   # CPU
 ```
 PyRoboFrames (Rust core + Python surface)
 
-Input: LeRobot dataset (Parquet + MP4 video)
+Input: LeRobot / HDF5 / NetCDF / RLDS / MCAP / ROS2 / S3 / GCS
+   ↓
+Format Converters  →  LeRobot v3.0 (Parquet + MP4)
    ↓
 Rust Decoder (VideoToolbox / NVDEC / FFmpeg)
    ↓
 RoboFrameDataset (episode index, frame manifest)
    ↓
-Loader (temporal windows, augmentation, batching)
+Loader (temporal windows, augmentation, caching, batching)
    ↓
 Output: NumPy / MLX / PyTorch / JAX
    ↓
@@ -191,11 +312,16 @@ pyroboframes/
 ├── RoboFrameDataset      # Load LeRobot datasets
 ├── ProprioceptiveLoader  # State/action only (no video)
 ├── DataLoader            # Flexible batching + augmentation
+├── EpisodeCache          # RAM-based episode LRU cache
+├── DatasetValidator      # Deep data quality checks
+├── hdf5                  # HDF5 reader + converter
+├── netcdf                # NetCDF reader + converter
+├── rlds                  # RLDS / Open X-Embodiment reader
+├── distributed           # RemoteDataset, RayDistributedLoader, shard_episodes
+├── quality               # EpisodeScorer, CrossDatasetComparator
 ├── backend/              # Device abstractions (MLX, PyTorch, JAX)
 ├── transforms/           # Augmentation pipelines
-├── depth_io/             # Depth camera support
-├── sensor_fusion/        # Multi-sensor time-alignment
-└── [streaming, quality, distributed, ...]
+└── [streaming, sensor_fusion, depth_io, ...]
 ```
 
 ---
@@ -205,7 +331,7 @@ pyroboframes/
 - **[LeRobot](https://github.com/huggingface/lerobot)** — Robot learning datasets
 - **[PyRoboVision](https://github.com/Mullassery/PyRoboVision)** — Autonomous driving perception + foundation models
 - **[MLX](https://github.com/ml-explore/mlx)** — Apple Silicon ML framework
-- **[PyTorch](https://pytorch.org/)** — Deep learning framework
+- **[Open X-Embodiment](https://robotics-transformer-x.github.io/)** — Cross-embodiment robotics datasets
 
 ---
 
@@ -214,7 +340,7 @@ pyroboframes/
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — Design and implementation
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — How to contribute
 - [CHANGELOG.md](./CHANGELOG.md) — Version history
-- [ROADMAP.md](./ROADMAP.md) — Future priorities
+- [IMPLEMENTATION_ROADMAP.md](./IMPLEMENTATION_ROADMAP.md) — Planned features
 
 ---
 

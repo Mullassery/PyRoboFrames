@@ -4,6 +4,49 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-29
+
+### Added
+- **Video codec selection** — `write_lerobot_dataset(..., video_codec="hevc", video_crf=23)` now
+  passes `-c:v libx264/libx265/libsvtav1` to FFmpeg; 40–50% storage savings with HEVC/AV1 vs H.264.
+  New `encode_video_frames(frames, path, codec, crf)` helper for standalone video encoding.
+- **Data validation toolkit** — `DatasetValidator` runs deep checks: missing video files, temporal
+  gaps (`TemporalGapChecker`), frame count mismatches (`MissingFrameChecker`), codec decode health
+  (`CodecHealthChecker`). Returns a structured `FullValidationReport` with per-issue severity.
+  Rust `validate.rs` extended with cross-episode overlap and zero-duration video span detection.
+- **Intelligent episode caching** — `EpisodeCache(dataset, max_episodes=4)` pre-decodes entire
+  episodes into RAM with LRU eviction at episode granularity and non-blocking `prefetch()`.
+  `loader(cache_size=N)` exposes configurable LRU frame cache capacity (previously hardcoded).
+  `loader(episode_prefetch=True)` enables episode-boundary background prefetch.
+- **Cross-dataset quality scoring** — `DatasetQualityProfile.from_scores()` builds percentile
+  distributions (p25/p50/p75/p90) from `EpisodeScorer` output. `CrossDatasetComparator` ranks
+  individual episodes against a reference distribution and computes Cohen's d + overlap coefficient.
+  `compare_datasets(ds_a, ds_b)` is a convenience wrapper for quick cross-dataset comparison.
+- **HDF5 support** — `HDF5Dataset.from_path()` reads ROBOMIMIC, ACT, and custom HDF5 layouts.
+  `convert_hdf5(path, out_dir)` auto-detects episode groups (`demo_*`, `episode_*`, `traj_*`)
+  and writes LeRobot v3.0 Parquet. Optional dep: `h5py>=3.0`.
+- **NetCDF support** — `NetCDFDataset.from_path()` reads scientific simulation and robotics
+  datasets. `convert_netcdf(path, out_dir)` auto-detects episode breaks from `done`/`terminal`
+  variables or explicit `episode_breaks` array. Optional dep: `xarray` + `netCDF4`.
+- **RLDS / Open X-Embodiment support** — `RLDSDataset.from_tfds(name)` and `convert_rlds(name,
+  out_dir)` read HuggingFace Open X-Embodiment datasets. Maps `steps[i].observation.*` → feature
+  columns, `steps[i].action` → action column. Optional dep: `tensorflow-datasets>=4.9`.
+- **Remote dataset streaming** — `RemoteDataset.from_s3(uri)` / `.from_gcs(uri)` download
+  LeRobot datasets from cloud storage on demand with background episode prefetch. Optional deps:
+  `fsspec`, `s3fs`, `gcsfs`.
+- **Ray distributed loader** — `RayDistributedLoader(dataset_path, rank, world_size)` shards
+  episodes across Ray workers via round-robin. `shard_episodes(total, world_size, rank)` is a
+  standalone helper for custom distributed setups. Optional dep: `ray>=2.0`.
+- **Codec benchmark** — `benches/codec_comparison.py` prints a storage × speed table for H.264,
+  HEVC, and AV1 with extrapolated 10k-frame estimates.
+
+### Changed
+- `write_lerobot_dataset()` gains `video_crf: int = 23` parameter; `video_codec` validation
+  now raises `ValueError` (previously silent on unknown values).
+- `RoboFrameDataset.loader()` gains `cache_size: Optional[int]` and `episode_prefetch: bool`
+  kwargs (fully backwards-compatible; defaults match prior behaviour).
+- `Cargo.toml` description updated to reflect production-ready status.
+
 ## [0.1.10] - 2026-06-27
 
 ### Added
