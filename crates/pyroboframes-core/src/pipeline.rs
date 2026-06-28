@@ -46,6 +46,10 @@ pub struct AssemblerConfig {
     pub cameras: Vec<String>,
     pub batch_size: usize,
     pub decoder_factory: Option<DecoderFactory>,
+    /// Override LRU frame cache capacity (frames). None = auto: batch_size × num_cameras × 8.
+    pub cache_size: Option<usize>,
+    /// Pre-fetch the next episode's opening frames when an episode boundary is detected.
+    pub episode_prefetch: bool,
 }
 
 /// Assembles one batch of indices into a [`RustBatch`]. Not `Sync` (holds a decoder + cache), but
@@ -70,7 +74,8 @@ impl BatchAssembler {
             let factory = cfg.decoder_factory.ok_or_else(|| {
                 Error::Decode("camera decode requested but no decoder is available".into())
             })?;
-            let cap = (cfg.batch_size * cfg.cameras.len() * 8).max(256);
+            let cap = cfg.cache_size
+                .unwrap_or_else(|| (cfg.batch_size * cfg.cameras.len() * 8).max(256));
             (Some(factory()?), FrameCache::new(cap))
         };
         Ok(Self {

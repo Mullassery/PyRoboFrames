@@ -230,7 +230,7 @@ impl RoboFrameDataset {
     /// `goal="final"` makes it **goal-conditioned**: each sample gains `<feature>.goal` columns
     /// holding the final frame of the same episode. (Synchronous tabular path only — not combined
     /// with `delta_timestamps` or `num_workers`.)
-    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4, balanced=false, chunk_size=0, curriculum=false, goal=None))]
+    #[pyo3(signature = (batch_size=32, shuffle=true, shuffle_buffer=1024, seed=0, drop_last=false, delta_timestamps=None, tolerance_s=1e-4, cameras=None, output="numpy".to_string(), episodes=None, normalize=None, num_workers=0, prefetch=4, balanced=false, chunk_size=0, curriculum=false, goal=None, cache_size=None, episode_prefetch=true))]
     #[allow(clippy::too_many_arguments)]
     fn loader(
         &self,
@@ -252,6 +252,8 @@ impl RoboFrameDataset {
         chunk_size: usize,
         curriculum: bool,
         goal: Option<String>,
+        cache_size: Option<usize>,
+        episode_prefetch: bool,
     ) -> PyResult<Py<PyAny>> {
         if batch_size == 0 {
             return Err(PyValueError::new_err("batch_size must be >= 1"));
@@ -340,6 +342,8 @@ impl RoboFrameDataset {
                 } else {
                     Some(core_decoder_factory)
                 },
+                cache_size,
+                episode_prefetch,
             };
             let prefetcher =
                 Prefetcher::start(cfg, order, batch_size, drop_last, num_workers, prefetch)
@@ -356,7 +360,8 @@ impl RoboFrameDataset {
         let (frame_decoder, frame_cache) = if cameras.is_empty() {
             (None, FrameCache::new(1))
         } else {
-            let cap = (batch_size * cameras.len() * 8).max(256);
+            let cap = cache_size
+                .unwrap_or_else(|| (batch_size * cameras.len() * 8).max(256));
             (Some(new_frame_decoder()?), FrameCache::new(cap))
         };
 

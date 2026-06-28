@@ -54,6 +54,9 @@ pub struct Info {
     /// Video codec profile (e.g., "main" for HEVC).
     #[serde(default)]
     pub video_profile: Option<String>,
+    /// Constant Rate Factor used when encoding (lower = better quality, larger file).
+    #[serde(default)]
+    pub video_crf: Option<u8>,
     /// Feature schema keyed by feature name (e.g. `observation.images.top`).
     pub features: BTreeMap<String, Feature>,
 }

@@ -30,6 +30,78 @@ def _feature_stats(arr: np.ndarray) -> dict:
     }
 
 
+_CODEC_TO_ENCODER = {
+    "h264": "libx264",
+    "hevc": "libx265",
+    "av1": "libsvtav1",
+}
+
+
+def encode_video_frames(
+    frames: np.ndarray,
+    output_path: str,
+    fps: float = 30.0,
+    codec: str = "h264",
+    crf: int = 23,
+    profile: str | None = None,
+) -> None:
+    """Encode a ``[N, H, W, 3]`` uint8 array to an MP4 file using FFmpeg.
+
+    Args:
+        frames: Video frames as ``[N, H, W, 3]`` uint8 numpy array.
+        output_path: Path to write the ``.mp4`` file.
+        fps: Frame rate.
+        codec: ``"h264"`` (default), ``"hevc"``, or ``"av1"``.
+        crf: Constant Rate Factor quality (lower = better quality, larger file).
+        profile: Codec profile (e.g. ``"main"`` for HEVC). ``None`` uses the encoder default.
+
+    Raises:
+        ValueError: If codec is not supported.
+        RuntimeError: If ffmpeg is not on PATH or encoding fails.
+    """
+    import shutil
+    import subprocess
+
+    if codec not in _CODEC_TO_ENCODER:
+        raise ValueError(f"codec must be one of {list(_CODEC_TO_ENCODER)}, got {codec!r}")
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("ffmpeg not found on PATH; install ffmpeg to encode video")
+
+    frames = np.asarray(frames, dtype=np.uint8)
+    if frames.ndim != 4 or frames.shape[3] != 3:
+        raise ValueError(f"frames must be [N, H, W, 3] uint8, got shape {frames.shape}")
+
+    n, h, w, _ = frames.shape
+    encoder = _CODEC_TO_ENCODER[codec]
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo", "-vcodec", "rawvideo",
+        "-pix_fmt", "rgb24",
+        "-s", f"{w}x{h}",
+        "-r", str(fps),
+        "-i", "pipe:0",
+        "-c:v", encoder,
+        "-crf", str(crf),
+        "-pix_fmt", "yuv420p",
+    ]
+    if profile:
+        cmd += ["-profile:v", profile]
+    cmd.append(output_path)
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    proc = subprocess.run(
+        cmd,
+        input=frames.tobytes(),
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg encode failed (codec={codec}, crf={crf}):\n"
+            + proc.stderr.decode(errors="replace")
+        )
+
+
 def write_lerobot_dataset(
     path: str,
     features: dict[str, np.ndarray],
@@ -38,6 +110,7 @@ def write_lerobot_dataset(
     robot_type: str | None = None,
     video_codec: str = "h264",
     video_profile: str | None = None,
+    video_crf: int = 23,
 ) -> None:
     """Write a tabular LeRobotDataset v3.0 at ``path``.
 
@@ -46,15 +119,14 @@ def write_lerobot_dataset(
     ``N`` frames into episodes (in order) and must sum to ``N``.
 
     Args:
-        video_codec: Video codec for video features (``"h264"`` [default], ``"hevc"``, ``"av1"``).
-        video_profile: Codec profile (e.g., ``"main"`` for HEVC). None = default per codec.
-
-    Note: Currently used for metadata only; actual video encoding via external FFmpeg CLI.
+        video_codec: Video codec (``"h264"`` [default], ``"hevc"``, ``"av1"``).
+        video_profile: Codec profile (e.g., ``"main"`` for HEVC). None = encoder default.
+        video_crf: Constant Rate Factor quality. Lower = better quality, larger file (default 23).
     """
     if not features:
         raise ValueError("at least one feature is required")
-    if video_codec not in ("h264", "hevc", "av1"):
-        raise ValueError(f"video_codec must be 'h264', 'hevc', or 'av1', got {video_codec!r}")
+    if video_codec not in _CODEC_TO_ENCODER:
+        raise ValueError(f"video_codec must be one of {list(_CODEC_TO_ENCODER)}, got {video_codec!r}")
 
     arrays = {name: np.asarray(v, dtype=np.float32) for name, v in features.items()}
     for name, arr in arrays.items():
@@ -73,7 +145,7 @@ def write_lerobot_dataset(
 
     _write_data(path, arrays)
     _write_episodes(path, episode_lengths)
-    _write_info(path, arrays, episode_lengths, total, fps, robot_type, video_codec, video_profile)
+    _write_info(path, arrays, episode_lengths, total, fps, robot_type, video_codec, video_profile, video_crf)
     _write_stats(path, arrays)
 
 
@@ -118,6 +190,7 @@ def _write_info(
     robot_type: str | None,
     video_codec: str = "h264",
     video_profile: str | None = None,
+    video_crf: int = 23,
 ) -> None:
     info = {
         "codebase_version": "v3.0",
@@ -129,6 +202,7 @@ def _write_info(
         "data_path": DATA_PATH,
         "video_path": VIDEO_PATH,
         "video_codec": video_codec,
+        "video_crf": video_crf,
     }
     if video_profile:
         info["video_profile"] = video_profile

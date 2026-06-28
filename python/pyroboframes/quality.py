@@ -16,7 +16,7 @@ high_quality = [ep for ep, s in scores.items() if s["quality_score"] > 0.7]
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
 
@@ -314,6 +314,226 @@ class EpisodeScorer:
                 score += metrics[key] * weight
 
         return float(score / total_weight) if total_weight > 0 else 0.0
+
+
+class DatasetQualityProfile:
+    """Aggregate quality statistics for an entire dataset.
+
+    Built from the output of :meth:`EpisodeScorer.score_episodes` and used by
+    :class:`CrossDatasetComparator` to rank individual episodes or compare datasets.
+
+    Attributes:
+        dataset_name: Human-readable name for the dataset.
+        per_metric_stats: ``{metric: {mean, std, p25, p50, p75, p90}}``.
+        episode_count: Number of episodes profiled.
+    """
+
+    def __init__(
+        self,
+        dataset_name: str,
+        per_metric_stats: dict[str, dict[str, float]],
+        episode_count: int,
+    ) -> None:
+        self.dataset_name = dataset_name
+        self.per_metric_stats = per_metric_stats
+        self.episode_count = episode_count
+
+    @classmethod
+    def from_scores(
+        cls, name: str, scores: dict[int, dict[str, float]]
+    ) -> "DatasetQualityProfile":
+        """Build a profile from :meth:`EpisodeScorer.score_episodes` output.
+
+        Args:
+            name: Dataset name / label.
+            scores: ``{episode_index: {metric: value}}`` dict.
+
+        Returns:
+            A :class:`DatasetQualityProfile` with per-metric percentile stats.
+        """
+        if not scores:
+            return cls(name, {}, 0)
+
+        # Collect per-metric value arrays.
+        metric_values: dict[str, list[float]] = {}
+        for ep_scores in scores.values():
+            for metric, val in ep_scores.items():
+                metric_values.setdefault(metric, []).append(float(val))
+
+        per_metric_stats: dict[str, dict[str, float]] = {}
+        for metric, vals in metric_values.items():
+            arr = np.array(vals)
+            per_metric_stats[metric] = {
+                "mean": float(np.mean(arr)),
+                "std": float(np.std(arr)),
+                "p25": float(np.percentile(arr, 25)),
+                "p50": float(np.percentile(arr, 50)),
+                "p75": float(np.percentile(arr, 75)),
+                "p90": float(np.percentile(arr, 90)),
+                "min": float(np.min(arr)),
+                "max": float(np.max(arr)),
+            }
+
+        return cls(name, per_metric_stats, len(scores))
+
+    def summary(self) -> str:
+        """Return a human-readable summary table."""
+        lines = [f"DatasetQualityProfile: {self.dataset_name!r} ({self.episode_count} episodes)"]
+        header = f"  {'Metric':<22} {'mean':>6} {'std':>6} {'p25':>6} {'p50':>6} {'p75':>6} {'p90':>6}"
+        lines.append(header)
+        lines.append("  " + "-" * (len(header) - 2))
+        for metric, stats in sorted(self.per_metric_stats.items()):
+            lines.append(
+                f"  {metric:<22} "
+                f"{stats['mean']:>6.3f} {stats['std']:>6.3f} "
+                f"{stats['p25']:>6.3f} {stats['p50']:>6.3f} "
+                f"{stats['p75']:>6.3f} {stats['p90']:>6.3f}"
+            )
+        return "\n".join(lines)
+
+    def __repr__(self) -> str:
+        return (
+            f"DatasetQualityProfile({self.dataset_name!r}, "
+            f"{self.episode_count} episodes, "
+            f"{len(self.per_metric_stats)} metrics)"
+        )
+
+
+class CrossDatasetComparator:
+    """Rank episodes and compare datasets against a reference quality distribution.
+
+    Args:
+        reference: :class:`DatasetQualityProfile` that serves as the baseline.
+    """
+
+    def __init__(self, reference: DatasetQualityProfile) -> None:
+        self.reference = reference
+
+    def rank_episode(self, scores: dict[str, float]) -> dict[str, float]:
+        """Return the percentile rank (0–100) of each metric vs the reference distribution.
+
+        A score of 80 means the episode is better than 80% of reference episodes on that metric.
+
+        Args:
+            scores: ``{metric: value}`` dict for one episode.
+
+        Returns:
+            ``{metric: percentile_rank}`` — values in [0, 100].
+        """
+        ranks: dict[str, float] = {}
+        for metric, val in scores.items():
+            if metric == "quality_score":
+                continue
+            stats = self.reference.per_metric_stats.get(metric)
+            if stats is None:
+                continue
+            # Use Gaussian approximation for efficiency (no need to store full distribution).
+            mean, std = stats["mean"], stats["std"]
+            if std < 1e-9:
+                ranks[metric] = 50.0
+                continue
+            z = (val - mean) / std
+            # Approximate normal CDF × 100.
+            ranks[metric] = float(_normal_cdf(z) * 100.0)
+        return ranks
+
+    def compare(self, other: DatasetQualityProfile) -> dict[str, dict[str, float]]:
+        """Compare another dataset's quality profile against the reference.
+
+        Returns per-metric statistics:
+        - ``mean_diff``: signed difference (other − reference)
+        - ``cohens_d``: effect size (positive = other is better)
+        - ``pct_overlap``: approximate percentile overlap (0–1, 1 = identical distributions)
+
+        Args:
+            other: Profile to compare against the reference.
+
+        Returns:
+            ``{metric: {mean_diff, cohens_d, pct_overlap}}``
+        """
+        result: dict[str, dict[str, float]] = {}
+        for metric in self.reference.per_metric_stats:
+            ref = self.reference.per_metric_stats[metric]
+            oth = other.per_metric_stats.get(metric)
+            if oth is None:
+                continue
+            mean_diff = oth["mean"] - ref["mean"]
+            pooled_std = np.sqrt((ref["std"] ** 2 + oth["std"] ** 2) / 2.0 + 1e-12)
+            cohens_d = float(mean_diff / pooled_std)
+            # Overlapping coefficient approximation: OVL = 2 × Φ(−|d|/2)
+            pct_overlap = float(2.0 * _normal_cdf(-abs(cohens_d) / 2.0))
+            result[metric] = {
+                "mean_diff": float(mean_diff),
+                "cohens_d": cohens_d,
+                "pct_overlap": pct_overlap,
+            }
+        return result
+
+    def recommend_mixing_ratio(self, other: DatasetQualityProfile) -> float:
+        """Suggest a mixing weight for ``other`` relative to the reference (0–1).
+
+        Higher weight = other dataset is higher quality and should contribute more.
+        Based on mean quality_score comparison; returns 0.5 if scores are equal.
+
+        Args:
+            other: Dataset to weight.
+
+        Returns:
+            Float in (0, 1): suggested fraction of ``other`` in a mixed training set.
+        """
+        ref_q = self.reference.per_metric_stats.get("quality_score", {}).get("mean", 0.5)
+        oth_q = other.per_metric_stats.get("quality_score", {}).get("mean", 0.5)
+        total = ref_q + oth_q
+        if total < 1e-9:
+            return 0.5
+        return float(oth_q / total)
+
+
+def compare_datasets(
+    ds_a: Any,
+    ds_b: Any,
+    scorer: EpisodeScorer | None = None,
+    name_a: str = "dataset_a",
+    name_b: str = "dataset_b",
+) -> dict[str, Any]:
+    """Score and compare two datasets, returning a full comparison report.
+
+    Args:
+        ds_a: First RoboticsDataFrame.
+        ds_b: Second RoboticsDataFrame.
+        scorer: Optional :class:`EpisodeScorer` (uses defaults if None).
+        name_a: Label for the first dataset.
+        name_b: Label for the second dataset.
+
+    Returns:
+        Dict with keys ``profile_a``, ``profile_b``, ``comparison`` (per-metric stats),
+        and ``recommended_mixing_ratio`` (for ``ds_b`` vs ``ds_a``).
+    """
+    if scorer is None:
+        scorer = EpisodeScorer()
+
+    scores_a = scorer.score_episodes(ds_a)
+    scores_b = scorer.score_episodes(ds_b)
+
+    profile_a = DatasetQualityProfile.from_scores(name_a, scores_a)
+    profile_b = DatasetQualityProfile.from_scores(name_b, scores_b)
+
+    comparator = CrossDatasetComparator(reference=profile_a)
+    comparison = comparator.compare(profile_b)
+    mixing_ratio = comparator.recommend_mixing_ratio(profile_b)
+
+    return {
+        "profile_a": profile_a,
+        "profile_b": profile_b,
+        "comparison": comparison,
+        "recommended_mixing_ratio": mixing_ratio,
+    }
+
+
+def _normal_cdf(z: float) -> float:
+    """Approximate standard normal CDF using Abramowitz & Stegun 26.2.17."""
+    import math
+    return (1.0 + math.erf(z / math.sqrt(2.0))) / 2.0
 
 
 def quality_percentile_filter(

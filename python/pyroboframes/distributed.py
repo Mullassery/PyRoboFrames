@@ -29,10 +29,16 @@ for batch in loader:
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any, Iterator
+import os
+from typing import TYPE_CHECKING, Any, Iterator, Optional
 
 if TYPE_CHECKING:
     from ._core import RoboFrameDataset, Loader
+
+
+def _uri_to_safe_name(uri: str) -> str:
+    """Convert a remote URI to a filesystem-safe cache directory name."""
+    return uri.replace("://", "_").replace("/", "_").strip("_")
 
 
 class DistributedSampler:
@@ -217,3 +223,276 @@ class DistributedLoader:
         """
         self.epoch = epoch
         self.sampler.set_epoch(epoch)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def shard_episodes(total_episodes: int, world_size: int, rank: int) -> list[int]:
+    """Return episode indices assigned to ``rank`` using round-robin sharding.
+
+    Args:
+        total_episodes: Total number of episodes in the dataset.
+        world_size: Number of distributed processes.
+        rank: Rank of the current process (0 to world_size-1).
+
+    Returns:
+        Sorted list of episode indices for this rank.
+
+    Example:
+        >>> shard_episodes(10, 3, 0)
+        [0, 3, 6, 9]
+        >>> shard_episodes(10, 3, 1)
+        [1, 4, 7]
+    """
+    if world_size < 1:
+        raise ValueError(f"world_size must be >= 1, got {world_size}")
+    if rank < 0 or rank >= world_size:
+        raise ValueError(f"rank must be in [0, {world_size}), got {rank}")
+    return list(range(rank, total_episodes, world_size))
+
+
+# ---------------------------------------------------------------------------
+# S3 / GCS Remote Dataset
+# ---------------------------------------------------------------------------
+
+
+class RemoteDataset:
+    """RoboFrameDataset wrapper that streams data from S3 or GCS.
+
+    Files are downloaded to a local ``cache_dir`` on demand and then read by the
+    standard Rust-backed loader. Episode prefetch runs in background threads to
+    overlap network I/O with training.
+
+    Requires ``fsspec``, and either ``s3fs`` (for S3) or ``gcsfs`` (for GCS).
+
+    Args:
+        remote_uri: S3 URI (``s3://bucket/prefix``) or GCS URI (``gs://bucket/prefix``).
+        cache_dir: Local directory to download files into. Uses ``~/.cache/pyroboframes``
+            if not specified.
+        storage_options: Extra kwargs passed to ``fsspec.filesystem()``.
+    """
+
+    def __init__(
+        self,
+        remote_uri: str,
+        cache_dir: Optional[str] = None,
+        storage_options: Optional[dict[str, Any]] = None,
+    ) -> None:
+        try:
+            import fsspec  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "fsspec is required for remote datasets: pip install fsspec s3fs gcsfs"
+            ) from exc
+        self.remote_uri = remote_uri.rstrip("/")
+        self.cache_dir = cache_dir or os.path.expanduser(
+            f"~/.cache/pyroboframes/{_uri_to_safe_name(remote_uri)}"
+        )
+        self.storage_options = storage_options or {}
+        self._dataset: Optional[Any] = None
+
+    @classmethod
+    def from_s3(
+        cls,
+        s3_uri: str,
+        *,
+        cache_dir: Optional[str] = None,
+        aws_profile: Optional[str] = None,
+        region_name: Optional[str] = None,
+    ) -> "RemoteDataset":
+        """Create a RemoteDataset backed by Amazon S3.
+
+        Args:
+            s3_uri: S3 URI, e.g. ``s3://my-bucket/datasets/robot_lerobot``.
+            cache_dir: Local cache directory.
+            aws_profile: AWS credentials profile name.
+            region_name: AWS region override.
+        """
+        opts: dict[str, Any] = {}
+        if aws_profile:
+            opts["profile"] = aws_profile
+        if region_name:
+            opts["client_kwargs"] = {"region_name": region_name}
+        return cls(s3_uri, cache_dir=cache_dir, storage_options=opts)
+
+    @classmethod
+    def from_gcs(
+        cls,
+        gcs_uri: str,
+        *,
+        cache_dir: Optional[str] = None,
+        project: Optional[str] = None,
+        token: Optional[str] = None,
+    ) -> "RemoteDataset":
+        """Create a RemoteDataset backed by Google Cloud Storage.
+
+        Args:
+            gcs_uri: GCS URI, e.g. ``gs://my-bucket/datasets/robot_lerobot``.
+            cache_dir: Local cache directory.
+            project: GCP project ID.
+            token: GCS credentials token path or ``"anon"`` for public buckets.
+        """
+        opts: dict[str, Any] = {}
+        if project:
+            opts["project"] = project
+        if token:
+            opts["token"] = token
+        return cls(gcs_uri, cache_dir=cache_dir, storage_options=opts)
+
+    def _sync(self) -> None:
+        """Download the dataset metadata and index to the local cache directory."""
+        import fsspec
+
+        protocol = self.remote_uri.split("://")[0]
+        fs = fsspec.filesystem(protocol, **self.storage_options)
+        remote_path = self.remote_uri.split("://", 1)[1]
+
+        # Download meta/ and episodes index first (small files, required to open dataset).
+        for subdir in ("meta",):
+            remote_subdir = f"{remote_path}/{subdir}"
+            local_subdir = os.path.join(self.cache_dir, subdir)
+            if fs.exists(remote_subdir):
+                fs.get(remote_subdir, local_subdir, recursive=True)
+
+    def open(self) -> Any:
+        """Download metadata and return a :class:`~pyroboframes._core.RoboFrameDataset`.
+
+        The data shards are downloaded lazily when episodes are prefetched or a loader
+        is created with ``prefetch_episodes()`` called first.
+        """
+        from ._core import RoboFrameDataset
+
+        os.makedirs(self.cache_dir, exist_ok=True)
+        self._sync()
+        self._dataset = RoboFrameDataset.from_path(self.cache_dir)
+        return self._dataset
+
+    def prefetch_episodes(self, episode_indices: list[int]) -> None:
+        """Download data shards for the specified episodes to the local cache.
+
+        Downloads run in background threads so this call returns immediately.
+        Call :meth:`open` first to retrieve the dataset object.
+
+        Args:
+            episode_indices: Episode indices to download.
+        """
+        import threading
+
+        import fsspec
+
+        def _download() -> None:
+            protocol = self.remote_uri.split("://")[0]
+            fs = fsspec.filesystem(protocol, **self.storage_options)
+            remote_path = self.remote_uri.split("://", 1)[1]
+            for ep_idx in episode_indices:
+                # Download data shard for this episode (chunk-000/file-NNN.parquet).
+                chunk = ep_idx // 1000
+                file_idx = ep_idx % 1000
+                for subpath in (
+                    f"data/chunk-{chunk:03d}/file-{file_idx:03d}.parquet",
+                    f"meta/episodes/chunk-000/file-000.parquet",
+                ):
+                    remote_file = f"{remote_path}/{subpath}"
+                    local_file = os.path.join(self.cache_dir, subpath)
+                    if not os.path.exists(local_file) and fs.exists(remote_file):
+                        os.makedirs(os.path.dirname(local_file), exist_ok=True)
+                        fs.get(remote_file, local_file)
+
+        t = threading.Thread(target=_download, daemon=True)
+        t.start()
+
+    def loader(self, **kwargs: Any) -> Any:
+        """Open the dataset and return a standard :class:`~pyroboframes.dataloader.DataLoader`.
+
+        Args:
+            **kwargs: Passed directly to :meth:`~pyroboframes._core.RoboFrameDataset.loader`.
+        """
+        if self._dataset is None:
+            self.open()
+        return self._dataset.loader(**kwargs)  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# Ray Distributed Loader
+# ---------------------------------------------------------------------------
+
+
+class RayDistributedLoader:
+    """Distributed loader that shards episodes across Ray workers.
+
+    Each Ray worker holds a :class:`~pyroboframes._core.RoboFrameDataset` and a
+    :class:`~pyroboframes.dataloader.DataLoader` for its assigned episodes.
+    Workers are assigned episodes via round-robin sharding using :func:`shard_episodes`.
+
+    Requires ``ray>=2.0``: ``pip install ray``.
+
+    Args:
+        dataset_path: Local path to the LeRobot dataset directory.
+        num_workers: Number of Ray workers (actors) to spawn.
+        rank: Rank of this worker within the pool (0 to num_workers-1).
+        world_size: Total number of workers.
+        **loader_kwargs: Passed to :meth:`~pyroboframes._core.RoboFrameDataset.loader`.
+    """
+
+    def __init__(
+        self,
+        dataset_path: str,
+        num_workers: int,
+        rank: int,
+        world_size: int,
+        **loader_kwargs: Any,
+    ) -> None:
+        try:
+            import ray  # noqa: F401
+        except ImportError as exc:
+            raise ImportError("ray is required: pip install ray") from exc
+
+        from ._core import RoboFrameDataset
+
+        self.dataset_path = dataset_path
+        self.num_workers = num_workers
+        self.rank = rank
+        self.world_size = world_size
+        self.loader_kwargs = loader_kwargs
+
+        self._dataset = RoboFrameDataset.from_path(dataset_path)
+        self._episodes = shard_episodes(self._dataset.num_episodes(), world_size, rank)
+        self._loader_kwargs = {**loader_kwargs, "episodes": self._episodes, "shuffle": False}
+
+    @staticmethod
+    def from_ray_actor(dataset_path: str, **loader_kwargs: Any) -> "RayDistributedLoader":
+        """Construct inside a Ray actor using ``ray.get_runtime_context()``.
+
+        Rank and world_size are read from the Ray runtime context.
+
+        Args:
+            dataset_path: Path to the dataset.
+            **loader_kwargs: Passed to the loader.
+        """
+        import ray
+
+        ctx = ray.get_runtime_context()
+        rank = ctx.get_actor_id() or 0
+        world_size = loader_kwargs.pop("world_size", 1)
+        num_workers = loader_kwargs.pop("num_workers", 1)
+        return RayDistributedLoader(
+            dataset_path, num_workers, rank, world_size, **loader_kwargs
+        )
+
+    def __iter__(self) -> Iterator[Any]:
+        loader = self._dataset.loader(**self._loader_kwargs)
+        return iter(loader)
+
+    def __len__(self) -> int:
+        avg = self._dataset.total_frames() / max(1, self._dataset.num_episodes())
+        total = len(self._episodes) * avg
+        batch_size = self.loader_kwargs.get("batch_size", 32)
+        return max(1, int(math.ceil(total / batch_size)))
+
+    @property
+    def assigned_episodes(self) -> list[int]:
+        """Episode indices assigned to this worker."""
+        return self._episodes

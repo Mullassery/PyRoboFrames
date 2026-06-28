@@ -36,15 +36,20 @@ from .compression import CompressionPipeline, DeltaEncoder, SparseArray
 from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
 from .proprioceptive_loader import ProprioceptiveLoader, ProprioceptiveDataFrame
-from .distributed import DistributedLoader, DistributedSampler
+from .distributed import DistributedLoader, DistributedSampler, RemoteDataset, RayDistributedLoader, shard_episodes
+from .episode_cache import EpisodeCache
 from .filtering import EpisodeFilter, EpisodeFilterBuilder
+from .hdf5 import HDF5Dataset, convert_hdf5
 from .hub import download_lerobot_dataset
 from .lazy_parquet import LazyDataFrameShards, LazyParquetReader
-from .lerobot import write_lerobot_dataset
+from .lerobot import encode_video_frames, write_lerobot_dataset
 from .masking import MaskedDataFrame, SensorHealthMonitor, interpolate_missing
-from .quality import EpisodeScorer, quality_percentile_filter
+from .netcdf import NetCDFDataset, convert_netcdf
+from .quality import CrossDatasetComparator, DatasetQualityProfile, EpisodeScorer, compare_datasets, quality_percentile_filter
+from .rlds import RLDSDataset, convert_rlds
 from .streaming import KafkaStreamer, MQTTStreamer, StreamingRoboticsDataset
 from .tensorflow_support import KerasDataAdapter, create_keras_model_for_robotics, to_tf_dataset
+from .validation import DatasetValidator, FullValidationReport, ValidationIssue
 from .versioning import DatasetManifest, DatasetVersion
 
 # Public aliases for depth and calibration classes
@@ -106,6 +111,24 @@ __all__ = [
     "available_backends",
     "default_framework",
     "to_backend",
+    # New in v1.1
+    "encode_video_frames",
+    "DatasetValidator",
+    "FullValidationReport",
+    "ValidationIssue",
+    "EpisodeCache",
+    "DatasetQualityProfile",
+    "CrossDatasetComparator",
+    "compare_datasets",
+    "HDF5Dataset",
+    "convert_hdf5",
+    "NetCDFDataset",
+    "convert_netcdf",
+    "RLDSDataset",
+    "convert_rlds",
+    "RemoteDataset",
+    "RayDistributedLoader",
+    "shard_episodes",
 ]
 
 __version__: str = _core.__version__

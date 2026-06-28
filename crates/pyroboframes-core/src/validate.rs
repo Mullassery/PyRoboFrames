@@ -54,6 +54,21 @@ pub fn validate(dataset: &Dataset) -> Result<ValidationReport> {
                     v.to_timestamp, v.from_timestamp
                 ));
             }
+            // Check for zero-duration video when episode has multiple frames
+            if ep.length > 1 && (v.to_timestamp - v.from_timestamp).abs() < 1e-9 {
+                report.warnings.push(format!(
+                    "episode {id} camera `{cam}`: zero-duration video span for {}-frame episode \
+                     (possible temporal gap or single-frame extraction error)",
+                    ep.length
+                ));
+            }
+        }
+        // Cross-episode overlap check
+        if ep.from_index < expected_from && ep.from_index != 0 {
+            report.errors.push(format!(
+                "episode {id}: frame range [{}, {}) overlaps previous episode (expected from {})",
+                ep.from_index, ep.to_index, expected_from
+            ));
         }
         expected_from = ep.to_index;
     }
