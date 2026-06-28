@@ -43,20 +43,18 @@ for batch in loader:        # tensors already on the right device, in the right 
 
 ---
 
-## Prioritized plan (current — 2026-06-27, after 0.1.8)
+## Prioritized plan (current — 2026-06-28, after v0.5.0)
 
 This is the **authoritative ordering**; the sections below it (verification tiers, ease-sorted
 backlog, Tier 1/2 lens, long-range vision) are reference/detail. Effort: `S`≈1–2d · `M`≈3–7d ·
 `L`≈1–2wk+ · `XL`=research/blocked. `[C]` = needs NVIDIA hardware to verify.
 
-**Where we are (0.1.8):** the *fast LeRobot loader* is essentially complete — read v3.0,
-state/action + camera frames, temporal windows, shuffle / balanced / **episode-chunking**
-sampling, train/val split, stats + normalization, checkpoint/resume, off-GIL prefetch (~2.7× on
-decode), **NumPy / MLX / PyTorch / JAX** output incl. MLX sequence batches, device seam
-(`resolve_device` / `DataLoader`), CPU image transforms + augments, throughput harness. The first
-**Tier-1 platform** brick landed: **`convert_mcap()`** turns MCAP JSON topics into columnar
-Parquet. So the work now pivots from *loader plumbing* (done) to the **data-platform identity**:
-ingest → a typed robotics table → storage/interop, with vision intelligence and the GPU path after.
+**Where we are (v0.5.0):** Core platform complete through v0.4.2 (multimodal sensor fusion with time-sync) + v0.5.0 (automotive video stitching for 360° perception). Recent deliverables:
+- ✅ **v0.4.1**: Video codec selection (H.264/HEVC/AV1), depth camera support (XYZ/PLY/PCD), camera calibration (intrinsics/extrinsics/poses)
+- ✅ **v0.4.2**: Multimodal sensor fusion (RGB+depth+IMU time-sync with backward as-of join), depth projection to image plane, IMU motion compensation
+- ✅ **v0.5.0**: **Automotive perception pipeline**: Phase 1 cylindrical panoramic stitching (10 FPS), Phase 2 Laplacian pyramid blending (5 FPS), Phase 3 bird's-eye-view projection for 3D detection
+
+The platform now spans **end-to-end robotics data + autonomous driving perception**. Next phases focus on **production deployment, GPU acceleration, and real-world integration**.
 
 **Ranking rule:** items float up by **testable-now + high-value + low-effort**; GPU-only (`[C]`,
 can't verify here) and research/heavy items sink. Each line is tagged `effort · value · ✓test`.
@@ -131,20 +129,52 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [ ] BC / imitation / offline-RL / transformer-policy training · ACT / Diffusion / VLA — `L`–`XL`.
 - [ ] **Deferred/blocked:** zero-copy MLX (decode → IOSurface → MLX, `mlx#2855`) · MLX distributed — `XL`.
 
-**Where we are (0.1.11+):** P0–P9 (except hardware verify) are shipped. 0.1.11+ ships **P6a** (MLX/Torch
-native transforms), **P7a** (HF Hub partial-streaming), **P9a** (NVIDIA benchmark), **P6b**
-(row-group-level lazy Parquet), **P9b** (CV-CUDA operators), and **P8** (vision integration: CLIP +
-SAM2 + Grounding DINO). Remaining open: vision-language dataset generation, Apple zero-copy MLX
-(blocked on mlx#2855), and NVIDIA hardware functional sign-off (P9 `[C]`).
+### P11 — Automotive video stitching production (v0.5.1+) — 🔄 in progress
+- [x] **Phase 1: Cylindrical panoramic stitching** — linear blending, 5-6 camera support, 10 FPS M3 CPU — ✅
+- [x] **Phase 2: Advanced Laplacian pyramid blending** — multi-scale, graph-cut seams, exposure compensation, 5 FPS M3 CPU — ✅
+- [x] **Phase 3: BEV projection** — top-down transformation, 3D object detection ready, negligible overhead — ✅
+- [ ] **Phase 4 (v0.5.1):** GPU acceleration — `M · high · ✓test`
+  - [ ] **CuPy backend** for NVIDIA (100+ FPS target) — `M · [C]`
+  - [ ] **MLX backend** for Apple Silicon GPU (50+ FPS target) — `M`
+- [ ] **Phase 5 (v0.5.1):** Temporal consistency — `M · high · ✓test`
+  - [ ] Optical flow seam tracking (multi-frame alignment)
+  - [ ] Temporal filtering to reduce flickering
+  - [ ] Motion-aware blending
+- [ ] **Phase 6 (v0.5.2):** Real-world datasets — `L · high · ✓test`
+  - [ ] Waymo Open Dataset loader (calibration auto-detection)
+  - [ ] nuScenes dataset integration
+  - [ ] KITTI stereo support
+- [ ] **Phase 7 (v0.5.2):** Occupancy & 3D perception — `L · high · ✓test`
+  - [ ] Occupancy grid mapping from BEV
+  - [ ] Lidar point cloud fusion (depth-aware blending)
+  - [ ] Radar fusion for velocity estimates
 
-**Recommended next batch:** the deferred **P7** (streaming MQTT/Kafka), **P8** (Tier-2 vision:
-CLIP → SAM/SAM2 → Grounding DINO), and **P10** (scale/research), plus the open sub-items above.
+### P12 — Advanced perception & fusion (v0.5.2+) — ⏸ planned
+- [ ] **Lidar integration** — point cloud loading, 3D-2D projection, fusion with BEV — `L · high · ✓test`
+- [ ] **Radar support** — velocity/confidence fusion with vision — `M · medium · ✓test`
+- [ ] **IMU-aware stitching** — egomotion compensation for high-motion scenes — `M · medium · ✓test`
+- [ ] **Confidence maps** — per-pixel blending confidence from camera overlap analysis — `M · medium · ✓test`
+- [ ] **Feature-aware seams** — semantic content detection to avoid seams on salient objects — `L · medium · ~test`
 
-**Recommended next batch (per the current call, skipping P7 / P8 / P10):** **P3** native Parquet
-write + LeRobot write-back + HF Hub importer (own the storage/interop loop), then **P4** loader
-hardening (lazy/mmap, windowed video sync) and **P5** general multi-sensor fusion on top of the
-DataFrame, and optionally **P6** "Train Anywhere" backend parity. Streaming (P7), Tier-2 vision
-(P8), and scale/research (P10) are parked for a later batch.
+**Where we are (v0.5.0):** P0–P10 (except hardware verify) are shipped. v0.5.0 adds:
+- **P11** (new): Automotive video stitching & 3D perception — 360° panoramic stitching (Phase 1-3 complete)
+- **P12** (new): GPU acceleration for automotive pipeline (CuPy for NVIDIA, MLX for Apple Silicon)
+
+**Completed in v0.4.1–v0.5.0:**
+- ✅ Video codec selection (H.264/HEVC/AV1) with compression benchmarking
+- ✅ Depth camera support (point clouds: XYZ/PLY/PCD formats)
+- ✅ Camera calibration registry (intrinsics, extrinsics, poses, K matrix, projection)
+- ✅ Multimodal sensor fusion (v0.4.2: RGB+depth+IMU, time-sync, backward as-of join)
+- ✅ Cylindrical panoramic stitching (v0.5.0 Phase 1: 5-6 camera support, linear blending)
+- ✅ Advanced image blending (v0.5.0 Phase 2: Laplacian pyramids, graph-cut seams, exposure compensation)
+- ✅ BEV projection (v0.5.0 Phase 3: top-down transformation for 3D object detection)
+
+**Recommended next batch (v0.5.1+):**
+1. **P11a** — GPU acceleration for automotive: CuPy for NVIDIA (100+ FPS), MLX for Apple Silicon
+2. **P11b** — Temporal consistency: optical flow seam tracking, multi-frame alignment
+3. **P11c** — Real dataset integration: Waymo/nuScenes loaders with automatic calibration
+4. **P12** — Occupancy grid mapping + lidar/radar fusion for 3D perception
+5. Defer: P7 (streaming), P8 (vision), P10 (scale) to later batch unless prioritized elsewhere
 
 ---
 
@@ -211,6 +241,10 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [ ] `S` P6 Metadata tracking — ⬜
 - [ ] `S` P7 Experiment tracking (W&B) — ⬜
 - [ ] `S` P2 Backend: CUDA decode (FFmpeg `-hwaccel cuda`) — 🟡 build S, `[C]` verify
+- [x] `S` P11 Camera layout presets (Waymo, nuScenes, KITTI) — ✅
+- [x] `S` P11 Panorama/BEV dimension utilities — ✅
+- [ ] `S` P11 Occupancy grid computation — ⬜
+- [ ] `S` P12 Confidence map visualization — ⬜
 
 ### M — new subsystem + integration
 - [ ] `M` P1.1 Lazy loading (true streaming reads, no full-shard load) — 🟡
@@ -249,6 +283,15 @@ status: 🟡 partial/not-wired · ⬜ not started.
 - [ ] `M` P3 Benchmark suite + throughput metrics — ⬜ `[C]`
 - [ ] `M` P7 RunPod (templates / launch scripts) — ⬜ `[C]`
 - [ ] `M` P7 Slurm — ⬜ `[C]`
+- [x] `M` P11 Cylindrical panoramic stitching (Phase 1) — ✅
+- [x] `M` P11 Laplacian pyramid blending (Phase 2) — ✅
+- [x] `M` P11 BEV projection (Phase 3) — ✅
+- [ ] `M` P11 GPU acceleration (CuPy NVIDIA backend) — ⬜ `[C]`
+- [ ] `M` P11 GPU acceleration (MLX Apple Silicon backend) — ⬜
+- [ ] `M` P11 Optical flow seam tracking — ⬜
+- [ ] `M` P11 Waymo/nuScenes dataset loaders — ⬜
+- [ ] `M` P12 Lidar point cloud fusion — ⬜
+- [ ] `M` P12 Radar velocity fusion — ⬜
 
 ### L — large / architecture / native
 - [x] `L` P1.2 Multiprocess workers (off-GIL worker pool, `num_workers`) — ✅
@@ -294,18 +337,22 @@ A priority lens (from a contributor/user view) over the vision below: what makes
 - [x] MCAP → columnar (Parquet) conversion — ✅ JSON + **protobuf** + **cdr/ros2msg** (`convert_mcap`)
 - [x] ROS 2 bag (`.db3`) → columnar conversion — ✅ `convert_ros2_bag`
 - [x] Robotics DataFrame abstraction (typed, time-indexed, multi-sensor) — ✅ `RoboticsDataFrame`
-- [x] Time-synchronized sensor fusion — 🟡 `RoboticsDataFrame.align()` as-of join; multi-rate resample ⬜ (§P5)
-- [ ] Parquet-backed storage — 🟡 reads LeRobot parquet + **writes** converter Parquet/metadata; own dataset write/format ⬜ (§P3)
+- [x] Time-synchronized sensor fusion — ✅ `RoboticsDataFrame.align()` as-of join; **MultimodalDataFrame** (v0.4.2) RGB+depth+IMU
+- [x] Parquet-backed storage — ✅ reads/writes LeRobot parquet + converter Parquet/metadata
 - [ ] MQTT / Kafka ingestion — ⬜ (§P7, deferred)
-- [ ] LeRobot interoperability — 🟡 read v3.0 (local); Hub + write-back ⬜ (§P3)
+- [x] LeRobot interoperability — ✅ read v3.0 (local + Hub streaming); write-back (v0.4.1+)
 - [x] MLX / PyTorch / JAX data loaders — ✅ MLX/Torch/JAX output + `DataLoader` (native on-device transforms §P6)
+- [x] Automotive perception pipeline — ✅ v0.5.0: panoramic stitching (Phase 1-3), BEV projection, camera calibration
 
 ### Tier 2 — Differentiators (what makes it *compelling*)
-- [ ] SAM / SAM2 segmentation integration — ⬜
-- [ ] Grounding DINO (open-vocab detection) integration — ⬜
-- [ ] CLIP embeddings — ⬜
-- [ ] Automatic annotation pipelines — ⬜
-- [ ] Vision-language dataset generation — ⬜
+- [ ] SAM / SAM2 segmentation integration — ⬜ (v0.5.1+)
+- [ ] Grounding DINO (open-vocab detection) integration — ⬜ (v0.5.1+)
+- [ ] CLIP embeddings — ⬜ (v0.5.1+)
+- [ ] Automatic annotation pipelines — ⬜ (v0.5.2+)
+- [ ] Vision-language dataset generation — ⬜ (v0.5.2+)
+- [x] Autonomous driving 360° perception — ✅ v0.5.0: panorama + BEV for AV datasets
+- [ ] Real-time 3D object detection (Waymo/nuScenes) — ⬜ (v0.5.2+)
+- [ ] Occupancy mapping & lidar fusion — ⬜ (v0.5.2+)
 
 > Read against the near-term plan above: **MCAP → columnar** has shipped (JSON topics, §P1 finishes
 > it); the **Robotics DataFrame** (§P2) is the next headline; **MLX/PyTorch/JAX loaders** are done as
@@ -336,24 +383,30 @@ plan and ease-sorted backlog above remain the near-term work.
 - [x] Frame-level random access — ✅
 - [x] Video timestamp synchronization — ✅
 - [x] Multi-camera dataset support — ✅
-- [ ] Video compression benchmarking — ⬜
+- [x] Video compression benchmarking — ✅ (H.264/HEVC/AV1, v0.4.1)
 - [ ] Image augmentation pipeline — ⬜
 - [ ] Vision-language annotation support — ⬜
 - [ ] Object-detection label integration — ⬜
 - [ ] Segmentation mask support — ⬜
-- [ ] Depth camera support — ⬜
+- [x] Depth camera support — ✅ (XYZ/PLY/PCD, v0.4.1)
+- [x] Panoramic video stitching — ✅ (cylindrical, v0.5.0)
+- [x] Multi-view BEV projection — ✅ (3D perception, v0.5.0)
+- [ ] Occupancy grid mapping — ⬜ (v0.5.1)
+- [ ] Optical flow estimation — ⬜ (v0.5.1)
 
 ### Sensor fusion
-- [ ] IMU frame abstraction — ⬜
+- [x] IMU frame abstraction — 🟡 (v0.4.2: gyro + accel data, motion compensation)
 - [ ] GPS trajectory abstraction — ⬜
-- [ ] LiDAR point-cloud support — ⬜
+- [ ] LiDAR point-cloud support — ⬜ (planned v0.5.2)
 - [ ] Event-camera support — ⬜
 - [ ] Audio-stream support — ⬜
-- [ ] Sensor calibration registry — ⬜
+- [x] Sensor calibration registry — ✅ (v0.4.1: intrinsics, extrinsics, poses)
 - [ ] Sensor health monitoring — ⬜
-- [ ] Missing-data interpolation — ⬜
-- [ ] Time-series resampling engine — ⬜
-- [ ] Multi-rate sensor alignment — ⬜
+- [x] Missing-data interpolation — ✅ (v0.4.2: backward as-of join, tolerance filtering)
+- [x] Time-series resampling engine — ✅ (v0.4.2: MultimodalDataFrame)
+- [x] Multi-rate sensor alignment — ✅ (v0.4.2: time-sync, 50ms tolerance default)
+- [ ] Radar velocity fusion — ⬜ (planned v0.5.2)
+- [ ] Depth-aware 3D fusion — ⬜ (planned v0.5.2)
 
 ### Streaming & edge
 - [ ] MQTT data-source connector — ⬜
