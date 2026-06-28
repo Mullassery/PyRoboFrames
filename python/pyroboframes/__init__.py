@@ -1,16 +1,19 @@
-"""PyRoboFrames — zero-copy, hardware-accelerated robot-learning dataloader for Apple Silicon.
+"""PyRoboFrames v1.0 — Fast ML dataloader for robot learning on Apple Silicon.
+
+Focus: LeRobot datasets, video decode (GPU-accelerated), temporal windows, multi-output formats.
 
 The heavy lifting (dataset reading, VideoToolbox decode, zero-copy windowing) lives in the
 compiled Rust extension ``pyroboframes._core``. This package is the ergonomic Python surface:
-the ``RoboFrameDataset`` / ``Loader`` API and the MLX / NumPy / PyTorch adapters.
+the ``RoboFrameDataset`` / ``ProprioceptiveLoader`` / ``DataLoader`` API and device adapters
+(MLX, NumPy, PyTorch, JAX).
 
-The public API is still being built (see the project ROADMAP); today the package exposes the
-engine version so wheels and the build can be smoke-tested end to end.
+For autonomous driving perception and foundation models, see PyRoboVision:
+https://github.com/Mullassery/PyRoboVision
 """
 
 from __future__ import annotations
 
-from . import _core, automotive, backend, depth_io, sensor_fusion, transforms
+from . import _core, backend, depth_io, sensor_fusion, transforms
 from ._core import (
     CameraCalibrationPy,
     CameraIntrinsicsPy,
@@ -98,7 +101,6 @@ __all__ = [
     "transforms",
     "backend",
     "depth_io",
-    "automotive",
     "sensor_fusion",
     "resolve_device",
     "available_backends",
