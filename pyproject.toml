@@ -4,19 +4,49 @@ build-backend = "maturin"
 
 [project]
 name = "pyroboframes"
-description = "Early/experimental LeRobot dataloader for Apple Silicon & Linux — FFmpeg decode, NumPy/MLX/PyTorch output (hardware decode, zero-copy MLX & parallel prefetch in progress)"
+description = "High-performance dataloader for robot learning datasets. LeRobot format support, hardware-accelerated video decode via VideoToolbox, MLX array output. Zero-copy data pipeline optimized for Apple Silicon and edge robotics."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Georgi Mammen Mullassery", email = "mullassery@gmail.com" }]
-keywords = ["robotics", "robot-learning", "lerobot", "mlx", "apple-silicon", "dataloader", "videotoolbox"]
+keywords = [
+    "robotics",
+    "robot-learning",
+    "ml-dataloader",
+    "lerobot",
+    "dataset-loader",
+    "computer-vision",
+    "video-processing",
+    "mlx",
+    "pytorch",
+    "jax",
+    "numpy",
+    "data-pipeline",
+    "machine-learning",
+    "reinforcement-learning",
+    "edge-ai",
+    "apple-silicon",
+    "video-decode",
+    "zero-copy",
+    "deep-learning",
+    "neural-networks",
+    "training-framework",
+    "data-preprocessing"
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Robotics",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dynamic = ["version"]
 dependencies = [
@@ -29,7 +59,11 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/Mullassery/PyRoboFrames"
 Repository = "https://github.com/Mullassery/PyRoboFrames"
-Issues = "https://github.com/Mullassery/PyRoboFrames/issues"
+Documentation = "https://github.com/Mullassery/PyRoboFrames#readme"
+"Bug Tracker" = "https://github.com/Mullassery/PyRoboFrames/issues"
+Changelog = "https://github.com/Mullassery/PyRoboFrames/releases"
+"Source Code" = "https://github.com/Mullassery/PyRoboFrames/tree/main"
+Discussions = "https://github.com/Mullassery/PyRoboFrames/discussions"
 
 [project.optional-dependencies]
 mlx = ["mlx>=0.20"]
