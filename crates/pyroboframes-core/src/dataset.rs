@@ -12,6 +12,9 @@ use crate::episodes::EpisodeIndex;
 use crate::info::Info;
 use crate::{Error, Result};
 
+// SECURITY: Prevent DOS via excessively large video files
+const MAX_VIDEO_FILE_SIZE: u64 = 2 * 1024 * 1024 * 1024; // 2GB per video file
+
 /// An opened LeRobotDataset v3.0.
 #[derive(Debug)]
 pub struct Dataset {
@@ -64,12 +67,25 @@ impl Dataset {
             .join(self.info.data_file_path(chunk_index, file_index))
     }
 
-    /// Absolute path to a camera's video (mp4) shard.
-    pub fn video_file(&self, camera_key: &str, chunk_index: usize, file_index: usize) -> PathBuf {
-        self.root.join(
+    /// Absolute path to a camera's video (mp4) shard. Validates file size to prevent DOS attacks.
+    pub fn video_file(&self, camera_key: &str, chunk_index: usize, file_index: usize) -> Result<PathBuf> {
+        let path = self.root.join(
             self.info
                 .video_file_path(camera_key, chunk_index, file_index),
-        )
+        );
+
+        if let Ok(metadata) = std::fs::metadata(&path) {
+            if metadata.len() > MAX_VIDEO_FILE_SIZE {
+                return Err(Error::Dataset(format!(
+                    "Video file {} exceeds size limit: {} > {}",
+                    path.display(),
+                    metadata.len(),
+                    MAX_VIDEO_FILE_SIZE
+                )));
+            }
+        }
+
+        Ok(path)
     }
 
     /// Timestamp (seconds) of frame `frame_in_episode` within an episode, from the frame rate.
