@@ -578,11 +578,17 @@ mod tests {
     fn preferred_backend_matches_platform() {
         let b = Backend::preferred();
         if cfg!(target_os = "macos") {
-            assert_eq!(b, Backend::VideoToolbox);
+            if cfg!(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda"))) {
+                assert_eq!(b, Backend::VideoToolbox);
+            } else {
+                assert_eq!(b, Backend::Software);
+            }
         } else if cfg!(feature = "cuda") {
             assert_eq!(b, Backend::Cuda);
-        } else {
+        } else if cfg!(feature = "ffmpeg") {
             assert_eq!(b, Backend::Ffmpeg);
+        } else {
+            assert_eq!(b, Backend::Software);
         }
     }
 }

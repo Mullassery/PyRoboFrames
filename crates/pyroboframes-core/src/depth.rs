@@ -367,7 +367,9 @@ mod tests {
     use std::io::Write;
 
     fn write_temp_file(name: &str, content: &str) -> (tempfile::NamedTempFile, String) {
-        let mut file = tempfile::NamedTempFile::new().unwrap();
+        use tempfile::Builder;
+        let suffix = format!(".{}", name.split('.').last().unwrap_or("tmp"));
+        let mut file = Builder::new().suffix(&suffix).tempfile().unwrap();
         file.write_all(content.as_bytes()).unwrap();
         let path = file.path().to_string_lossy().to_string();
         (file, path)
