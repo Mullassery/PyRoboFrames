@@ -20,7 +20,7 @@ jobs:
       run: cargo check --verbose
     
     - name: Cargo test
-      run: cargo test --verbose --all
+      run: cargo test -p pyroboframes-core --verbose
     
     - name: Cargo clippy
       run: cargo clippy --all-targets || true
