@@ -68,7 +68,12 @@ impl Dataset {
     }
 
     /// Absolute path to a camera's video (mp4) shard. Validates file size to prevent DOS attacks.
-    pub fn video_file(&self, camera_key: &str, chunk_index: usize, file_index: usize) -> Result<PathBuf> {
+    pub fn video_file(
+        &self,
+        camera_key: &str,
+        chunk_index: usize,
+        file_index: usize,
+    ) -> Result<PathBuf> {
         let path = self.root.join(
             self.info
                 .video_file_path(camera_key, chunk_index, file_index),

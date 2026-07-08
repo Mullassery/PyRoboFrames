@@ -234,7 +234,10 @@ pub(crate) fn write_all(
         if !topic_stats.is_empty() {
             stats.insert(topic.clone(), Value::Object(topic_stats));
         }
-        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
         topic_meta.push(serde_json::json!({
             "topic": topic,
             "path": file_name,
@@ -290,7 +293,10 @@ pub(crate) fn flatten(prefix: &str, value: &Value, out: &mut BTreeMap<String, Le
             out.insert(prefix.to_string(), Leaf::Bool(*b));
         }
         Value::Number(n) => {
-            out.insert(prefix.to_string(), Leaf::Num(n.as_f64().unwrap_or(f64::NAN)));
+            out.insert(
+                prefix.to_string(),
+                Leaf::Num(n.as_f64().unwrap_or(f64::NAN)),
+            );
         }
         Value::String(s) => {
             out.insert(prefix.to_string(), Leaf::Str(s.clone()));
@@ -339,13 +345,25 @@ fn column_stats(rows: &[BTreeMap<String, Leaf>], path: &str) -> ColStats {
     }
     let count = values.len();
     if count == 0 {
-        return ColStats { count: 0, mean: 0.0, std: 0.0, min: 0.0, max: 0.0 };
+        return ColStats {
+            count: 0,
+            mean: 0.0,
+            std: 0.0,
+            min: 0.0,
+            max: 0.0,
+        };
     }
     let mean = values.iter().sum::<f64>() / count as f64;
     let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / count as f64;
     let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
     let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    ColStats { count, mean, std: var.sqrt(), min, max }
+    ColStats {
+        count,
+        mean,
+        std: var.sqrt(),
+        min,
+        max,
+    }
 }
 
 /// Write one topic's accumulated rows to a Parquet file. Returns the per-column info (name, dtype,

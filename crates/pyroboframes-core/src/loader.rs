@@ -100,7 +100,9 @@ impl TabularLoader {
         })?;
         for name in features {
             let fs = stats.get(name).ok_or_else(|| {
-                Error::Dataset(format!("no stats for feature `{name}` (needed for normalization)"))
+                Error::Dataset(format!(
+                    "no stats for feature `{name}` (needed for normalization)"
+                ))
             })?;
             if fs.mean.is_empty() || fs.mean.len() != fs.std.len() {
                 return Err(Error::Dataset(format!(
@@ -326,7 +328,7 @@ impl TabularLoader {
                 let &(chunk, file, ts) = step_loc.videos.get(cam).ok_or_else(|| {
                     Error::Dataset(format!("camera `{cam}` not found for frame {g}"))
                 })?;
-                let path = self.dataset.video_file(cam, chunk, file);
+                let path = self.dataset.video_file(cam, chunk, file)?;
                 frames.push(cache.get_or_decode(decoder, cam, &path, ts)?);
             }
             out.push((cam.clone(), frames));
@@ -351,7 +353,7 @@ impl TabularLoader {
             let &(chunk, file, ts) = loc.videos.get(cam).ok_or_else(|| {
                 Error::Dataset(format!("camera `{cam}` not found for frame {global_index}"))
             })?;
-            let path = self.dataset.video_file(cam, chunk, file);
+            let path = self.dataset.video_file(cam, chunk, file)?;
             out.push((cam.clone(), cache.get_or_decode(decoder, cam, &path, ts)?));
         }
         Ok(out)
@@ -370,7 +372,7 @@ pub fn decode_frames(
 ) -> Result<BTreeMap<String, Frame>> {
     let mut frames = BTreeMap::new();
     for (camera, &(chunk, file, timestamp)) in &loc.videos {
-        let path = dataset.video_file(camera, chunk, file);
+        let path = dataset.video_file(camera, chunk, file)?;
         let frame = cache.get_or_decode(decoder, camera, &path, timestamp)?;
         frames.insert(camera.clone(), frame);
     }

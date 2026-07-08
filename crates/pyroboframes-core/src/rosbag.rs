@@ -38,7 +38,10 @@ pub fn convert(input: &Path, out_dir: &Path) -> Result<ConversionReport> {
             skipped.insert(t.name.clone());
             continue;
         }
-        match definitions.get(&t.msg_type).and_then(|d| Ros2Schema::parse(d).ok()) {
+        match definitions
+            .get(&t.msg_type)
+            .and_then(|d| Ros2Schema::parse(d).ok())
+        {
             Some(schema) => {
                 schemas.insert(t.id, schema);
             }
@@ -65,7 +68,8 @@ pub fn convert(input: &Path, out_dir: &Path) -> Result<ConversionReport> {
 
     for row in rows {
         let (topic_id, timestamp, data) = row.map_err(|e| db_err("reading message row", e))?;
-        let (Some(schema), Some(name)) = (schemas.get(&topic_id), topic_names.get(&topic_id)) else {
+        let (Some(schema), Some(name)) = (schemas.get(&topic_id), topic_names.get(&topic_id))
+        else {
             continue;
         };
         // Tolerate the odd undecodable payload rather than failing the whole bag.
@@ -120,7 +124,9 @@ fn read_message_definitions(conn: &Connection) -> Result<HashMap<String, String>
         Err(_) => return Ok(HashMap::new()),
     };
     let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(|e| db_err("reading message_definitions", e))?;
     let mut map = HashMap::new();
     for row in rows {

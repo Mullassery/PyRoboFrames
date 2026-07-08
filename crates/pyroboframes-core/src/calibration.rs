@@ -51,9 +51,7 @@ impl CameraIntrinsics {
 
     /// Get the 3×3 K matrix as a flat array (row-major).
     pub fn k_matrix(&self) -> [f64; 9] {
-        [
-            self.fx, 0.0, self.cx, 0.0, self.fy, self.cy, 0.0, 0.0, 1.0,
-        ]
+        [self.fx, 0.0, self.cx, 0.0, self.fy, self.cy, 0.0, 0.0, 1.0]
     }
 
     /// Project a 3D point onto the image plane (without distortion).

@@ -89,9 +89,8 @@ impl Ros2Schema {
         }
         blocks.push((name.take(), std::mem::take(&mut lines)));
 
-        let parse_fields = |ls: &[&str]| -> Vec<FieldDef> {
-            ls.iter().filter_map(|l| parse_field(l)).collect()
-        };
+        let parse_fields =
+            |ls: &[&str]| -> Vec<FieldDef> { ls.iter().filter_map(|l| parse_field(l)).collect() };
 
         let mut types: HashMap<String, Vec<FieldDef>> = HashMap::new();
         let mut root: Option<Vec<FieldDef>> = None;
@@ -147,7 +146,10 @@ fn parse_field(line: &str) -> Option<FieldDef> {
             let array = if inside.is_empty() || inside.starts_with("<=") {
                 ArrayKind::Variable
             } else {
-                inside.parse::<usize>().map(ArrayKind::Fixed).unwrap_or(ArrayKind::Variable)
+                inside
+                    .parse::<usize>()
+                    .map(ArrayKind::Fixed)
+                    .unwrap_or(ArrayKind::Variable)
             };
             (base, array)
         }
@@ -231,7 +233,9 @@ fn decode_prim(cdr: &mut Cdr, prim: Prim) -> Result<Value> {
 
 /// JSON can't hold non-finite floats; map NaN/±Inf to null (dropped by the flattener).
 fn float_value(x: f64) -> Value {
-    Number::from_f64(x).map(Value::Number).unwrap_or(Value::Null)
+    Number::from_f64(x)
+        .map(Value::Number)
+        .unwrap_or(Value::Null)
 }
 
 /// A little/big-endian CDR cursor with size-based alignment relative to the buffer start.
@@ -270,7 +274,11 @@ impl Cdr<'_> {
         self.align(2);
         let b = self.take(2)?;
         let a = [b[0], b[1]];
-        Ok(if self.le { u16::from_le_bytes(a) } else { u16::from_be_bytes(a) })
+        Ok(if self.le {
+            u16::from_le_bytes(a)
+        } else {
+            u16::from_be_bytes(a)
+        })
     }
 
     fn read_i16(&mut self) -> Result<i16> {
@@ -281,7 +289,11 @@ impl Cdr<'_> {
         self.align(4);
         let b = self.take(4)?;
         let a = [b[0], b[1], b[2], b[3]];
-        Ok(if self.le { u32::from_le_bytes(a) } else { u32::from_be_bytes(a) })
+        Ok(if self.le {
+            u32::from_le_bytes(a)
+        } else {
+            u32::from_be_bytes(a)
+        })
     }
 
     fn read_i32(&mut self) -> Result<i32> {
@@ -292,7 +304,11 @@ impl Cdr<'_> {
         self.align(8);
         let b = self.take(8)?;
         let a = [b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]];
-        Ok(if self.le { u64::from_le_bytes(a) } else { u64::from_be_bytes(a) })
+        Ok(if self.le {
+            u64::from_le_bytes(a)
+        } else {
+            u64::from_be_bytes(a)
+        })
     }
 
     fn read_i64(&mut self) -> Result<i64> {
@@ -311,7 +327,11 @@ impl Cdr<'_> {
         let len = self.read_u32()? as usize;
         let bytes = self.take(len)?;
         // The length includes the trailing NUL; drop it.
-        let end = if bytes.last() == Some(&0) { len - 1 } else { len };
+        let end = if bytes.last() == Some(&0) {
+            len - 1
+        } else {
+            len
+        };
         Ok(String::from_utf8_lossy(&bytes[..end]).into_owned())
     }
 }

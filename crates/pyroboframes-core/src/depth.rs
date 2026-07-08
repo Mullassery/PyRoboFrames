@@ -144,14 +144,12 @@ impl PointCloud {
             } else if line.starts_with("element vertex") {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 3 {
-                    vertex_count = parts[2]
-                        .parse::<usize>()
-                        .map_err(|_| {
-                            Error::Dataset(format!(
-                                "{}: invalid vertex count in PLY header",
-                                path.display()
-                            ))
-                        })?;
+                    vertex_count = parts[2].parse::<usize>().map_err(|_| {
+                        Error::Dataset(format!(
+                            "{}: invalid vertex count in PLY header",
+                            path.display()
+                        ))
+                    })?;
                 }
             } else if line.starts_with("property float x") {
                 has_x = true;

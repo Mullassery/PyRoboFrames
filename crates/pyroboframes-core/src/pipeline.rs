@@ -74,7 +74,8 @@ impl BatchAssembler {
             let factory = cfg.decoder_factory.ok_or_else(|| {
                 Error::Decode("camera decode requested but no decoder is available".into())
             })?;
-            let cap = cfg.cache_size
+            let cap = cfg
+                .cache_size
                 .unwrap_or_else(|| (cfg.batch_size * cfg.cameras.len() * 8).max(256));
             (Some(factory()?), FrameCache::new(cap))
         };
@@ -135,7 +136,10 @@ impl BatchAssembler {
 
         if !self.cameras.is_empty() {
             let cameras = self.cameras.clone();
-            let decoder = self.decoder.as_deref_mut().expect("decoder present with cameras");
+            let decoder = self
+                .decoder
+                .as_deref_mut()
+                .expect("decoder present with cameras");
             // camera -> (width, height, concatenated RGB bytes)
             let mut acc: BTreeMap<String, (u32, u32, Vec<u8>)> = BTreeMap::new();
             for &i in indices {

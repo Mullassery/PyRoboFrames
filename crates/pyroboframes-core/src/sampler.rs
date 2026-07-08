@@ -184,7 +184,10 @@ mod tests {
         let picks = weighted_with_replacement(&[1.0, 9.0], 10_000, 7);
         let ones = picks.iter().filter(|&&i| i == 1).count();
         assert!(picks.iter().all(|&i| i < 2));
-        assert!((0.80..0.97).contains(&(ones as f64 / 10_000.0)), "got {ones}");
+        assert!(
+            (0.80..0.97).contains(&(ones as f64 / 10_000.0)),
+            "got {ones}"
+        );
     }
 
     #[test]
@@ -218,7 +221,10 @@ mod tests {
             }
             let in_ep0 = group.iter().all(|&p| p < 8);
             let in_ep1 = group.iter().all(|&p| p >= 8);
-            assert!(in_ep0 || in_ep1, "chunk crossed episode boundary: {group:?}");
+            assert!(
+                in_ep0 || in_ep1,
+                "chunk crossed episode boundary: {group:?}"
+            );
         }
     }
 

@@ -130,7 +130,7 @@ impl Backend {
             }
             #[cfg(not(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda"))))]
             {
-                return Backend::Software;
+                Backend::Software
             }
         } else if cfg!(feature = "cuda") {
             Backend::Cuda
@@ -289,8 +289,14 @@ mod ffcli {
     pub(crate) fn probe_dims(file: &Path) -> Result<(u32, u32)> {
         let out = Command::new("ffprobe")
             .args([
-                "-v", "error", "-select_streams", "v:0",
-                "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "csv=s=x:p=0",
             ])
             .arg(file)
             .output()
@@ -545,8 +551,16 @@ mod tests {
         // Generate a 64x48 @ 30fps, 2s test clip.
         let status = Command::new("ffmpeg")
             .args([
-                "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x48:rate=30",
-                "-frames:v", "60", "-pix_fmt", "yuv420p",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=64x48:rate=30",
+                "-frames:v",
+                "60",
+                "-pix_fmt",
+                "yuv420p",
             ])
             .arg(&mp4)
             .status()

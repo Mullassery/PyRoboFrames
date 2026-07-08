@@ -360,8 +360,7 @@ impl RoboFrameDataset {
         let (frame_decoder, frame_cache) = if cameras.is_empty() {
             (None, FrameCache::new(1))
         } else {
-            let cap = cache_size
-                .unwrap_or_else(|| (batch_size * cameras.len() * 8).max(256));
+            let cap = cache_size.unwrap_or_else(|| (batch_size * cameras.len() * 8).max(256));
             (Some(new_frame_decoder()?), FrameCache::new(cap))
         };
 
@@ -486,9 +485,9 @@ impl Loader {
                             .frames_for(i, &cameras, decoder, &mut self.frame_cache)
                             .map_err(core_err)?;
                         for (cam, frame) in frames {
-                            let entry = acc
-                                .entry(cam)
-                                .or_insert((frame.width, frame.height, Vec::new()));
+                            let entry =
+                                acc.entry(cam)
+                                    .or_insert((frame.width, frame.height, Vec::new()));
                             if entry.0 != frame.width || entry.1 != frame.height {
                                 return Err(PyValueError::new_err(
                                     "frames in a batch have inconsistent dimensions",
@@ -827,7 +826,8 @@ impl PointCloudPy {
     }
 
     fn __repr__(&self) -> String {
-        format!("PointCloud(points={}, colors={}, normals={})",
+        format!(
+            "PointCloud(points={}, colors={}, normals={})",
             self.inner.len(),
             self.inner.colors.is_some(),
             self.inner.normals.is_some()
@@ -920,8 +920,12 @@ impl CameraIntrinsicsPy {
     fn __repr__(&self) -> String {
         format!(
             "CameraIntrinsics(fx={:.1}, fy={:.1}, cx={:.1}, cy={:.1}, {}x{})",
-            self.inner.fx, self.inner.fy, self.inner.cx, self.inner.cy,
-            self.inner.width, self.inner.height
+            self.inner.fx,
+            self.inner.fy,
+            self.inner.cx,
+            self.inner.cy,
+            self.inner.width,
+            self.inner.height
         )
     }
 }
@@ -936,15 +940,7 @@ struct CameraCalibrationPy {
 impl CameraCalibrationPy {
     /// Create a camera calibration.
     #[new]
-    fn new(
-        name: String,
-        fx: f64,
-        fy: f64,
-        cx: f64,
-        cy: f64,
-        width: usize,
-        height: usize,
-    ) -> Self {
+    fn new(name: String, fx: f64, fy: f64, cx: f64, cy: f64, width: usize, height: usize) -> Self {
         let intrinsics = CameraIntrinsics::new(fx, fy, cx, cy, width, height);
         Self {
             inner: CameraCalibration::new(name, intrinsics),

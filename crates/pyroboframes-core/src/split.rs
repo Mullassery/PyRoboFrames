@@ -10,7 +10,11 @@ use crate::rng::SplitMix64;
 ///
 /// `val_fraction` is clamped to `[0.0, 1.0]`; the validation count is rounded to the nearest
 /// episode. The same `seed` always yields the same split.
-pub fn split_episodes(num_episodes: usize, val_fraction: f64, seed: u64) -> (Vec<usize>, Vec<usize>) {
+pub fn split_episodes(
+    num_episodes: usize,
+    val_fraction: f64,
+    seed: u64,
+) -> (Vec<usize>, Vec<usize>) {
     let frac = val_fraction.clamp(0.0, 1.0);
     let mut order: Vec<usize> = (0..num_episodes).collect();
 
