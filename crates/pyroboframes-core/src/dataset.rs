@@ -162,7 +162,7 @@ mod tests {
             tmp.path().join("data/chunk-000/file-000.parquet")
         );
         assert_eq!(
-            ds.video_file("observation.images.top", 0, 0),
+            ds.video_file("observation.images.top", 0, 0).unwrap(),
             tmp.path()
                 .join("videos/observation.images.top/chunk-000/file-000.mp4")
         );
