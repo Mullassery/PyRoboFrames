@@ -69,7 +69,7 @@ Discussions = "https://github.com/Mullassery/PyRoboFrames/discussions"
 
 [project.optional-dependencies]
 mlx = ["mlx==0.20"]
-dev = ["pytest==8", "numpy==1.24", "maturin==1.7"]
+dev = ["pytest==9.1.1", "numpy==1.24", "maturin==1.7"]
 
 [tool.maturin]
 manifest-path = "crates/pyroboframes-py/Cargo.toml"
