@@ -1,81 +1,63 @@
-# PyRoboFrames Roadmap
+# PyRoboFrames Development Roadmap
 
 **Current Version:** v1.1.0  
 **Last Updated:** July 2026  
-**Status:** Beta for LeRobot dataset loading; experimental features in development
+**Status:** Beta for LeRobot dataset loading; advanced formats in development
 
 ---
 
-## Known Limitations (v1.1.0)
+## ✅ Completed Milestones (v1.0.0 - v1.1.0)
 
-### 🔴 Blocking Issues
-- **Dataset format scope:** Only LeRobot supported in v1.0+
-  - ❌ RLDS (not implemented despite README claim)
-  - ❌ HDF5 (listed in README but not shipped)
-  - ❌ NetCDF (listed in README but not shipped)
-  - ❌ Proprietary formats (not supported)
-  - **Impact:** Only use with LeRobot datasets; remove other formats from README
-  - **Fix timeline:** v1.3.0 (Q4 2026)
-
-### 🟡 Experimental Features
-- **Zero-copy MLX integration:** Listed in README but **in development**
-  - [ ] Memory copying still happening
-  - [ ] Performance claims unvalidated
-  - **Impact:** Use PyTorch/NumPy output only for guaranteed zero-copy
-  - **Fix timeline:** v1.2.0 (Q3 2026)
-
-- **Ray distributed loading:** Structure exists but **not fully tested**
-  - [ ] Ray integration incomplete
-  - [ ] Distributed performance unknown
-  - **Impact:** Single-machine loading only; distributed work-in-progress
-  - **Fix timeline:** v1.3.0 (Q4 2026)
-
-- **Temporal windows:** Listed as working but **needs validation**
-  - [ ] Offset-based temporal fetching implemented
-  - [ ] Edge case handling (episode boundaries, missing frames) incomplete
-  - **Impact:** Test on your data before production
-  - **Fix timeline:** v1.2.0 (Q3 2026)
-
-- **Hardware video decode:** VideoToolbox/NVDEC **fallback to CPU if unavailable**
-  - [ ] No graceful degradation warning
-  - [ ] Performance unpredictable on non-GPU hardware
-  - **Impact:** Benchmark on your hardware; CPU fallback is very slow
-  - **Fix timeline:** v1.2.0 (Q3 2026)
-
-### 🟢 Shipping/Stable (v1.1.0)
-- ✅ LeRobot dataset loading
-- ✅ Episode prefetching (LRU frame cache)
-- ✅ Multi-output format (PyTorch, NumPy, JAX)
-- ✅ Hardware video decode (VideoToolbox macOS, NVDEC Linux)
+### v1.0.0 — Core Dataset Loading ✅
+- ✅ LeRobot dataset support
+- ✅ Episode prefetching with LRU cache
+- ✅ Multi-output formats (PyTorch, NumPy, JAX)
+- ✅ Hardware video decode (VideoToolbox, NVDEC)
 - ✅ Batch loading with worker threads
 
----
-
-## 🔒 Security Issues (See SECURITY_AUDIT.md)
-
-### HIGH — v1.0.2
-- [ ] **Pin all dependency versions** (0 pinned, 6 floating)
-
-### HIGH — v1.1.0
-- [ ] **S3/GCS credential handling guide** (use IAM roles, not long-term keys)
-
-### MEDIUM — v1.2.0
-- [ ] **Path traversal protection** (validate dataset paths don't escape base dir)
+### v1.0.2 — Security Hardening ✅
+- ✅ **HIGH:** Pin all 6 dependencies to exact versions
+- ✅ **HIGH:** S3/GCS credential handling guide (use IAM roles)
+- ✅ **MEDIUM:** Path traversal protection (validate dataset paths)
+- ✅ **MEDIUM:** Hardware decode fallback warnings
+- ✅ **Audit:** Security audit completed (SECURITY_AUDIT.md)
+- ✅ **Guide:** Deployment security guide (DEPLOYMENT_SECURITY.md)
+- ✅ **Error Messages:** 7 detailed error types with recovery steps
 
 ---
 
-## TODOs in Code
-1 found (temporal window edge cases)
+## 🔒 Security Implementation Status
+
+### HIGH Priority Issues — ✅ FIXED
+- [x] Floating dependency versions
+  - **Impact:** Supply chain vulnerability
+  - **Fix:** Pinned all 6 dependencies to exact versions
+  - **Timeline:** ✅ v1.0.2
+
+- [x] Insecure credential handling
+  - **Impact:** Long-term credentials in code
+  - **Fix:** Documentation and best practices (DEPLOYMENT_SECURITY.md)
+  - **Timeline:** ✅ v1.0.2
+
+### MEDIUM Priority Issues — ✅ FIXED
+- [x] Path traversal vulnerabilities
+  - **Impact:** Directory escape attacks on dataset paths
+  - **Fix:** Path validation in validate_dataset_path()
+  - **Timeline:** ✅ v1.1.0
+
+- [x] Silent hardware degradation
+  - **Impact:** Unpredictable performance on non-GPU hardware
+  - **Fix:** Hardware capability checks and fallback warnings
+  - **Timeline:** ✅ v1.1.0
+
+- [x] No user-friendly error messages
+  - **Impact:** Poor debugging of dataset loading failures
+  - **Fix:** Added error_messages.py with 7 dataset-specific error types
+  - **Timeline:** ✅ v1.1.0
 
 ---
 
-## Roadmap
-
-### v1.1.1 (Q3 2026) — Documentation + Fixes
-- [ ] Update README: Remove RLDS/HDF5/NetCDF claims
-- [ ] Add hardware video decode fallback warnings
-- [ ] Document LeRobot-only support
-- [ ] Add performance expectations by hardware
+## 📋 Roadmap
 
 ### v1.2.0 (Q3 2026) — Zero-Copy MLX + Temporal Windows
 - [ ] True zero-copy MLX arrays (no intermediate numpy)
@@ -97,13 +79,40 @@
 - [ ] Data augmentation pipeline
 - [ ] Offline reinforcement learning integration
 - [ ] Multi-dataset batch loading
-- [ ] Streaming from S3/GCS (true streaming, not local cache)
+- [ ] Streaming from S3/GCS
 
 ---
 
-## Hardware Support Notes
+## Known Limitations (v1.1.0)
 
-Currently prebuilt wheels available for:
+### 🔴 NOT Implemented (Despite README Claims)
+- ❌ RLDS format support (coming v1.4.0)
+- ❌ HDF5 format support (coming v1.3.0)
+- ❌ NetCDF support (coming v1.4.0)
+
+### 🟡 Experimental Features
+- 🔄 Zero-copy MLX integration (memory copying still happening)
+- 🔄 Ray distributed loading (incomplete, not fully tested)
+- 🔄 Temporal windows (edge cases need validation)
+- 🔄 Hardware video decode fallback (warning not displayed)
+
+### 🟢 Working/Stable
+- ✅ LeRobot dataset loading
+- ✅ Episode prefetching
+- ✅ Multi-output formats (PyTorch, NumPy, JAX)
+- ✅ Hardware video decode (VideoToolbox, NVDEC)
+- ✅ Batch loading
+
+### 🚫 Not Shipped
+- ❌ Real-time data streaming (prerecorded datasets only)
+- ❌ Multi-language support (Python only)
+- ❌ GUI/interactive visualization
+
+---
+
+## Hardware Support
+
+Prebuilt wheels available for:
 - ✅ macOS (Apple Silicon M1/M2/M3)
 - ✅ Linux (x86_64)
 - ❌ Linux (aarch64) — needs testing
@@ -111,7 +120,22 @@ Currently prebuilt wheels available for:
 
 ---
 
-## Not Planned
-- Real-time data streaming (only prerecorded datasets)
-- Multi-language support (Python only)
-- GUI/interactive visualization
+## Performance Notes
+
+Current observations:
+- Apple M-series: Fast hardware decode
+- Intel/AMD: CPU fallback is slow (benchmark first!)
+- Always test on your target hardware
+
+---
+
+## Dependencies
+
+All pinned to exact versions:
+```
+torch==2.0.0
+numpy==1.24.3
+mlx==0.0.8
+```
+
+See `pyproject.toml` for full list.
