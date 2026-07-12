@@ -55,7 +55,7 @@ dependencies = [
     # numpy is imported at package import (transforms.py), and the loader returns NumPy arrays;
     # pyarrow is needed to read the Parquet that `convert_mcap` writes.
     "numpy==1.24",
-    "pyarrow==14",
+    "pyarrow==25.0.0",
 ]
 
 [project.urls]
