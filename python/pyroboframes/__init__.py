@@ -52,6 +52,19 @@ from .tensorflow_support import KerasDataAdapter, create_keras_model_for_robotic
 from .validation import DatasetValidator, FullValidationReport, ValidationIssue
 from .versioning import DatasetManifest, DatasetVersion
 
+# CRITICAL: Multi-format dataset support (unblocks non-LeRobot users)
+from ._format_registry import (
+    FormatRegistry,
+    DatasetFormat,
+    FormatSpec,
+    DatasetLoader,
+    LeRobotLoader,
+    RLDSLoader,
+    HDF5Loader,
+    get_registry,
+    load_dataset,
+)
+
 # Public aliases for depth and calibration classes
 PointCloud = PointCloudPy
 CameraIntrinsics = CameraIntrinsicsPy
@@ -129,6 +142,16 @@ __all__ = [
     "RemoteDataset",
     "RayDistributedLoader",
     "shard_episodes",
+    # Multi-format support (v1.3.0+)
+    "FormatRegistry",
+    "DatasetFormat",
+    "FormatSpec",
+    "DatasetLoader",
+    "LeRobotLoader",
+    "RLDSLoader",
+    "HDF5Loader",
+    "get_registry",
+    "load_dataset",
 ]
 
 __version__: str = _core.__version__
