@@ -387,3 +387,40 @@ PyRoboFrames includes:
 - 📋 v2.0.0: Data augmentation and offline RL integration
 
 Full roadmap: [ROADMAP_HONEST.md](ROADMAP_HONEST.md)
+
+## 🆕 What's New in v1.3.0 (Q4 2026)
+
+### Multi-Format Dataset Support 📦
+Load datasets in multiple formats seamlessly:
+
+```python
+from pyroboframes import load_dataset, DatasetFormat
+
+# Auto-detect format
+loader = load_dataset('/path/to/dataset')
+
+# Or hint the format explicitly
+loader_rlds = load_dataset('/path/to/rlds_data', format_hint='RLDS')
+loader_hdf5 = load_dataset('/path/to/hdf5_data', format_hint='HDF5')
+
+# Load episodes and frames
+episode = loader.load_episode(0)
+frame = loader.load_frame(0, 42)
+```
+
+**Supported Formats:**
+
+| Format | Source | Best For | Stream | Random |
+|--------|--------|----------|--------|--------|
+| LeRobot | HuggingFace | Modern datasets | ✅ | ❌ |
+| RLDS | OpenX Embodiment | Multi-lab datasets | ✅ | ❌ |
+| HDF5 | Traditional ML | Large hierarchical | ❌ | ✅ |
+| Custom | Plugin system | Your format | 🔧 | 🔧 |
+
+**Why This Matters:**
+- Robot learning has 5+ competing dataset formats
+- Teams locked into single format couldn't collaborate
+- Multi-format support opens ecosystem collaboration
+- Plugin system enables custom formats without forking
+
+See `pyroboframes/_format_registry.py` for implementation.
