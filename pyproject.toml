@@ -54,7 +54,7 @@ dynamic = ["version"]
 dependencies = [
     # numpy is imported at package import (transforms.py), and the loader returns NumPy arrays;
     # pyarrow is needed to read the Parquet that `convert_mcap` writes.
-    "numpy==1.24",
+    "numpy==2.2.6",
     "pyarrow==14",
 ]
 
@@ -69,7 +69,7 @@ Discussions = "https://github.com/Mullassery/PyRoboFrames/discussions"
 
 [project.optional-dependencies]
 mlx = ["mlx==0.20"]
-dev = ["pytest==8", "numpy==1.24", "maturin==1.7"]
+dev = ["pytest==8", "numpy==2.2.6", "maturin==1.7"]
 
 [tool.maturin]
 manifest-path = "crates/pyroboframes-py/Cargo.toml"
