@@ -57,6 +57,38 @@
 
 ---
 
+## 🔍 Competitive Gaps vs Market
+
+Based on analysis of dataset loading market (Hugging Face Datasets, PyArrow, torchvision, TensorFlow), these gaps exist:
+
+### CRITICAL (Blocks Adoption for Non-LeRobot)
+- **LeRobot-only support** — Cannot load RLDS, HDF5, NetCDF (only formats in README)
+  - **Market Impact:** Robot teams locked into single dataset format
+  - **Recommended Fix:** Multi-format support in v1.3-1.4 is on track
+  - **Why:** Robot learning has 5+ dataset formats; single-format is limiting
+
+### HIGH (Reduces Addressable Market)
+- **Not truly zero-copy yet** — Claims zero-copy but still copies memory
+  - **Competitor Advantage:** PyArrow native zero-copy for columnar data
+  - **Timeline:** v1.2.0 (Q3 2026) should deliver true zero-copy
+  - **Why:** Memory is the bottleneck for 100GB+ datasets
+
+- **Distributed loading incomplete** — Ray integration not fully tested
+  - **Market Impact:** Teams cannot distribute loading across clusters
+  - **Timeline:** v1.3.0 (Q4 2026)
+  - **Why:** Enterprise robot learning requires distributed pipelines
+
+- **No S3/GCS streaming** — Must download datasets to local disk
+  - **Competitor Advantage:** Hugging Face Datasets streams from cloud
+  - **Timeline:** v2.0.0 (Q1 2027)
+  - **Why:** Avoids massive local storage requirements
+
+### MEDIUM (Nice-to-Have)
+- **Hardware decode fallback silent** — CPU fallback 10x slower but no warning
+  - **Timeline:** v1.2.0 (Q3 2026) for better warnings
+
+---
+
 ## 📋 Roadmap
 
 ### v1.2.0 (Q3 2026) — Zero-Copy MLX + Temporal Windows
