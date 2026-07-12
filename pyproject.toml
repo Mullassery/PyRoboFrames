@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.7,<2.0"]
+requires = ["maturin==1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -7,7 +7,7 @@ name = "pyroboframes"
 description = "High-performance dataloader for robot learning datasets. LeRobot format support, hardware-accelerated video decode via VideoToolbox, MLX array output. Zero-copy data pipeline optimized for Apple Silicon and edge robotics."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = "==3.10"
 authors = [{ name = "Georgi Mammen Mullassery", email = "mullassery@gmail.com" }]
 maintainers = [{ name = "Georgi Mammen Mullassery", email = "mullassery@gmail.com" }]
 keywords = [
@@ -54,8 +54,8 @@ dynamic = ["version"]
 dependencies = [
     # numpy is imported at package import (transforms.py), and the loader returns NumPy arrays;
     # pyarrow is needed to read the Parquet that `convert_mcap` writes.
-    "numpy>=1.24",
-    "pyarrow>=14",
+    "numpy==1.24",
+    "pyarrow==14",
 ]
 
 [project.urls]
@@ -68,8 +68,8 @@ Changelog = "https://github.com/Mullassery/PyRoboFrames/releases"
 Discussions = "https://github.com/Mullassery/PyRoboFrames/discussions"
 
 [project.optional-dependencies]
-mlx = ["mlx>=0.20"]
-dev = ["pytest>=8", "numpy>=1.24", "maturin>=1.7"]
+mlx = ["mlx==0.20"]
+dev = ["pytest==8", "numpy==1.24", "maturin==1.7"]
 
 [tool.maturin]
 manifest-path = "crates/pyroboframes-py/Cargo.toml"
