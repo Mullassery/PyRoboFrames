@@ -488,7 +488,6 @@ pyroboframes/
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — Design and implementation
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — How to contribute
 - [CHANGELOG.md](./CHANGELOG.md) — Version history
-- [IMPLEMENTATION_ROADMAP.md](./IMPLEMENTATION_ROADMAP.md) — Planned features
 
 ---
 
@@ -525,16 +524,6 @@ PyRoboFrames includes:
 - **Path Validation**: Prevents path traversal for S3/GCS access
 - **Hardware Warnings**: Graceful degradation with fallback from GPU video decode
 - **Detailed Error Messages**: See `python/pyroboframes/error_messages.py` for dataset recovery steps
-
-### Security Roadmap
-
-- ✅ v1.1.0: Path traversal protection, hardware warnings
-- ✅ v1.0.2: Dependencies pinned
-- 🔄 v1.2.0: Zero-copy MLX arrays, temporal window fixes
-- 🔄 v1.3.0: HDF5 and distributed loading support
-- 📋 v2.0.0: Data augmentation and offline RL integration
-
-Full roadmap: [ROADMAP_HONEST.md](ROADMAP_HONEST.md)
 
 ## 🆕 What's New in v1.3.0 (Q4 2026)
 
