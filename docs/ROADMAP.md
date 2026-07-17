@@ -155,16 +155,29 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
   - [x] LiDAR point cloud processing (filtering, clustering, normal estimation)
   - [x] Radar fusion for velocity estimates (Doppler + spatial alignment)
 
-### P12 — Advanced perception & fusion (v0.5.2+) — ⏸ planned
+### P12 — Egocentric multi-hand humanoid dataset loading (v0.5.1+) — 📋 planned
+Load and synchronize egocentric multi-camera datasets for humanoid robot learning (AgiBotWorld, TAVIS, Action_net patterns).
+
+**Motivation:** Humanoid robot datasets with left/right hand + forehead cameras require specialized loading for teleoperation-based learning. Current `create_humanoid_config()` models chest/head/wrist; this adds first-class egocentric stereo-hand support.
+
+- [ ] **Egocentric camera config** — `create_egocentric_humanoid_config()` with `left_hand`, `right_hand`, `forehead` camera pattern — `S · high · ✓test`
+- [ ] **Hand pose metadata** — load hand joint positions, segmentation masks, fingertip locations from dataset; expose in aligned batch under `camera.<hand>.pose` — `M · high · ✓test`
+- [ ] **Stereo hand depth** — compute depth map from left/right hand camera baseline during alignment (calibrated stereo matching or epipolar geometry) — `M · high · [C]`
+- [ ] **Hand-aware time alignment** — tolerance tuning for hand-specific lag patterns (hands often lag head feed in teleoperation) — `S · medium · ✓test`
+- [ ] **Egocentric example** — `examples/egocentric_humanoid_learning.py` — AgiBotWorld/TAVIS pattern, hand pose extraction, depth fusion — `S · high · ✓test`
+- [ ] **Hand segmentation masks** — pose-aware augmentation (hand boundary detection for safe cropping/masking) — `M · medium · ✓test`
+
+### P13 — Advanced perception & fusion (v0.5.2+) — ⏸ planned
 - [ ] **Lidar integration** — point cloud loading, 3D-2D projection, fusion with BEV — `L · high · ✓test`
 - [ ] **Radar support** — velocity/confidence fusion with vision — `M · medium · ✓test`
 - [ ] **IMU-aware stitching** — egomotion compensation for high-motion scenes — `M · medium · ✓test`
 - [ ] **Confidence maps** — per-pixel blending confidence from camera overlap analysis — `M · medium · ✓test`
 - [ ] **Feature-aware seams** — semantic content detection to avoid seams on salient objects — `L · medium · ~test`
 
-**Where we are (v0.5.0):** P0–P10 (except hardware verify) are shipped. v0.5.0 adds:
-- **P11** (new): Automotive video stitching & 3D perception — 360° panoramic stitching (Phase 1-3 complete)
-- **P12** (new): GPU acceleration for automotive pipeline (CuPy for NVIDIA, MLX for Apple Silicon)
+**Where we are (v0.5.0):** P0–P10 (except hardware verify) are shipped. v0.5.0+ adds:
+- **P11** (v0.5.0): Automotive video stitching & 3D perception — 360° panoramic stitching (Phase 1-3 complete)
+- **P12** (v0.5.1+, new): Egocentric multi-hand humanoid dataset loading — stereo hand cameras, hand pose metadata, teleoperation sync
+- **P13** (v0.5.2+): Advanced perception & fusion — LiDAR, Radar, confidence-aware stitching
 
 **Completed in v0.4.1–v0.5.0:**
 - ✅ Video codec selection (H.264/HEVC/AV1) with compression benchmarking
@@ -176,11 +189,12 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - ✅ BEV projection (v0.5.0 Phase 3: top-down transformation for 3D object detection)
 
 **Recommended next batch (v0.5.1+):**
-1. **P11a** — GPU acceleration for automotive: CuPy for NVIDIA (100+ FPS), MLX for Apple Silicon
-2. **P11b** — Temporal consistency: optical flow seam tracking, multi-frame alignment
-3. **P11c** — Real dataset integration: Waymo/nuScenes loaders with automatic calibration
-4. **P12** — Occupancy grid mapping + lidar/radar fusion for 3D perception
-5. Defer: P7 (streaming), P8 (vision), P10 (scale) to later batch unless prioritized elsewhere
+1. **P12** — Egocentric multi-hand humanoid support: `create_egocentric_humanoid_config()`, hand pose metadata, stereo hand depth — high-value for humanoid robot learning datasets
+2. **P11a** — GPU acceleration for automotive: CuPy for NVIDIA (100+ FPS), MLX for Apple Silicon
+3. **P11b** — Temporal consistency: optical flow seam tracking, multi-frame alignment
+4. **P11c** — Real dataset integration: Waymo/nuScenes loaders with automatic calibration
+5. **P13** — Occupancy grid mapping + lidar/radar fusion for 3D perception
+6. Defer: P7 (streaming), P8 (vision), P10 (scale) to later batch unless prioritized elsewhere
 
 ---
 
