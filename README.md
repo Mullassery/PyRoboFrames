@@ -347,7 +347,7 @@ fused = RadarFusionProcessor.fuse_radar_lidar(
 
 ---
 
-## Test Coverage: 175 Tests Passing ✅
+## Test Coverage: 222 Tests Passing ✅
 
 ```
 Dataloader:       30 tests
@@ -363,12 +363,34 @@ NetCDF:            7 tests
 Distributed:       8 tests
 Streaming:         7 tests
 Codecs:            7 tests    (+3 round-trip)
+GPU Acceleration: 10 tests   (NEW v1.2)
+Dataset Loaders:  16 tests   (NEW v1.2)
+Occupancy/3D:     32 tests   (NEW v1.2)
 Other:             6 tests
 ```
 
 ```bash
 pytest tests/ -v
 ```
+
+---
+
+## How PyRoboFrames Compares
+
+PyRoboFrames occupies a unique position in the robot learning dataloader ecosystem:
+
+| Dimension | PyRoboFrames | torchcodec | Robo-DM | LeRobot |
+|-----------|--------------|-----------|---------|----------|
+| Multi-format support (LeRobot + RLDS + HDF5 + MCAP) | ⭐⭐⭐⭐⭐ | ⭐ | ⭐⭐ | ⭐⭐ |
+| Apple Silicon native GPU | ⭐⭐⭐⭐⭐ | ❌ | ❌ | ⭐ |
+| Waymo + nuScenes + KITTI loaders | ⭐⭐⭐⭐ | ❌ | ❌ | ❌ |
+| 3D occupancy grids + sensor fusion | ⭐⭐⭐⭐ | ❌ | ? | ❌ |
+| Unified GPU fallback chain | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ? | ⭐ |
+| Production maturity | ⭐⭐⭐ | ⭐⭐⭐⭐ | ? | ⭐⭐⭐⭐ |
+
+**Best for:** Multi-lab robotics collaboration + autonomous driving integration + cross-platform training.
+
+**See [COMPETITIVE_ANALYSIS.md](./docs/COMPETITIVE_ANALYSIS.md) for detailed comparison.**
 
 ---
 
