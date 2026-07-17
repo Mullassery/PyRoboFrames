@@ -14,7 +14,7 @@ crossbeam-channel.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 arrow = "55"
-parquet = "55"
+parquet = "59"
 lru = "0.12"
 mcap = "0.9"
 memmap2 = "0.9"
