@@ -35,7 +35,7 @@ cuda = []
 [dev-dependencies]
 tempfile = "3"
 prost = "0.13"
-prost-types = "0.13"
+prost-types = "0.14"
 
 [lints.clippy]
 all = "warn"
