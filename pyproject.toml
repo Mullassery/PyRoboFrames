@@ -7,7 +7,7 @@ name = "pyroboframes"
 description = "High-performance dataloader for robot learning datasets. LeRobot format support, hardware-accelerated video decode via VideoToolbox, MLX array output. Zero-copy data pipeline optimized for Apple Silicon and edge robotics."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = "==3.10"
+requires-python = ">=3.10"
 authors = [{ name = "Georgi Mammen Mullassery", email = "mullassery@gmail.com" }]
 maintainers = [{ name = "Georgi Mammen Mullassery", email = "mullassery@gmail.com" }]
 keywords = [
@@ -43,6 +43,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",

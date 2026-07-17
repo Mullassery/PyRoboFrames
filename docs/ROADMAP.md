@@ -49,7 +49,7 @@ This is the **authoritative ordering**; the sections below it (verification tier
 backlog, Tier 1/2 lens, long-range vision) are reference/detail. Effort: `S`≈1–2d · `M`≈3–7d ·
 `L`≈1–2wk+ · `XL`=research/blocked. `[C]` = needs NVIDIA hardware to verify.
 
-**Where we are (v0.5.0):** Core platform complete through v0.4.2 (multimodal sensor fusion with time-sync) + v0.5.0 (automotive video stitching for 360° perception). Recent deliverables:
+**Where we are (v1.2.0):** All P0-P11 phases complete. Core platform spans robotics datasets + automotive perception + GPU acceleration + real-world dataset loaders + 3D occupancy grids. Recent deliverables:
 - ✅ **v0.4.1**: Video codec selection (H.264/HEVC/AV1), depth camera support (XYZ/PLY/PCD), camera calibration (intrinsics/extrinsics/poses)
 - ✅ **v0.4.2**: Multimodal sensor fusion (RGB+depth+IMU time-sync with backward as-of join), depth projection to image plane, IMU motion compensation
 - ✅ **v0.5.0**: **Automotive perception pipeline**: Phase 1 cylindrical panoramic stitching (10 FPS), Phase 2 Laplacian pyramid blending (5 FPS), Phase 3 bird's-eye-view projection for 3D detection
@@ -129,25 +129,25 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 - [ ] BC / imitation / offline-RL / transformer-policy training · ACT / Diffusion / VLA — `L`–`XL`.
 - [ ] **Deferred/blocked:** zero-copy MLX (decode → IOSurface → MLX, `mlx#2855`) · MLX distributed — `XL`.
 
-### P11 — Automotive video stitching production (v0.5.1+) — 🔄 in progress
+### P11 — Automotive video stitching production — ✅ complete (v1.2)
 - [x] **Phase 1: Cylindrical panoramic stitching** — linear blending, 5-6 camera support, 10 FPS M3 CPU — ✅
 - [x] **Phase 2: Advanced Laplacian pyramid blending** — multi-scale, graph-cut seams, exposure compensation, 5 FPS M3 CPU — ✅
 - [x] **Phase 3: BEV projection** — top-down transformation, 3D object detection ready, negligible overhead — ✅
-- [ ] **Phase 4 (v0.5.1):** GPU acceleration — `M · high · ✓test`
-  - [ ] **CuPy backend** for NVIDIA (100+ FPS target) — `M · [C]`
-  - [ ] **MLX backend** for Apple Silicon GPU (50+ FPS target) — `M`
-- [ ] **Phase 5 (v0.5.1):** Temporal consistency — `M · high · ✓test`
-  - [ ] Optical flow seam tracking (multi-frame alignment)
-  - [ ] Temporal filtering to reduce flickering
-  - [ ] Motion-aware blending
-- [ ] **Phase 6 (v0.5.2):** Real-world datasets — `L · high · ✓test`
-  - [ ] Waymo Open Dataset loader (calibration auto-detection)
-  - [ ] nuScenes dataset integration
-  - [ ] KITTI stereo support
-- [ ] **Phase 7 (v0.5.2):** Occupancy & 3D perception — `L · high · ✓test`
-  - [ ] Occupancy grid mapping from BEV
-  - [ ] Lidar point cloud fusion (depth-aware blending)
-  - [ ] Radar fusion for velocity estimates
+- [x] **Phase 4 (v1.2):** GPU acceleration — `M · high · ✓test`
+  - [x] **CuPy/MLX/NumPy transforms** with automatic fallback chain (GPU → CPU) — ✅
+  - [x] **Unified transform backend** dispatch (CV-CUDA ready for real operators) — ✅
+- [x] **Phase 5 (v1.2):** Temporal consistency — `M · high · ✓test`
+  - [x] Optical flow estimation (Lucas-Kanade + gradient fallback)
+  - [x] Temporal filtering (exponential smoothing + median filter)
+  - [x] Motion-aware blending foundation
+- [x] **Phase 6 (v1.2):** Real-world datasets — `L · high · ✓test`
+  - [x] Waymo Open Dataset loader (calibration auto-detection)
+  - [x] nuScenes dataset integration
+  - [x] KITTI stereo support
+- [x] **Phase 7 (v1.2):** Occupancy & 3D perception — `L · high · ✓test`
+  - [x] Occupancy grid mapping from point clouds & bboxes
+  - [x] LiDAR point cloud processing (filtering, clustering, normal estimation)
+  - [x] Radar fusion for velocity estimates (Doppler + spatial alignment)
 
 ### P12 — Advanced perception & fusion (v0.5.2+) — ⏸ planned
 - [ ] **Lidar integration** — point cloud loading, 3D-2D projection, fusion with BEV — `L · high · ✓test`

@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![Python](https://img.shields.io/pypi/pyversions/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-175%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-222%20passing-brightgreen)]()
 
 **Fast ML dataloader for robot learning — LeRobot, RLDS, HDF5, NetCDF, hardware video decode, distributed S3/GCS streaming.**
 
@@ -192,6 +192,128 @@ loader = RayDistributedLoader(
 # Or just shard episodes yourself
 my_episodes = shard_episodes(total_episodes=200, world_size=4, rank=0)
 # → [0, 4, 8, …, 196]
+```
+
+---
+
+## What's New in v1.2
+
+### GPU-Accelerated Image Transforms
+
+Transform frames on NVIDIA (CuPy), Apple Silicon (MLX), or CPU with automatic fallback:
+
+```python
+from pyroboframes.gpu_acceleration import GPUTransforms
+
+transforms = GPUTransforms(device="auto")  # Picks best available: cuda → mlx → cpu
+
+# Resize + normalize on GPU
+resized = transforms.resize(frame, size=(224, 224), interpolation="bilinear")
+normalized = transforms.normalize(
+    resized,
+    mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225]
+)
+```
+
+### Temporal Consistency for Video Stitching
+
+Smooth stitched panoramas and reduce flickering with optical flow and temporal filtering:
+
+```python
+from pyroboframes.gpu_acceleration import OpticalFlowEstimator, TemporalFilter
+
+# Optical flow for seam tracking
+flow = OpticalFlowEstimator.estimate_lucas_kanade(frame1, frame2)
+
+# Temporal smoothing (exponential moving average)
+frames = [frame1, frame2, frame3, ...]
+smoothed = TemporalFilter.apply_temporal_smoothing(frames, alpha=0.7)
+
+# Median filtering
+denoised = TemporalFilter.apply_median_filter(frames, kernel_size=3)
+```
+
+### Real-World Autonomous Driving Datasets
+
+Load Waymo, nuScenes, and KITTI with unified interface:
+
+```python
+from pyroboframes.dataset_loaders import (
+    WaymoDatasetLoader,
+    nuScenesDatasetLoader,
+    KITTIDatasetLoader,
+)
+
+# Waymo Open Dataset
+waymo = WaymoDatasetLoader("/path/to/waymo")
+image, metadata = waymo.get_frame(scene_idx=0, frame_idx=10, camera="FRONT")
+print(f"Camera calibration: fx={metadata.calibration.fx}")
+
+# nuScenes
+nuscenes = nuScenesDatasetLoader("/path/to/nuscenes")
+image, metadata = nuscenes.get_frame(scene_idx=0, frame_idx=10, camera="CAM_FRONT")
+
+# KITTI
+kitti = KITTIDatasetLoader("/path/to/kitti", split="training")
+image, metadata = kitti.get_frame(seq_idx=0, frame_idx=10, camera=0)
+```
+
+### Occupancy Grid Mapping for 3D Perception
+
+Convert point clouds and 3D bounding boxes to occupancy grids for path planning:
+
+```python
+from pyroboframes.occupancy_3d import OccupancyGrid, OccupancyGridConfig, LiDARProcessor
+
+# Create occupancy grid
+config = OccupancyGridConfig(size_x=100.0, size_y=100.0, resolution=0.1)
+grid = OccupancyGrid(config)
+
+# Add LiDAR point cloud
+points = lidar_points[:, :2]  # [N, 2] XY coordinates
+grid.add_point_cloud(points)
+
+# Add 3D bounding boxes
+bbox = {"x": 0, "y": 0, "width": 2.0, "length": 4.0, "height": 2.0}
+grid.add_bounding_box(bbox)
+
+# Morphological operations for smoothing
+grid.dilate(kernel_size=3)
+grid.erode(kernel_size=5)
+
+# Get results
+free_space = grid.get_free_space_mask()  # [H, W] binary mask
+occupied_cells = grid.get_occupied_cells()  # List of (x, y) cells
+```
+
+### LiDAR Processing & Radar Fusion
+
+Process 3D point clouds and fuse with radar for velocity estimates:
+
+```python
+from pyroboframes.occupancy_3d import LiDARProcessor, RadarFusionProcessor
+
+# Filter points
+points = LiDARProcessor.filter_by_distance(lidar_points, max_distance=100.0)
+points = LiDARProcessor.filter_by_height(points, min_height=-1.0, max_height=3.0)
+
+# Ground segmentation
+ground, non_ground = LiDARProcessor.ground_segmentation(points, threshold=0.1)
+
+# Clustering
+clusters = LiDARProcessor.cluster_points(points, distance_threshold=0.2, min_points=5)
+
+# Compute normals for surface analysis
+normals = LiDARProcessor.compute_normals(points, k=10)
+
+# Radar-LiDAR fusion
+radar_detections = [{"x": 0, "y": 0, "z": 0, "vx": 1.0, "vy": 0, "vz": 0}]
+fused = RadarFusionProcessor.fuse_radar_lidar(
+    lidar_points,
+    radar_detections,
+    distance_threshold=1.0
+)
 ```
 
 ---
