@@ -19,7 +19,7 @@ lru = "0.12"
 mcap = "0.9"
 memmap2 = "0.9"
 bytes = "1.6"
-prost-reflect = { version = "0.14", features = ["serde"] }
+prost-reflect = { version = "0.16", features = ["serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 videotoolbox = { version = "0.18", features = ["decompression"], optional = true }
 
