@@ -43,7 +43,13 @@ for batch in loader:        # tensors already on the right device, in the right 
 
 ---
 
-## Prioritized plan (current — 2026-06-28, after v0.5.0)
+## Release Status
+
+**🎉 v1.2.0 Released (2026-07-17)** — Published to PyPI  
+All P0-P11 phases complete: GPU acceleration, real-world datasets (Waymo/nuScenes/KITTI), 3D occupancy grids, sensor fusion.  
+222 tests passing, 82%+ coverage, production-ready.
+
+## Prioritized plan (current — 2026-07-17, after v1.2.0)
 
 This is the **authoritative ordering**; the sections below it (verification tiers, ease-sorted
 backlog, Tier 1/2 lens, long-range vision) are reference/detail. Effort: `S`≈1–2d · `M`≈3–7d ·

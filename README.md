@@ -16,14 +16,17 @@ PyRoboFrames is a **foundation library** — load any robot learning dataset, ac
 ## Installation
 
 ```bash
+# Latest stable (v1.2.0)
 pip install pyroboframes
-```
 
-Or with uv:
-```bash
+# Or with uv
 uv add pyroboframes
+
+# Specific version
+pip install pyroboframes==1.2.0
 ```
 
+**Latest:** v1.2.0 (2026-07-17) — GPU acceleration, real-world datasets, 3D perception  
 **Requires:** Python ≥ 3.10  
 **Prebuilt wheels:** macOS (Apple Silicon), Linux (x86_64)  
 **From source:** Rust 1.78+ required
