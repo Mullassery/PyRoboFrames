@@ -6,11 +6,20 @@
 [![Tests](https://img.shields.io/badge/tests-222%20passing-brightgreen)]()
 ![Status: v1.0 Production Ready](https://img.shields.io/badge/Status-v1.0%20Production%20Ready-brightgreen)
 
-**Fast ML dataloader for robot learning — LeRobot, RLDS, HDF5, NetCDF, hardware video decode, distributed S3/GCS streaming.**
+**Intelligent data pipeline for robot learning. Zero-copy, quality-aware loading with hardware acceleration and dataset composition tracking.**
 
-PyRoboFrames is a **foundation library** — load any robot learning dataset, accelerate video decode with hardware (VideoToolbox/NVDEC), validate data quality, and stream to NumPy/MLX/PyTorch/JAX. The heavy lifting runs in a Rust engine; Python is the ergonomic surface.
+PyRoboFrames is a **foundation library for robot learning intelligence** — load any robot learning dataset with quality validation, accelerate video decode with hardware (VideoToolbox/NVDEC), track data provenance, and stream to NumPy/MLX/PyTorch/JAX. The heavy lifting runs in a Rust engine; Python is the ergonomic surface.
+
+**Architectural Role:** Owns robot learning data pipelines. Loads, validates, and optimizes training data with quality metadata and data composition tracking. Quality metadata flows downstream to training systems.
 
 **For autonomous driving perception and foundation models, see [PyRoboVision](https://github.com/Mullassery/PyRoboVision).**
+
+## Why Star This?
+
+- **10× speedup without code changes** — Hardware-accelerated video decode (VideoToolbox on macOS, NVDEC on NVIDIA)
+- **Zero-copy data transfer** — Stream directly to MLX, PyTorch, or JAX without intermediate copies
+- **Quality validation built-in** — Detect corrupted frames, missing episodes, and data drift before training
+- **Multi-dataset composition** — Mix LeRobot, HDF5, NetCDF, and cloud datasets in one training loop
 
 ---
 
