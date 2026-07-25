@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyroboframes"
-description = "High-performance dataloader for robot learning datasets. LeRobot format support, hardware-accelerated video decode via VideoToolbox, MLX array output. Zero-copy data pipeline optimized for Apple Silicon and edge robotics."
+description = "High-performance dataloader for robot learning datasets. LeRobot format support, hardware-accelerated video decode via VideoToolbox, MLX array output. Zero-copy pipeline for Apple Silicon."
 readme = "README.md"
 
 requires-python = ">=3.10"
