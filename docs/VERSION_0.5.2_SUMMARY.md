@@ -334,7 +334,7 @@ maturin develop --release
 
 ## License
 
-MIT License - See LICENSE file
+Proprietary License - See LICENSE file
 
 ---
 
