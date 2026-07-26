@@ -218,3 +218,72 @@ def _write_stats(path: str, arrays: dict[str, np.ndarray]) -> None:
     stats = {name: _feature_stats(arr) for name, arr in arrays.items()}
     with open(os.path.join(path, "meta", "stats.json"), "w") as fh:
         json.dump(stats, fh, indent=2)
+
+
+def write_from_robotics_dataframe(
+    dataframe,
+    output_path: str,
+    reference_topic: str,
+    align_tolerance_s: float | None = None,
+    fps: float = 30.0,
+    robot_type: str | None = None,
+    video_codec: str = "h264",
+) -> None:
+    """Write a RoboticsDataFrame (aligned to a reference topic) as LeRobot v3.0.
+
+    This bridges sensor fusion → LeRobot export. The aligned frame is flattened to feature arrays
+    and episode boundaries are inferred from the reference topic's time discontinuities.
+
+    Args:
+        dataframe: RoboticsDataFrame with multiple topics
+        output_path: Output LeRobot v3.0 directory
+        reference_topic: Topic to use for frame times (e.g. '/observation/images')
+        align_tolerance_s: Max time difference (seconds) for alignment snapping. None = no tolerance
+        fps: Frame rate for the dataset
+        robot_type: Optional robot type string (stored in metadata)
+        video_codec: Video codec for any video features ("h264", "hevc", "av1")
+    """
+    from .dataframe import AlignedFrame
+
+    # Align all topics to the reference
+    aligned = dataframe.align(reference_topic, tolerance=align_tolerance_s)
+
+    # Extract log_time from reference for episode detection
+    ref_frame = dataframe[reference_topic]
+    ref_times = ref_frame.log_time
+
+    # Detect episodes: time gaps indicate new episodes
+    time_diffs = np.diff(ref_times)
+    # Gap threshold: 2x the median frame interval
+    median_dt = np.median(time_diffs[time_diffs > 0]) if np.any(time_diffs > 0) else 1_000_000_000
+    gap_threshold = median_dt * 2
+
+    episode_boundaries = [0]
+    for i, dt in enumerate(time_diffs):
+        if dt > gap_threshold:
+            episode_boundaries.append(i + 1)
+    episode_boundaries.append(len(ref_times))
+
+    # Convert to episode lengths
+    episode_lengths = [
+        episode_boundaries[i + 1] - episode_boundaries[i]
+        for i in range(len(episode_boundaries) - 1)
+    ]
+
+    # Build feature dict from aligned frame
+    features = {}
+    for col in aligned.columns:
+        arr = aligned[col]
+        # Flatten/reshape to 2D if needed
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        features[col] = arr.astype(np.float32)
+
+    write_lerobot_dataset(
+        output_path,
+        features=features,
+        episode_lengths=episode_lengths,
+        fps=fps,
+        robot_type=robot_type,
+        video_codec=video_codec,
+    )

@@ -13,7 +13,7 @@ https://github.com/Mullassery/PyRoboVision
 
 from __future__ import annotations
 
-from . import _core, backend, depth_io, sensor_fusion, transforms
+from . import _core, backend, depth_io, sensor_fusion, transforms, video_sync
 from ._core import (
     CameraCalibrationPy,
     CameraIntrinsicsPy,
@@ -40,17 +40,22 @@ from .distributed import DistributedLoader, DistributedSampler, RemoteDataset, R
 from .episode_cache import EpisodeCache
 from .filtering import EpisodeFilter, EpisodeFilterBuilder
 from .hdf5 import HDF5Dataset, convert_hdf5
-from .hub import download_lerobot_dataset
-from .lazy_parquet import LazyDataFrameShards, LazyParquetReader
-from .lerobot import encode_video_frames, write_lerobot_dataset
+from .hub import download_lerobot_dataset, from_huggingface_hub
+from .lazy_parquet import LazyDataFrameShards, LazyParquetReader, LazyParquetDataset
+from .lerobot import encode_video_frames, write_lerobot_dataset, write_from_robotics_dataframe
 from .masking import MaskedDataFrame, SensorHealthMonitor, interpolate_missing
 from .netcdf import NetCDFDataset, convert_netcdf
+from .parquet_writer import ParquetWriter, ParquetWriteOptions, write_to_parquet
 from .quality import CrossDatasetComparator, DatasetQualityProfile, EpisodeScorer, compare_datasets, quality_percentile_filter
 from .rlds import RLDSDataset, convert_rlds
 from .streaming import KafkaStreamer, MQTTStreamer, StreamingRoboticsDataset
 from .tensorflow_support import KerasDataAdapter, create_keras_model_for_robotics, to_tf_dataset
 from .validation import DatasetValidator, FullValidationReport, ValidationIssue
 from .versioning import DatasetManifest, DatasetVersion
+from .video_sync import VideoSynchronizer, CameraTimeline, JitterFilter, align_frame_sequences
+from .sensor_fusion import MultiRateFusionEngine
+from .unified_outputs import ToTensorAdapter, detect_best_framework, create_adapter_for_device
+from .gpu_acceleration import MLXTransforms, MPSTransforms, GPUTransforms
 
 # CRITICAL: Multi-format dataset support (unblocks non-LeRobot users)
 from ._format_registry import (
@@ -89,9 +94,12 @@ __all__ = [
     "TopicFrame",
     "AlignedFrame",
     "write_lerobot_dataset",
+    "write_from_robotics_dataframe",
     "download_lerobot_dataset",
+    "from_huggingface_hub",
     "LazyParquetReader",
     "LazyDataFrameShards",
+    "LazyParquetDataset",
     "EpisodeScorer",
     "quality_percentile_filter",
     "EpisodeFilter",
@@ -120,6 +128,18 @@ __all__ = [
     "backend",
     "depth_io",
     "sensor_fusion",
+    "video_sync",
+    "VideoSynchronizer",
+    "CameraTimeline",
+    "JitterFilter",
+    "align_frame_sequences",
+    "MultiRateFusionEngine",
+    "ToTensorAdapter",
+    "detect_best_framework",
+    "create_adapter_for_device",
+    "MLXTransforms",
+    "MPSTransforms",
+    "GPUTransforms",
     "resolve_device",
     "available_backends",
     "default_framework",
@@ -142,6 +162,10 @@ __all__ = [
     "RemoteDataset",
     "RayDistributedLoader",
     "shard_episodes",
+    # P3: Advanced I/O & Ecosystem (v1.3.0+)
+    "ParquetWriter",
+    "ParquetWriteOptions",
+    "write_to_parquet",
     # Multi-format support (v1.3.0+)
     "FormatRegistry",
     "DatasetFormat",

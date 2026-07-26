@@ -161,3 +161,93 @@ def _download_lerobot_partial(
                     pass
 
     return local_dir
+
+
+def from_huggingface_hub(
+    repo_id: str,
+    cache_dir: str | None = None,
+    revision: str = "main",
+    trust_remote_code: bool = False,
+) -> object:
+    """Load a robotics dataset from Hugging Face Hub as a RoboticsDataFrame.
+
+    Supports:
+    - LeRobot datasets (https://huggingface.co/lerobot)
+    - OpenROBOT datasets (https://huggingface.co/robot-learning)
+    - RLDS datasets with HF Hub integration
+
+    Args:
+        repo_id: HF Hub repo (e.g., "lerobot/aloha_mobile_cabinet")
+        cache_dir: Cache directory (default: ~/.cache/huggingface/datasets/)
+        revision: Git revision (default: "main")
+        trust_remote_code: Allow loading custom code from the dataset repo
+
+    Returns:
+        RoboticsDataFrame if multi-topic format, or RoboFrameDataset if single-topic LeRobot
+
+    Example:
+        >>> df = pyroboframes.from_huggingface_hub("lerobot/aloha_mobile_cabinet")
+        >>> aligned = df.align("/observation/images")
+        >>> df.slice(0, 100)
+    """
+    try:
+        from huggingface_hub import hf_hub_download, model_info
+    except ImportError as exc:
+        raise ImportError(
+            "from_huggingface_hub requires `huggingface_hub` "
+            "(pip install huggingface_hub)"
+        ) from exc
+
+    # Get repo metadata
+    try:
+        info = model_info(repo_id, repo_type="dataset", revision=revision)
+    except Exception as exc:
+        raise ValueError(
+            f"Could not find dataset {repo_id!r} on Hugging Face Hub: {exc}"
+        ) from exc
+
+    # Detect dataset format
+    if "lerobot" in repo_id.lower() or any(
+        f.filename.startswith("meta/info.json") for f in info.siblings
+    ):
+        # LeRobot format
+        from . import RoboFrameDataset
+
+        local_path = download_lerobot_dataset(
+            repo_id=repo_id,
+            local_dir=cache_dir,
+            revision=revision,
+        )
+        return RoboFrameDataset.from_path(local_path)
+
+    # Try multi-topic format (MCAP/ROS2 converted)
+    if any(f.filename.endswith(".parquet") for f in info.siblings):
+        from . import RoboticsDataFrame
+
+        if cache_dir is None:
+            from huggingface_hub import HfFolder
+
+            cache_home = HfFolder.home()
+            cache_dir = os.path.join(
+                cache_home, "datasets", repo_id.replace("/", "--"), revision
+            )
+
+        os.makedirs(cache_dir, exist_ok=True)
+
+        # Download all Parquet files
+        for sibling in info.siblings:
+            if sibling.filename.endswith(".parquet"):
+                hf_hub_download(
+                    repo_id=repo_id,
+                    filename=sibling.filename,
+                    repo_type="dataset",
+                    revision=revision,
+                    local_dir=cache_dir,
+                )
+
+        return RoboticsDataFrame.from_converted(cache_dir)
+
+    raise ValueError(
+        f"Could not detect dataset format for {repo_id!r}. "
+        "Expected LeRobot or multi-topic Parquet format."
+    )

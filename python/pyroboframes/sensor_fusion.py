@@ -356,6 +356,164 @@ class MultimodalDataFrame:
         return f"MultimodalDataFrame({self.df.topics}, cameras={cams}, depth={depth}, imu={imu})"
 
 
+class MultiRateFusionEngine:
+    """Adaptive sensor fusion for misaligned frame rates.
+
+    Handles:
+    - Up-sampling slow sensors (e.g., IMU @ 100Hz to video @ 30FPS)
+    - Down-sampling fast sensors
+    - Kalman filtering for state estimation
+    - Adaptive fusion strategies
+    """
+
+    def __init__(self, reference_rate_hz: float = 30.0):
+        """Initialize multi-rate fusion.
+
+        Args:
+            reference_rate_hz: Target output rate (Hz). Sensors resampled to this rate.
+        """
+        self.reference_rate_hz = reference_rate_hz
+        self.reference_dt_ns = int(1e9 / reference_rate_hz)
+
+    def detect_rates(self, timestamps_ns: dict[str, np.ndarray]) -> dict[str, float]:
+        """Estimate sampling rate for each sensor from timestamps.
+
+        Args:
+            timestamps_ns: Dict mapping sensor_name → timestamp array (nanoseconds)
+
+        Returns:
+            Dict mapping sensor_name → estimated rate (Hz)
+        """
+        rates = {}
+        for name, times in timestamps_ns.items():
+            if len(times) < 2:
+                rates[name] = self.reference_rate_hz
+                continue
+
+            diffs = np.diff(times)
+            median_dt = np.median(diffs[diffs > 0])
+            if median_dt > 0:
+                rates[name] = 1e9 / median_dt
+            else:
+                rates[name] = self.reference_rate_hz
+
+        return rates
+
+    def resample_nearest_neighbor(
+        self,
+        input_times: np.ndarray,
+        input_values: np.ndarray,
+        output_times: np.ndarray,
+    ) -> np.ndarray:
+        """Resample sensor values to output times using nearest-neighbor interpolation.
+
+        Args:
+            input_times: Input sample times (nanoseconds)
+            input_values: Input sample values [N, ...] (any shape after first dimension)
+            output_times: Desired output times (nanoseconds)
+
+        Returns:
+            Resampled values [len(output_times), ...]
+        """
+        output_values = np.zeros((len(output_times),) + input_values.shape[1:], dtype=input_values.dtype)
+
+        for i, out_t in enumerate(output_times):
+            idx = np.argmin(np.abs(input_times - out_t))
+            output_values[i] = input_values[idx]
+
+        return output_values
+
+    def kalman_filter_state(
+        self,
+        measurements: np.ndarray,
+        process_variance: float = 1e-5,
+        measurement_variance: float = 1e-2,
+    ) -> np.ndarray:
+        """Apply Kalman filtering to a measurement sequence.
+
+        Args:
+            measurements: Measurement sequence [N, D]
+            process_variance: Process noise coefficient
+            measurement_variance: Measurement noise coefficient
+
+        Returns:
+            Filtered state estimate [N, D]
+        """
+        if measurements.ndim == 1:
+            measurements = measurements.reshape(-1, 1)
+
+        n_steps, n_states = measurements.shape
+        filtered_states = np.zeros_like(measurements, dtype=np.float64)
+
+        for d in range(n_states):
+            z = measurements[:, d]
+            if not np.any(np.isfinite(z)):
+                filtered_states[:, d] = z
+                continue
+
+            x = z[0]
+            p = 1.0
+
+            filtered_states[0, d] = x
+
+            for t in range(1, n_steps):
+                if not np.isfinite(z[t]):
+                    filtered_states[t, d] = np.nan
+                    continue
+
+                x_pred = x
+                p_pred = p + process_variance
+                K = p_pred / (p_pred + measurement_variance)
+                x = x_pred + K * (z[t] - x_pred)
+                p = (1 - K) * p_pred
+
+                filtered_states[t, d] = x
+
+        return filtered_states
+
+    def weighted_fusion(
+        self,
+        sensor_readings: dict[str, np.ndarray],
+        weights: dict[str, float] | None = None,
+    ) -> np.ndarray:
+        """Fuse multiple sensor readings via weighted averaging.
+
+        Args:
+            sensor_readings: Dict mapping sensor_name → readings [N, D]
+            weights: Dict mapping sensor_name → weight
+
+        Returns:
+            Fused reading [N, D]
+        """
+        if not sensor_readings:
+            return np.array([])
+
+        names = list(sensor_readings.keys())
+        readings = []
+        for name in names:
+            r = sensor_readings[name]
+            if r.ndim == 1:
+                r = r.reshape(-1, 1)
+            readings.append(r)
+
+        if weights is None:
+            weights = {name: 1.0 / len(names) for name in names}
+
+        fused = np.zeros_like(readings[0], dtype=np.float64)
+        total_weight = 0.0
+
+        for name, weight in weights.items():
+            if name not in sensor_readings:
+                continue
+            fused += weight * readings[names.index(name)]
+            total_weight += weight
+
+        if total_weight > 0:
+            fused /= total_weight
+
+        return fused
+
+
 def create_humanoid_config() -> SensorFusionConfig:
     """Create a standard configuration for humanoid robot sensor fusion.
 
