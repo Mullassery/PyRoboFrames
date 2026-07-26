@@ -43,4 +43,4 @@ cargo test --workspace     # Rust tests
 
 ## License
 
-By contributing, you agree your contributions are licensed under the [MIT License](./LICENSE).
+By contributing, you agree your contributions are licensed under the [Proprietary License](./LICENSE).

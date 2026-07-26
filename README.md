@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![Python](https://img.shields.io/pypi/pyversions/pyroboframes)](https://pypi.org/project/pyroboframes/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-222%20passing-brightgreen)]()
 ![Status: v1.0 Production Ready](https://img.shields.io/badge/Status-v1.0%20Production%20Ready-brightgreen)
 

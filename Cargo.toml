@@ -6,10 +6,10 @@ members = [
 ]
 
 [workspace.package]
-version = "1.2.2"
+version = "1.3.0"
 edition = "2021"
 rust-version = "1.78"
-license = "MIT"
+license = "Proprietary"
 authors = ["Georgi Mammen Mullassery <mullassery@gmail.com>"]
 repository = "https://github.com/Mullassery/PyRoboFrames"
 description = "Fast ML dataloader for robot learning — LeRobot, RLDS, HDF5, NetCDF, hardware video decode, distributed S3/GCS streaming"
