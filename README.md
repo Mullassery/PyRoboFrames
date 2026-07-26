@@ -3,8 +3,8 @@
 [![PyPI](https://img.shields.io/pypi/v/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![Python](https://img.shields.io/pypi/pyversions/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
-[![Tests](https://img.shields.io/badge/tests-222%20passing-brightgreen)]()
-![Status: v1.0 Production Ready](https://img.shields.io/badge/Status-v1.0%20Production%20Ready-brightgreen)
+[![Tests](https://img.shields.io/badge/tests-245%20passing-brightgreen)]()
+![Status: v1.3 Production Ready](https://img.shields.io/badge/Status-v1.3%20Production%20Ready-brightgreen)
 
 **Intelligent data pipeline for robot learning. Zero-copy, quality-aware loading with hardware acceleration and dataset composition tracking.**
 
@@ -40,17 +40,17 @@ PyRoboFrames is a **foundation library for robot learning intelligence** — loa
 ## Installation
 
 ```bash
-# Latest stable (v1.2.0)
+# Latest stable (v1.3.0)
 pip install pyroboframes
 
 # Or with uv
 uv add pyroboframes
 
 # Specific version
-pip install pyroboframes==1.2.0
+pip install pyroboframes==1.3.0
 ```
 
-**Latest:** v1.2.0 (2026-07-17) — GPU acceleration, real-world datasets, 3D perception 
+**Latest:** v1.3.0 (2026-07-26) — Advanced I/O, memory efficiency, sensor fusion, cross-platform training 
 **Requires:** Python  3.10 
 **Prebuilt wheels:** macOS (Apple Silicon), Linux (x86_64) 
 **From source:** Rust 1.78+ required
@@ -345,6 +345,180 @@ fused = RadarFusionProcessor.fuse_radar_lidar(
 
 ---
 
+## What's New in v1.3
+
+### Advanced I/O & Ecosystem Integration
+
+**Parquet Export with Compression Options:**
+```python
+from pyroboframes import ParquetWriter, ParquetWriteOptions
+
+writer = ParquetWriter(
+    ParquetWriteOptions(
+        compression="snappy",  # or gzip, brotli, zstd, lz4
+        row_group_size=10000,
+    )
+)
+paths = writer.write_dataframe(robotics_df, output_dir="./data")
+```
+
+**LeRobot Write-Back for Custom Datasets:**
+```python
+# Export aligned multi-sensor data back to LeRobot v3.0 format
+from pyroboframes import write_from_robotics_dataframe
+
+write_from_robotics_dataframe(
+    dataframe=robotics_df,  # RoboticsDataFrame from MCAP/ROS2
+    output_path="./custom_lerobot",
+    reference_topic="/camera/rgb",  # For episode detection
+    fps=30.0,
+)
+# Now train on your custom dataset like any LeRobot dataset
+```
+
+**Hugging Face Hub Direct Loading:**
+```python
+from pyroboframes import from_huggingface_hub
+
+# Auto-detects LeRobot or multi-topic format
+ds = from_huggingface_hub("lerobot/aloha_mobile_cabinet")
+# or load any robotics dataset from HF Hub
+
+loader = ds.loader(batch_size=32)
+```
+
+### Memory Efficiency & Synchronization
+
+**Memory-Mapped Parquet for 100GB+ Datasets:**
+```python
+from pyroboframes import LazyParquetDataset
+
+# Load huge files without loading into RAM
+ds = LazyParquetDataset("/path/to/large.parquet")
+
+# Slice rows [start:end) without loading full file
+batch = ds.slice(start=10000, end=10064, columns=["state", "action"])
+
+# Iterate in memory-efficient batches
+for batch in ds.iter_batches(batch_size=256):
+    # process batch
+```
+
+**Multi-Camera Frame Synchronization:**
+```python
+from pyroboframes import VideoSynchronizer, CameraTimeline
+
+# Align camera streams with dropped frame handling
+ref_timeline = CameraTimeline("cam_0", timestamps_ns, frame_indices)
+sync = VideoSynchronizer(ref_timeline, window_size_ns=100_000_000)
+
+other_timeline = CameraTimeline("cam_1", other_times, other_frames)
+mapping = sync.sync_camera(other_timeline)
+# mapping[ref_idx] → corresponding frame in other camera (-1 if missing)
+```
+
+**Jitter Filtering for Smooth Video:**
+```python
+from pyroboframes.video_sync import JitterFilter
+
+jitter = JitterFilter(alpha=0.7)  # EMA smoothing
+smooth_timestamps = jitter.filter_timestamps(raw_timestamps_ns)
+```
+
+### Multi-Rate Sensor Fusion
+
+**Adaptive Sensor Rate Matching:**
+```python
+from pyroboframes import MultiRateFusionEngine
+
+engine = MultiRateFusionEngine(reference_rate_hz=30.0)
+
+# Detect rates from timestamps
+rates = engine.detect_rates({
+    "camera": camera_timestamps_ns,  # ~30Hz
+    "imu": imu_timestamps_ns,  # ~100Hz
+})
+
+# Align all sensors to 30Hz reference
+aligned = engine.align_to_reference(
+    reference_topic_times=camera_times,
+    sensor_data={
+        "imu_accel": (imu_times, imu_accel_data),
+    },
+    strategy="linear"  # or "nearest_neighbor"
+)
+```
+
+**Kalman Filtering for State Estimation:**
+```python
+# Smooth noisy IMU readings while preserving fast dynamics
+filtered = engine.kalman_filter_state(
+    measurements=noisy_gyro,
+    process_variance=1e-5,
+    measurement_variance=1e-2
+)
+```
+
+**Weighted Multi-Sensor Fusion:**
+```python
+# Fuse redundant sensors with per-sensor confidence weights
+fused = engine.weighted_fusion(
+    sensor_readings={
+        "encoder_pos": enc_position,
+        "imu_accel": imu_accel,
+    },
+    weights={"encoder_pos": 0.7, "imu_accel": 0.3}
+)
+```
+
+### Cross-Platform Training Parity
+
+**Framework-Agnostic Tensor Adapter:**
+```python
+from pyroboframes import ToTensorAdapter, detect_best_framework
+
+# Auto-detects best framework: CUDA → MLX → PyTorch → JAX → NumPy
+adapter = ToTensorAdapter(framework="auto")
+batch = adapter.batch_to_tensors(numpy_batch)  # Works on any device
+
+# Or explicitly target device
+adapter = ToTensorAdapter(framework="mlx", device="mps")
+
+# Single training loop works on M3, RTX 5090, H100, CPU
+framework = detect_best_framework()
+print(f"Running on: {framework}")
+```
+
+**On-Device MLX Transforms (Apple Silicon):**
+```python
+from pyroboframes import MLXTransforms
+
+mlx_t = MLXTransforms()
+if mlx_t.is_available():
+    # Keeps data in unified memory (no host copies)
+    resized = mlx_t.resize(image_mx, size=(224, 224))
+    normalized = mlx_t.normalize(resized, mean=[0.5]*3, std=[0.5]*3)
+    
+    # Compose transforms
+    result = mlx_t.compose(image_mx, [
+        {"op": "normalize", "args": {"mean": [0.5]*3, "std": [0.5]*3}},
+        {"op": "resize", "args": {"size": (224, 224)}},
+    ])
+```
+
+**On-Device MPS Transforms (PyTorch):**
+```python
+from pyroboframes import MPSTransforms
+
+mps_t = MPSTransforms()
+if mps_t.is_available():
+    # Same API as MLX for cross-platform scripts
+    resized = mps_t.resize(image_torch, size=(224, 224), interpolation="bilinear")
+    normalized = mps_t.normalize(resized)
+```
+
+---
+
 ## Full Feature Table
 
 | Feature | Status | Notes |
@@ -371,10 +545,18 @@ fused = RadarFusionProcessor.fuse_radar_lidar(
 | **Ray distributed loading** | | Episode sharding across Ray workers |
 | **Streaming ingestion** | | Kafka, MQTT real-time data |
 | **Distributed loading** | | Multi-GPU synchronized sampling |
+| **Parquet export** | ✨ v1.3 | Configurable compression (snappy/gzip/brotli/zstd) |
+| **LeRobot write-back** | ✨ v1.3 | Export fused data to LeRobot v3.0 format |
+| **HuggingFace Hub loading** | ✨ v1.3 | Direct dataset import from HF Hub |
+| **Memory-mapped Parquet** | ✨ v1.3 | Lazy loading for 100GB+ files |
+| **Multi-camera sync** | ✨ v1.3 | Windowed frame alignment with jitter filtering |
+| **Multi-rate sensor fusion** | ✨ v1.3 | Kalman filtering, weighted averaging |
+| **Framework-agnostic tensors** | ✨ v1.3 | Auto-detect: CUDA → MLX → PyTorch → JAX |
+| **On-device transforms (MLX/MPS)** | ✨ v1.3 | GPU-resident processing, zero-copy |
 
 ---
 
-## Test Coverage: 222 Tests Passing 
+## Test Coverage: 245 Tests Passing 
 
 ```
 Dataloader: 30 tests
@@ -387,6 +569,12 @@ Validation: 13 tests
 Caching: 5 tests
 HDF5: 7 tests
 NetCDF: 7 tests
+Advanced I/O (P3-P6): 23 tests
+  - Parquet I/O: 5 tests
+  - Memory efficiency: 6 tests
+  - Sensor fusion: 4 tests
+  - Cross-platform: 7 tests
+  - Integration: 1 test
 Distributed: 8 tests
 Streaming: 7 tests
 Codecs: 7 tests (+3 round-trip)
