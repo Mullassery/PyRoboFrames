@@ -4,7 +4,12 @@
 [![Python](https://img.shields.io/pypi/pyversions/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](./LICENSE)
 [![Tests](https://img.shields.io/badge/tests-245%20passing-brightgreen)]()
-![Status: v1.3 Production Ready](https://img.shields.io/badge/Status-v1.3%20Production%20Ready-brightgreen)
+![Status: v1.3.1 Production Ready](https://img.shields.io/badge/Status-v1.3.1%20Production%20Ready-brightgreen)
+![Python: 3.10-3.13](https://img.shields.io/badge/Python-3.10%E2%80%933.13-blue)
+
+### v1.3.1 Updates
+- ✅ Relaxed numpy constraint (>=1.24) for better compatibility
+- 🐍 Full Python 3.10-3.13 support
 
 **Intelligent data pipeline for robot learning. Zero-copy, quality-aware loading with hardware acceleration and dataset composition tracking.**
 
