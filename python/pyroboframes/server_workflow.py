@@ -186,16 +186,16 @@ def create_flask_app(server: Optional[PyRoboFramesServer] = None):
 
         if not dataset_id or not dataset_path:
             return (
-                jsonify({
-                    "status": "error",
-                    "message": "dataset_id and dataset_path required"
-                }),
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "dataset_id and dataset_path required",
+                    }
+                ),
                 400,
             )
 
-        return jsonify(
-            srv.load_dataset(dataset_id, dataset_path, dataset_type)
-        )
+        return jsonify(srv.load_dataset(dataset_id, dataset_path, dataset_type))
 
     @app.route("/datasets", methods=["GET"])
     def list_datasets():
@@ -221,10 +221,9 @@ def create_flask_app(server: Optional[PyRoboFramesServer] = None):
             [conversion_id, input_path, input_format, output_path, output_format]
         ):
             return (
-                jsonify({
-                    "status": "error",
-                    "message": "All conversion parameters required"
-                }),
+                jsonify(
+                    {"status": "error", "message": "All conversion parameters required"}
+                ),
                 400,
             )
 
@@ -249,10 +248,9 @@ def create_flask_app(server: Optional[PyRoboFramesServer] = None):
 
         if not loader_id or not dataset_id:
             return (
-                jsonify({
-                    "status": "error",
-                    "message": "loader_id and dataset_id required"
-                }),
+                jsonify(
+                    {"status": "error", "message": "loader_id and dataset_id required"}
+                ),
                 400,
             )
 

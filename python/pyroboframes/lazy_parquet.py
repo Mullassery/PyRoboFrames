@@ -198,7 +198,12 @@ class LazyParquetDataset:
 
         if not tables:
             # Empty slice
-            return pa.table({col: pa.array([], type=self.schema.field(col).type) for col in (columns or self.columns)})
+            return pa.table(
+                {
+                    col: pa.array([], type=self.schema.field(col).type)
+                    for col in (columns or self.columns)
+                }
+            )
 
         # Concatenate tables from multiple shards
         import pyarrow.compute as pc
@@ -237,7 +242,9 @@ class LazyParquetDataset:
 
             def slice(inner_self, start: int, end: int, columns=None):
                 cols_to_use = columns or self._selected_columns
-                return super(LazyParquetDataset, inner_self).slice(start, end, cols_to_use)
+                return super(LazyParquetDataset, inner_self).slice(
+                    start, end, cols_to_use
+                )
 
         return FilteredLazyParquetDataset(self, columns)
 
@@ -251,7 +258,10 @@ class LazyParquetDataset:
             Dict mapping column name to numpy array
         """
         table = self.slice(0, self.num_rows, columns=columns)
-        return {col: table.column(col).to_numpy(zero_copy_only=False) for col in table.column_names}
+        return {
+            col: table.column(col).to_numpy(zero_copy_only=False)
+            for col in table.column_names
+        }
 
     def iter_batches(
         self,

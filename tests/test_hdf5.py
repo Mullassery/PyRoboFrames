@@ -15,9 +15,15 @@ def _write_hdf5(path: str, n_episodes: int = 2, length: int = 10) -> str:
         for i in range(n_episodes):
             grp = f.create_group(f"demo_{i}")
             obs = grp.create_group("obs")
-            obs.create_dataset("state", data=np.random.rand(length, 4).astype(np.float32))
-            obs.create_dataset("gripper", data=np.random.rand(length, 1).astype(np.float32))
-            grp.create_dataset("actions", data=np.random.rand(length, 4).astype(np.float32))
+            obs.create_dataset(
+                "state", data=np.random.rand(length, 4).astype(np.float32)
+            )
+            obs.create_dataset(
+                "gripper", data=np.random.rand(length, 1).astype(np.float32)
+            )
+            grp.create_dataset(
+                "actions", data=np.random.rand(length, 4).astype(np.float32)
+            )
     return path
 
 
@@ -69,7 +75,9 @@ def test_convert_hdf5_creates_parquet(tmp_path):
     assert len(report.features_extracted) > 0
     # Check LeRobot layout files exist.
     assert os.path.exists(os.path.join(out_dir, "meta", "info.json"))
-    assert os.path.exists(os.path.join(out_dir, "data", "chunk-000", "file-000.parquet"))
+    assert os.path.exists(
+        os.path.join(out_dir, "data", "chunk-000", "file-000.parquet")
+    )
 
 
 def test_convert_hdf5_features_include_actions(tmp_path):

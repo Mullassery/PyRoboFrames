@@ -127,7 +127,9 @@ class NetCDFDataset:
         Args:
             out_dir: Output directory.
         """
-        return _write_lerobot_layout(self.path, out_dir, self.time_dim, self.episode_breaks)
+        return _write_lerobot_layout(
+            self.path, out_dir, self.time_dim, self.episode_breaks
+        )
 
 
 def _infer_episode_breaks(
@@ -199,6 +201,7 @@ def _write_lerobot_layout(
     os.makedirs(out_dir, exist_ok=True)
 
     from .lerobot import write_lerobot_dataset
+
     write_lerobot_dataset(out_dir, arrays, episode_lengths)
     report.episodes_converted = len(episode_lengths)
     return report

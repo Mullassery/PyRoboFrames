@@ -85,8 +85,12 @@ def test_goal_conditioned_final(tmp_path):
 
     assert "observation.state.goal" in b
     # Goal = final frame of the episode: ep0 -> frame 3, ep1 -> frame 7.
-    np.testing.assert_array_equal(b["observation.state.goal"][:, 0], [3, 3, 3, 3, 7, 7, 7, 7])
-    np.testing.assert_array_equal(b["observation.state"][:, 0], list(range(8)))  # current unchanged
+    np.testing.assert_array_equal(
+        b["observation.state.goal"][:, 0], [3, 3, 3, 3, 7, 7, 7, 7]
+    )
+    np.testing.assert_array_equal(
+        b["observation.state"][:, 0], list(range(8))
+    )  # current unchanged
 
 
 def test_goal_rejects_unsupported_combos(tmp_path):

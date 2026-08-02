@@ -111,10 +111,13 @@ class SensorFusionConfig:
     def auto_detect(self, df: RoboticsDataFrame) -> None:
         """Auto-detect camera/depth/IMU topics from RoboticsDataFrame if not specified."""
         if not self.camera_topics:
-            self.camera_topics = [t for t in df.topics if "camera" in t or "image" in t.lower()]
+            self.camera_topics = [
+                t for t in df.topics if "camera" in t or "image" in t.lower()
+            ]
         if not self.depth_topics:
             self.depth_topics = [
-                t for t in df.topics
+                t
+                for t in df.topics
                 if "depth" in t or "point_cloud" in t or "lidar" in t.lower()
             ]
         if not self.imu_topics:
@@ -124,7 +127,9 @@ class SensorFusionConfig:
 class MultimodalDataFrame:
     """RoboticsDataFrame extended with multimodal sensor fusion capabilities."""
 
-    def __init__(self, df: RoboticsDataFrame, config: Optional[SensorFusionConfig] = None):
+    def __init__(
+        self, df: RoboticsDataFrame, config: Optional[SensorFusionConfig] = None
+    ):
         """Create a multimodal frame.
 
         Args:
@@ -156,7 +161,9 @@ class MultimodalDataFrame:
         tol = tolerance_ns if tolerance_ns is not None else self.config.tolerance_ns
 
         if ref_topic not in self.df:
-            raise KeyError(f"Reference topic {ref_topic!r} not found in {self.df.topics}")
+            raise KeyError(
+                f"Reference topic {ref_topic!r} not found in {self.df.topics}"
+            )
 
         # Use standard RoboticsDataFrame.align() as foundation
         aligned = self.df.align(ref_topic, tolerance=tol)
@@ -308,7 +315,9 @@ class MultimodalDataFrame:
                 # Reduce confidence of depth measurements during high motion
                 motion_factor = np.expand_dims(motion_confidence, axis=(1, 2))
                 depth_confidence = np.full_like(points, motion_factor)
-                enhanced_data[f"depth.{depth_stream}.motion_confidence"] = depth_confidence
+                enhanced_data[f"depth.{depth_stream}.motion_confidence"] = (
+                    depth_confidence
+                )
 
         return MultimodalBatch(enhanced_data)
 
@@ -415,7 +424,9 @@ class MultiRateFusionEngine:
         Returns:
             Resampled values [len(output_times), ...]
         """
-        output_values = np.zeros((len(output_times),) + input_values.shape[1:], dtype=input_values.dtype)
+        output_values = np.zeros(
+            (len(output_times),) + input_values.shape[1:], dtype=input_values.dtype
+        )
 
         for i, out_t in enumerate(output_times):
             idx = np.argmin(np.abs(input_times - out_t))

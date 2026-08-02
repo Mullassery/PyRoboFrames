@@ -147,13 +147,19 @@ class WaymoDatasetLoader:
                     cy=camera_calib.get("cy", 600.0),
                     width=camera_calib.get("width", 1920),
                     height=camera_calib.get("height", 1200),
-                    distortion=np.array(camera_calib.get("distortion", [])) if "distortion" in camera_calib else None,
+                    distortion=(
+                        np.array(camera_calib.get("distortion", []))
+                        if "distortion" in camera_calib
+                        else None
+                    ),
                 )
         except Exception as e:
             warnings.warn(f"Failed to load calibration: {e}")
 
         # Return default calibration
-        return CameraCalibration(fx=2015.0, fy=2015.0, cx=960.0, cy=600.0, width=1920, height=1200)
+        return CameraCalibration(
+            fx=2015.0, fy=2015.0, cx=960.0, cy=600.0, width=1920, height=1200
+        )
 
 
 class nuScenesDatasetLoader:
@@ -201,14 +207,18 @@ class nuScenesDatasetLoader:
             return self.scenes[scene_idx]
         return None
 
-    def get_frame(self, scene_idx: int, frame_idx: int, camera: str = "CAM_FRONT") -> Tuple[Optional[np.ndarray], Optional[FrameMetadata]]:
+    def get_frame(
+        self, scene_idx: int, frame_idx: int, camera: str = "CAM_FRONT"
+    ) -> Tuple[Optional[np.ndarray], Optional[FrameMetadata]]:
         """Get a frame from nuScenes."""
         scene = self.get_scene(scene_idx)
         if not scene:
             return None, None
 
         # Construct frame path
-        frame_path = self.dataset_path / "samples" / camera / f"frame_{frame_idx:06d}.jpg"
+        frame_path = (
+            self.dataset_path / "samples" / camera / f"frame_{frame_idx:06d}.jpg"
+        )
 
         if frame_path.exists():
             try:
@@ -275,7 +285,9 @@ class KITTIDatasetLoader:
             return self.sequences[seq_idx]
         return None
 
-    def get_frame(self, seq_idx: int, frame_idx: int, camera: int = 0) -> Tuple[Optional[np.ndarray], Optional[FrameMetadata]]:
+    def get_frame(
+        self, seq_idx: int, frame_idx: int, camera: int = 0
+    ) -> Tuple[Optional[np.ndarray], Optional[FrameMetadata]]:
         """Get a frame from KITTI.
 
         Args:

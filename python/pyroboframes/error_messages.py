@@ -3,12 +3,12 @@
 
 class DatasetError:
     """Dataset loading error with guidance."""
-    
+
     def __init__(self, title: str, message: str, guidance: list = None):
         self.title = title
         self.message = message
         self.guidance = guidance or []
-    
+
     def format(self) -> str:
         """Format error."""
         lines = [f"\n❌ {self.title}\n", f"   {self.message}\n"]
@@ -17,7 +17,7 @@ class DatasetError:
             for g in self.guidance:
                 lines.append(f"      • {g}")
         return "\n".join(lines)
-    
+
     def __str__(self) -> str:
         return self.format()
 
@@ -31,7 +31,7 @@ DATASET_NOT_FOUND = DatasetError(
         "Verify dataset name spelling (case-sensitive on Linux/Mac)",
         "Use absolute paths to avoid confusion with current directory",
         "For S3: ensure s3://bucket/path/ is accessible",
-    ]
+    ],
 )
 
 INVALID_DATASET_FORMAT = DatasetError(
@@ -42,7 +42,7 @@ INVALID_DATASET_FORMAT = DatasetError(
         "Check file extension: .hdf5, .nc, .lerobot",
         "Verify file is not corrupted: file /path/to/dataset",
         "Try different dataset loader for your format",
-    ]
+    ],
 )
 
 CORRUPTED_DATASET = DatasetError(
@@ -53,7 +53,7 @@ CORRUPTED_DATASET = DatasetError(
         "Check available disk space for reading",
         "Try re-downloading if from S3/GCS",
         "Verify permissions: chmod 644 /path/to/dataset",
-    ]
+    ],
 )
 
 VIDEO_DECODE_ERROR = DatasetError(
@@ -64,7 +64,7 @@ VIDEO_DECODE_ERROR = DatasetError(
         "For hardware decode (Mac): ensure VideoToolbox is available",
         "For GPU decode (Linux): install nvidia-ffmpeg",
         "Fall back to CPU decode: DatasetLoader(..., use_gpu=False)",
-    ]
+    ],
 )
 
 HARDWARE_DECODE_UNAVAILABLE = DatasetError(
@@ -75,7 +75,7 @@ HARDWARE_DECODE_UNAVAILABLE = DatasetError(
         "For macOS: ensure VideoToolbox is available",
         "For Linux: install NVIDIA driver and ffmpeg-nvenc",
         "Performance will be slower with CPU decoding",
-    ]
+    ],
 )
 
 MEMORY_ERROR = DatasetError(
@@ -86,7 +86,7 @@ MEMORY_ERROR = DatasetError(
         "Reduce number of workers: num_workers=2",
         "Reduce cache size: cache_size=1024",
         "Process data in smaller chunks instead of full dataset",
-    ]
+    ],
 )
 
 TEMPORAL_WINDOW_ERROR = DatasetError(
@@ -97,7 +97,7 @@ TEMPORAL_WINDOW_ERROR = DatasetError(
         "Issue occurs at episode boundaries (first/last frames)",
         "Increase margin: ensure frames exist before/after",
         "Use forward-looking windows at episode start",
-    ]
+    ],
 )
 
 
@@ -111,7 +111,7 @@ def get_s3_error(bucket: str, key: str, reason: str) -> DatasetError:
             f"Check bucket exists: aws s3 ls s3://{bucket}/",
             "Verify IAM permissions for s3:GetObject",
             "Use IAM role instead of long-term credentials",
-        ]
+        ],
     )
 
 
@@ -125,5 +125,5 @@ def get_file_size_error(actual_mb: float, limit_mb: int) -> DatasetError:
             "Sample the dataset: subset_loader(...)",
             "Use streaming loader for large datasets",
             "Process in batches rather than full load",
-        ]
+        ],
     )

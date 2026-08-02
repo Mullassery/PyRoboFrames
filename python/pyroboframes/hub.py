@@ -54,7 +54,9 @@ def download_lerobot_dataset(
     """
     try:
         from huggingface_hub import hf_hub_download, snapshot_download
-    except ImportError as exc:  # pragma: no cover - exercised only without the optional dep
+    except (
+        ImportError
+    ) as exc:  # pragma: no cover - exercised only without the optional dep
         raise ImportError(
             "download_lerobot_dataset requires `huggingface_hub` "
             "(pip install huggingface_hub)"
@@ -97,6 +99,7 @@ def _download_lerobot_partial(
 
     if local_dir is None:
         from huggingface_hub import HfFolder
+
         cache_home = HfFolder.home()
         local_dir = os.path.join(
             cache_home, "datasets", repo_id.replace("/", "--"), revision
@@ -147,7 +150,9 @@ def _download_lerobot_partial(
                 cam_key = cam_col.replace("/chunk_index", "")
                 vid_chunk = int(ep_row[f"{cam_key}/chunk_index"])
                 vid_file = int(ep_row[f"{cam_key}/file_index"])
-                vid_path = f"videos/{cam_key}/chunk-{vid_chunk:03d}/file-{vid_file:03d}.mp4"
+                vid_path = (
+                    f"videos/{cam_key}/chunk-{vid_chunk:03d}/file-{vid_file:03d}.mp4"
+                )
 
                 try:
                     hf_hub_download(

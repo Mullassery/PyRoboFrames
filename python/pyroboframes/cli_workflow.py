@@ -216,9 +216,7 @@ def main():
     try:
         if command == "load":
             if len(sys.argv) < 4:
-                print(json.dumps({
-                    "error": "Missing dataset_id or path"
-                }))
+                print(json.dumps({"error": "Missing dataset_id or path"}))
                 sys.exit(1)
 
             dataset_id = sys.argv[2]
@@ -230,9 +228,7 @@ def main():
 
         elif command == "convert":
             if len(sys.argv) < 7:
-                print(json.dumps({
-                    "error": "Missing conversion parameters"
-                }))
+                print(json.dumps({"error": "Missing conversion parameters"}))
                 sys.exit(1)
 
             conversion_id = sys.argv[2]
@@ -261,9 +257,7 @@ def main():
 
         elif command == "dataloader":
             if len(sys.argv) < 4:
-                print(json.dumps({
-                    "error": "Missing loader_id or dataset_id"
-                }))
+                print(json.dumps({"error": "Missing loader_id or dataset_id"}))
                 sys.exit(1)
 
             loader_id = sys.argv[2]

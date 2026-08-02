@@ -53,13 +53,12 @@ def load_point_cloud_from_numpy(
         # Already in correct format [N, 3]
         points_flat = points
     else:
-        raise ValueError(
-            f"Expected shape [N, 3] or [H, W, 3], got {points.shape}"
-        )
+        raise ValueError(f"Expected shape [N, 3] or [H, W, 3], got {points.shape}")
 
     # Create PointCloud by saving to temp file and loading
     # (since Rust PointCloud is loaded from files, not constructed from arrays)
     import tempfile
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".xyz", delete=False) as f:
         for point in points_flat:
             f.write(f"{point[0]:.6f} {point[1]:.6f} {point[2]:.6f}\n")
@@ -218,9 +217,7 @@ def align_point_clouds_icp(
         from scipy.spatial.transform import Rotation
         from scipy.spatial import KDTree
     except ImportError:
-        raise ImportError(
-            "ICP requires scipy. Install with: pip install scipy"
-        )
+        raise ImportError("ICP requires scipy. Install with: pip install scipy")
 
     source_pts = source.points()  # [N, 3]
     target_pts = target.points()  # [M, 3]

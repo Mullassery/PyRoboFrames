@@ -209,7 +209,9 @@ class DistributedLoader:
         """Number of batches for this worker."""
         num_episodes = len(self.sampler)
         # Approximate batches (true count depends on episode length)
-        avg_episode_length = self.dataset.total_frames() / max(1, self.dataset.num_episodes())
+        avg_episode_length = self.dataset.total_frames() / max(
+            1, self.dataset.num_episodes()
+        )
         total_frames = num_episodes * avg_episode_length
         return int(math.ceil(total_frames / self.batch_size))
 
@@ -460,10 +462,16 @@ class RayDistributedLoader:
 
         self._dataset = RoboFrameDataset.from_path(dataset_path)
         self._episodes = shard_episodes(self._dataset.num_episodes(), world_size, rank)
-        self._loader_kwargs = {**loader_kwargs, "episodes": self._episodes, "shuffle": False}
+        self._loader_kwargs = {
+            **loader_kwargs,
+            "episodes": self._episodes,
+            "shuffle": False,
+        }
 
     @staticmethod
-    def from_ray_actor(dataset_path: str, **loader_kwargs: Any) -> "RayDistributedLoader":
+    def from_ray_actor(
+        dataset_path: str, **loader_kwargs: Any
+    ) -> "RayDistributedLoader":
         """Construct inside a Ray actor using ``ray.get_runtime_context()``.
 
         Rank and world_size are read from the Ray runtime context.

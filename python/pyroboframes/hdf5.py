@@ -141,12 +141,16 @@ class HDF5Dataset:
         else:
             # Auto-detect: prefer demo_*, episode_*, traj_* prefixes; fall back to any group.
             for prefix in ("demo", "episode", "traj", "data"):
-                groups = sorted(k for k in f.keys()
-                                if k.startswith(prefix) and isinstance(f[k], type(f)))
+                groups = sorted(
+                    k
+                    for k in f.keys()
+                    if k.startswith(prefix) and isinstance(f[k], type(f))
+                )
                 if groups:
                     break
             else:
                 import h5py
+
                 groups = sorted(k for k in f.keys() if isinstance(f[k], h5py.Group))
         return groups
 
@@ -161,7 +165,9 @@ def _flatten_group(group: Any, prefix: str = "") -> dict[str, np.ndarray]:
         if isinstance(val, h5py.Dataset):
             arr = val[()]
             if arr.dtype.kind in ("f", "i", "u", "b"):
-                result[full_key] = arr.astype(np.float32) if arr.dtype.kind != "b" else arr
+                result[full_key] = (
+                    arr.astype(np.float32) if arr.dtype.kind != "b" else arr
+                )
         elif isinstance(val, h5py.Group):
             result.update(_flatten_group(val, full_key))
     return result
@@ -190,7 +196,9 @@ def _write_lerobot_layout(
         for group_name in groups:
             ep_data = _flatten_group(f[group_name])
             if not ep_data:
-                report.warnings.append(f"Group {group_name!r} had no numeric datasets; skipped.")
+                report.warnings.append(
+                    f"Group {group_name!r} had no numeric datasets; skipped."
+                )
                 continue
             # All arrays in this episode must share the same leading dimension (T).
             lengths = {k: arr.shape[0] for k, arr in ep_data.items() if arr.ndim >= 1}
@@ -229,6 +237,7 @@ def _write_lerobot_layout(
 
     # Write Parquet.
     from .lerobot import write_lerobot_dataset
+
     write_lerobot_dataset(out_dir, stacked, episode_lengths)
     report.episodes_converted = len(episode_lengths)
     return report

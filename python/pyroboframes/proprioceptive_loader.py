@@ -122,9 +122,7 @@ class ProprioceptiveLoader:
         missing = [f for f in self.features if f not in self.features_schema]
         if missing:
             available = list(self.features_schema.keys())
-            raise ValueError(
-                f"Features {missing} not found. Available: {available}"
-            )
+            raise ValueError(f"Features {missing} not found. Available: {available}")
 
     def _get_parquet_path(self, chunk_idx: int = 0, file_idx: int = 0) -> Path:
         """Get path to data parquet file."""
@@ -304,7 +302,9 @@ class ProprioceptiveDataFrame:
                 # For multi-dimensional data, interpolate each dimension
                 result = np.zeros((len(indices), col.shape[1]), dtype=col.dtype)
                 for d in range(col.shape[1]):
-                    result[:, d] = np.interp(indices_float, x_coords, col[:, d].astype(np.float64))
+                    result[:, d] = np.interp(
+                        indices_float, x_coords, col[:, d].astype(np.float64)
+                    )
                 return result
         else:
             raise ValueError(f"Unknown resample method: {method}")

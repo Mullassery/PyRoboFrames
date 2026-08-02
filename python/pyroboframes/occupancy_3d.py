@@ -31,8 +31,12 @@ class OccupancyGrid:
         self.grid_size_y = int(config.size_y / config.resolution)
 
         # Occupancy grid: 0=free, 1=occupied, 0.5=unknown
-        self.occupancy = np.full((self.grid_size_y, self.grid_size_x), 0.5, dtype=np.float32)
-        self.height_map = np.zeros((self.grid_size_y, self.grid_size_x), dtype=np.float32)
+        self.occupancy = np.full(
+            (self.grid_size_y, self.grid_size_x), 0.5, dtype=np.float32
+        )
+        self.height_map = np.zeros(
+            (self.grid_size_y, self.grid_size_x), dtype=np.float32
+        )
         self.variance = np.ones((self.grid_size_y, self.grid_size_x), dtype=np.float32)
 
     def world_to_grid(self, x: float, y: float) -> Tuple[int, int]:
@@ -106,14 +110,18 @@ class OccupancyGrid:
         from scipy import ndimage
 
         kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
-        self.occupancy = ndimage.binary_dilation(self.occupancy > 0.5, structure=kernel).astype(np.float32)
+        self.occupancy = ndimage.binary_dilation(
+            self.occupancy > 0.5, structure=kernel
+        ).astype(np.float32)
 
     def erode(self, kernel_size: int = 3):
         """Apply morphological erosion."""
         from scipy import ndimage
 
         kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
-        self.occupancy = ndimage.binary_erosion(self.occupancy > 0.5, structure=kernel).astype(np.float32)
+        self.occupancy = ndimage.binary_erosion(
+            self.occupancy > 0.5, structure=kernel
+        ).astype(np.float32)
 
     def get_free_space_mask(self) -> np.ndarray:
         """Get binary mask of free space."""
@@ -161,7 +169,15 @@ class OccupancyGrid:
                 err += dx
                 y1 += sy
 
-    def _bresenham_line(self, x1: float, y1: float, x2: float, y2: float, occupied: bool = True, height: float = 0.0):
+    def _bresenham_line(
+        self,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        occupied: bool = True,
+        height: float = 0.0,
+    ):
         """Draw a line using Bresenham's algorithm in world coordinates."""
         gx1, gy1 = self.world_to_grid(x1, y1)
         gx2, gy2 = self.world_to_grid(x2, y2)
@@ -192,7 +208,9 @@ class LiDARProcessor:
     """Process LiDAR point clouds for occupancy grid and 3D detection."""
 
     @staticmethod
-    def filter_by_distance(points: np.ndarray, max_distance: float = 100.0) -> np.ndarray:
+    def filter_by_distance(
+        points: np.ndarray, max_distance: float = 100.0
+    ) -> np.ndarray:
         """Filter points by distance from origin.
 
         Args:
@@ -207,7 +225,9 @@ class LiDARProcessor:
         return points[mask]
 
     @staticmethod
-    def filter_by_height(points: np.ndarray, min_height: float = -2.0, max_height: float = 3.0) -> np.ndarray:
+    def filter_by_height(
+        points: np.ndarray, min_height: float = -2.0, max_height: float = 3.0
+    ) -> np.ndarray:
         """Filter points by height.
 
         Args:
@@ -223,7 +243,9 @@ class LiDARProcessor:
         return points[mask]
 
     @staticmethod
-    def ground_segmentation(points: np.ndarray, threshold: float = 0.1) -> Tuple[np.ndarray, np.ndarray]:
+    def ground_segmentation(
+        points: np.ndarray, threshold: float = 0.1
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Segment ground from non-ground points.
 
         Args:
@@ -238,7 +260,9 @@ class LiDARProcessor:
         return points[ground_mask], points[~ground_mask]
 
     @staticmethod
-    def cluster_points(points: np.ndarray, distance_threshold: float = 0.2, min_points: int = 5) -> List[np.ndarray]:
+    def cluster_points(
+        points: np.ndarray, distance_threshold: float = 0.2, min_points: int = 5
+    ) -> List[np.ndarray]:
         """Cluster points using DBSCAN-like algorithm.
 
         Args:
@@ -252,10 +276,16 @@ class LiDARProcessor:
         try:
             from sklearn.cluster import DBSCAN
         except ImportError:
-            warnings.warn("scikit-learn not available, using simple distance clustering")
-            return LiDARProcessor._simple_cluster(points, distance_threshold, min_points)
+            warnings.warn(
+                "scikit-learn not available, using simple distance clustering"
+            )
+            return LiDARProcessor._simple_cluster(
+                points, distance_threshold, min_points
+            )
 
-        clustering = DBSCAN(eps=distance_threshold, min_samples=min_points).fit(points[:, :3])
+        clustering = DBSCAN(eps=distance_threshold, min_samples=min_points).fit(
+            points[:, :3]
+        )
         labels = clustering.labels_
 
         clusters = []
@@ -266,7 +296,9 @@ class LiDARProcessor:
         return clusters
 
     @staticmethod
-    def _simple_cluster(points: np.ndarray, distance_threshold: float, min_points: int) -> List[np.ndarray]:
+    def _simple_cluster(
+        points: np.ndarray, distance_threshold: float, min_points: int
+    ) -> List[np.ndarray]:
         """Simple distance-based clustering."""
         if len(points) == 0:
             return []
@@ -357,10 +389,12 @@ class RadarFusionProcessor:
         if not radar_detections:
             return np.array([])
 
-        velocities = np.array([
-            [det.get("vx", 0.0), det.get("vy", 0.0), det.get("vz", 0.0)]
-            for det in radar_detections
-        ])
+        velocities = np.array(
+            [
+                [det.get("vx", 0.0), det.get("vy", 0.0), det.get("vz", 0.0)]
+                for det in radar_detections
+            ]
+        )
 
         return velocities
 
@@ -387,8 +421,12 @@ class RadarFusionProcessor:
         fused = []
 
         for radar_det in radar_detections:
-            radar_pos = np.array([radar_det.get("x", 0), radar_det.get("y", 0), radar_det.get("z", 0)])
-            radar_vel = np.array([radar_det.get("vx", 0), radar_det.get("vy", 0), radar_det.get("vz", 0)])
+            radar_pos = np.array(
+                [radar_det.get("x", 0), radar_det.get("y", 0), radar_det.get("z", 0)]
+            )
+            radar_vel = np.array(
+                [radar_det.get("vx", 0), radar_det.get("vy", 0), radar_det.get("vz", 0)]
+            )
 
             # Find nearby LiDAR points
             if len(lidar_points) > 0:

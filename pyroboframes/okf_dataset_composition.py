@@ -33,16 +33,20 @@ class OKFDatasetComposition:
     def record_source(self, attribution: DataSourceAttribution) -> None:
         """Record data source attribution."""
         filename = f"dataset_{attribution.dataset_id}.json"
-        with open(self.composition_dir / filename, 'w') as f:
-            json.dump({
-                'dataset_id': attribution.dataset_id,
-                'source_robot': attribution.source_robot,
-                'collection_date': attribution.collection_date,
-                'frame_count': attribution.frame_count,
-                'quality_score': attribution.quality_score,
-                'data_type': attribution.data_type,
-                'retention_required': attribution.retention_required
-            }, f, indent=2)
+        with open(self.composition_dir / filename, "w") as f:
+            json.dump(
+                {
+                    "dataset_id": attribution.dataset_id,
+                    "source_robot": attribution.source_robot,
+                    "collection_date": attribution.collection_date,
+                    "frame_count": attribution.frame_count,
+                    "quality_score": attribution.quality_score,
+                    "data_type": attribution.data_type,
+                    "retention_required": attribution.retention_required,
+                },
+                f,
+                indent=2,
+            )
 
     def get_dataset_sources(self, dataset_id: str) -> Optional[Dict]:
         """Get all sources for a dataset."""
@@ -62,8 +66,8 @@ class OKFDatasetComposition:
         for f in self.composition_dir.glob("dataset_*.json"):
             with open(f) as fp:
                 data = json.load(fp)
-                if data['source_robot'] == robot_id:
-                    total_frames += data['frame_count']
+                if data["source_robot"] == robot_id:
+                    total_frames += data["frame_count"]
 
         return total_frames
 
@@ -74,12 +78,14 @@ class OKFDatasetComposition:
         for f in self.composition_dir.glob("dataset_*.json"):
             with open(f) as fp:
                 data = json.load(fp)
-                if data['quality_score'] >= min_quality:
-                    quality_datasets.append({
-                        'dataset_id': data['dataset_id'],
-                        'quality': data['quality_score'],
-                        'frames': data['frame_count'],
-                        'robot': data['source_robot']
-                    })
+                if data["quality_score"] >= min_quality:
+                    quality_datasets.append(
+                        {
+                            "dataset_id": data["dataset_id"],
+                            "quality": data["quality_score"],
+                            "frames": data["frame_count"],
+                            "robot": data["source_robot"],
+                        }
+                    )
 
-        return sorted(quality_datasets, key=lambda x: x['quality'], reverse=True)
+        return sorted(quality_datasets, key=lambda x: x["quality"], reverse=True)

@@ -9,18 +9,20 @@ logger = logging.getLogger(__name__)
 
 class HardwareDecodeWarning(UserWarning):
     """Warning for hardware video decode issues."""
+
     pass
 
 
 class PerformanceWarning(UserWarning):
     """Warning for performance degradation."""
+
     pass
 
 
 def warn_hardware_decode_unavailable(reason: str) -> None:
     """
     Warn that hardware decode is unavailable, falling back to CPU.
-    
+
     Args:
         reason: Why hardware decode is unavailable
     """
@@ -37,7 +39,7 @@ def warn_hardware_decode_unavailable(reason: str) -> None:
 def warn_mlx_performance(reason: str = "CPU fallback") -> None:
     """
     Warn about MLX performance degradation.
-    
+
     Args:
         reason: Why MLX performance is degraded
     """
@@ -53,7 +55,7 @@ def warn_mlx_performance(reason: str = "CPU fallback") -> None:
 def warn_distributed_loading(reason: str = "experimental") -> None:
     """
     Warn about distributed loading limitations.
-    
+
     Args:
         reason: Why distributed loading has limitations
     """
@@ -81,7 +83,7 @@ def warn_temporal_window_edge_cases() -> None:
 def check_hardware_capabilities() -> dict:
     """
     Check available hardware capabilities.
-    
+
     Returns:
         dict with capability flags
     """
@@ -92,19 +94,21 @@ def check_hardware_capabilities() -> dict:
         "vaapi": False,  # Intel/AMD on Linux
         "platform": "",
     }
-    
+
     import platform
+
     capabilities["platform"] = platform.system()
-    
+
     # Check VideoToolbox (macOS)
     if capabilities["platform"] == "Darwin":
         try:
             import native_module  # Would be platform-specific
+
             capabilities["videotoolbox"] = True
             capabilities["hardware_video_decode"] = True
         except ImportError:
             logger.debug("VideoToolbox not available")
-    
+
     # Check NVDEC (NVIDIA)
     if capabilities["platform"] == "Linux":
         try:
@@ -112,5 +116,5 @@ def check_hardware_capabilities() -> dict:
             capabilities["hardware_video_decode"] = False  # Placeholder
         except Exception:
             pass
-    
+
     return capabilities

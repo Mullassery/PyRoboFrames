@@ -292,7 +292,9 @@ class EpisodeScorer:
                 sharpnesses.append(0.0)
                 continue
 
-            laplacian = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32)
+            laplacian = np.array(
+                [[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32
+            )
             edges = np.abs(
                 np.convolve(gray.flatten(), laplacian.flatten(), mode="valid")
             )
@@ -378,7 +380,9 @@ class DatasetQualityProfile:
 
     def summary(self) -> str:
         """Return a human-readable summary table."""
-        lines = [f"DatasetQualityProfile: {self.dataset_name!r} ({self.episode_count} episodes)"]
+        lines = [
+            f"DatasetQualityProfile: {self.dataset_name!r} ({self.episode_count} episodes)"
+        ]
         header = f"  {'Metric':<22} {'mean':>6} {'std':>6} {'p25':>6} {'p50':>6} {'p75':>6} {'p90':>6}"
         lines.append(header)
         lines.append("  " + "-" * (len(header) - 2))
@@ -481,7 +485,9 @@ class CrossDatasetComparator:
         Returns:
             Float in (0, 1): suggested fraction of ``other`` in a mixed training set.
         """
-        ref_q = self.reference.per_metric_stats.get("quality_score", {}).get("mean", 0.5)
+        ref_q = self.reference.per_metric_stats.get("quality_score", {}).get(
+            "mean", 0.5
+        )
         oth_q = other.per_metric_stats.get("quality_score", {}).get("mean", 0.5)
         total = ref_q + oth_q
         if total < 1e-9:
@@ -533,6 +539,7 @@ def compare_datasets(
 def _normal_cdf(z: float) -> float:
     """Approximate standard normal CDF using Abramowitz & Stegun 26.2.17."""
     import math
+
     return (1.0 + math.erf(z / math.sqrt(2.0))) / 2.0
 
 

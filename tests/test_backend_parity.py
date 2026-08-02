@@ -33,8 +33,14 @@ def test_transform_backend_fallback_chain():
     # NumPy is always available, so resolution always succeeds.
     assert prf.transforms.resolve_transform_backend("numpy") == "numpy"
     # Preferring an unavailable rung degrades down the chain (cvcuda absent here -> ... -> numpy).
-    assert prf.transforms.resolve_transform_backend("cvcuda") in prf.transforms.TRANSFORM_BACKENDS
-    assert prf.transforms.resolve_transform_backend("auto") in prf.transforms.TRANSFORM_BACKENDS
+    assert (
+        prf.transforms.resolve_transform_backend("cvcuda")
+        in prf.transforms.TRANSFORM_BACKENDS
+    )
+    assert (
+        prf.transforms.resolve_transform_backend("auto")
+        in prf.transforms.TRANSFORM_BACKENDS
+    )
     with pytest.raises(ValueError):
         prf.transforms.resolve_transform_backend("nope")
 
@@ -48,7 +54,9 @@ def test_same_script_conformance_cpu_vs_auto(tmp_path):
         loader = prf.DataLoader(ds.loader(batch_size=5, shuffle=False), device=device)
         out = []
         for batch in loader:
-            out.append({k: tuple(np.asarray(_to_numpy(v)).shape) for k, v in batch.items()})
+            out.append(
+                {k: tuple(np.asarray(_to_numpy(v)).shape) for k, v in batch.items()}
+            )
         return out
 
     assert shapes("cpu") == shapes("auto")

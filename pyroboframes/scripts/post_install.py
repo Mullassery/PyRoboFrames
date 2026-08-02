@@ -1,7 +1,9 @@
 """Post-install messaging for PyRoboFrames"""
 
+
 def post_install():
-    print("""
+    print(
+        """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ PyRoboFrames installed successfully!
 
@@ -18,7 +20,9 @@ def post_install():
    Issues:    https://github.com/Mullassery/PyRoboFrames/issues
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    """)
+    """
+    )
+
 
 if __name__ == "__main__":
     post_install()

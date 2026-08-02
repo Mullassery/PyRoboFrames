@@ -12,7 +12,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from pyroboframes.proprioceptive_loader import ProprioceptiveLoader, ProprioceptiveDataFrame
+from pyroboframes.proprioceptive_loader import (
+    ProprioceptiveLoader,
+    ProprioceptiveDataFrame,
+)
 
 
 @pytest.fixture
@@ -110,9 +113,7 @@ class TestProprioceptiveLoader:
         ds, _ = mock_dataset
 
         # Valid features
-        loader = ProprioceptiveLoader(
-            ds, features=["observation.state", "action"]
-        )
+        loader = ProprioceptiveLoader(ds, features=["observation.state", "action"])
         assert len(loader.features) == 2
 
         # Invalid feature

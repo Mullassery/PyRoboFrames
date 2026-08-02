@@ -60,9 +60,7 @@ def test_load_point_cloud_from_depth_map():
 
 def test_downsample_point_cloud():
     """Test downsampling a point cloud."""
-    points = np.array(
-        [[i, i, i] for i in range(10)], dtype=np.float32
-    )
+    points = np.array([[i, i, i] for i in range(10)], dtype=np.float32)
     cloud = load_point_cloud_from_numpy(points)
     assert len(cloud) == 10
 
@@ -85,9 +83,9 @@ def test_filter_point_cloud():
     # Create points at various distances
     points = np.array(
         [
-            [0.0, 0.0, 0.5],   # depth=0.5
-            [0.0, 0.0, 1.0],   # depth=1.0
-            [0.0, 0.0, 2.0],   # depth=2.0
+            [0.0, 0.0, 0.5],  # depth=0.5
+            [0.0, 0.0, 1.0],  # depth=1.0
+            [0.0, 0.0, 2.0],  # depth=2.0
             [0.0, 0.0, 10.0],  # depth=10.0
             [0.0, 0.0, 15.0],  # depth=15.0
         ],
@@ -114,9 +112,7 @@ def test_filter_point_cloud_empty():
 
 def test_round_trip_numpy_to_cloud():
     """Test converting numpy array to cloud and back."""
-    original_points = np.array(
-        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32
-    )
+    original_points = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
     cloud = load_point_cloud_from_numpy(original_points)
     recovered_points = cloud.points()
 
@@ -126,15 +122,16 @@ def test_round_trip_numpy_to_cloud():
 def test_depth_map_grid_structure():
     """Test that depth map preserves grid structure in flattening."""
     # 2×3 depth map with known pattern
-    depth = np.array(
-        [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32
-    )
+    depth = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
     # Create [H, W, 3] by stacking depth as Z
-    points_3d = np.stack([
-        np.zeros_like(depth),  # x
-        np.zeros_like(depth),  # y
-        depth,                  # z = depth
-    ], axis=-1)
+    points_3d = np.stack(
+        [
+            np.zeros_like(depth),  # x
+            np.zeros_like(depth),  # y
+            depth,  # z = depth
+        ],
+        axis=-1,
+    )
 
     cloud = load_point_cloud_from_numpy(points_3d)
     recovered = cloud.points()

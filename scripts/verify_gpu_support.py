@@ -89,7 +89,9 @@ def check_nvidia_smi() -> dict[str, Any]:
         "gpus": [],
     }
 
-    success, output = run_command(["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv"])
+    success, output = run_command(
+        ["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv"]
+    )
     if success:
         results["nvidia_smi_available"] = True
         lines = output.strip().split("\n")[1:]  # Skip header
@@ -97,11 +99,13 @@ def check_nvidia_smi() -> dict[str, Any]:
         for line in lines:
             parts = [p.strip() for p in line.split(",")]
             if len(parts) >= 3:
-                results["gpus"].append({
-                    "name": parts[0],
-                    "driver_version": parts[1],
-                    "memory_mb": int(parts[2].split()[0]) if parts[2] else None,
-                })
+                results["gpus"].append(
+                    {
+                        "name": parts[0],
+                        "driver_version": parts[1],
+                        "memory_mb": int(parts[2].split()[0]) if parts[2] else None,
+                    }
+                )
 
     return results
 
@@ -118,6 +122,7 @@ def check_cuda() -> dict[str, Any]:
     # Check torch
     try:
         import torch
+
         results["torch_available"] = True
         results["torch_cuda"] = torch.cuda.is_available()
         if results["torch_cuda"]:
@@ -137,6 +142,7 @@ def check_cvcuda() -> dict[str, Any]:
 
     try:
         import cvcuda
+
         results["cvcuda_installed"] = True
         results["cvcuda_version"] = cvcuda.__version__
     except ImportError:
@@ -157,16 +163,19 @@ def check_pyroboframes() -> dict[str, Any]:
 
     try:
         import pyroboframes as prf
+
         results["pyroboframes_installed"] = True
         results["version"] = prf.__version__
 
         # Check which features are compiled
         try:
             from pyroboframes._core import Backend
+
             results["preferred_backend"] = str(Backend.preferred())
             # Check if CUDA feature is available (indirectly by checking if CudaDecoder exists)
             try:
                 from pyroboframes._core import CudaDecoder
+
                 results["cuda_feature"] = True
             except (ImportError, AttributeError):
                 results["cuda_feature"] = False
@@ -174,6 +183,7 @@ def check_pyroboframes() -> dict[str, Any]:
             # Check if VideoToolbox feature is available
             try:
                 from pyroboframes._core import VideoToolboxDecoder
+
                 results["videotoolbox_feature"] = True
             except (ImportError, AttributeError):
                 results["videotoolbox_feature"] = False
@@ -202,18 +212,21 @@ def check_transform_backends() -> dict[str, Any]:
         # Try each backend
         try:
             import mlx.core
+
             results["mlx"] = True
         except ImportError:
             pass
 
         try:
             import torch
+
             results["torch"] = True
         except ImportError:
             pass
 
         try:
             import cvcuda
+
             results["cvcuda"] = True
         except ImportError:
             pass
@@ -282,8 +295,12 @@ def benchmark_transforms(detailed: bool = False) -> dict[str, Any]:
 def main() -> None:
     """Run all GPU verification checks."""
     parser = argparse.ArgumentParser(description="Verify GPU support in PyRoboFrames")
-    parser.add_argument("--detailed", action="store_true", help="Show detailed diagnostics")
-    parser.add_argument("--run-benchmark", action="store_true", help="Run transform benchmarks")
+    parser.add_argument(
+        "--detailed", action="store_true", help="Show detailed diagnostics"
+    )
+    parser.add_argument(
+        "--run-benchmark", action="store_true", help="Run transform benchmarks"
+    )
     args = parser.parse_args()
 
     all_results = {}
@@ -302,7 +319,11 @@ def main() -> None:
     # === FFmpeg ===
     section("FFMPEG & NVDEC")
     ffmpeg_results = check_ffmpeg()
-    check(ffmpeg_results["ffmpeg_installed"], "FFmpeg installed", ffmpeg_results.get("ffmpeg_version", ""))
+    check(
+        ffmpeg_results["ffmpeg_installed"],
+        "FFmpeg installed",
+        ffmpeg_results.get("ffmpeg_version", ""),
+    )
     check(ffmpeg_results["nvdec_h264"], "H.264 NVDEC decoder", "h264_nvdec")
     check(ffmpeg_results["nvdec_hevc"], "HEVC NVDEC decoder", "hevc_nvdec")
     check(ffmpeg_results["nvdec_av1"], "AV1 NVDEC decoder", "av1_nvdec")
@@ -314,14 +335,25 @@ def main() -> None:
     # === CUDA ===
     section("CUDA & PYTORCH")
     cuda_results = check_cuda()
-    check(cuda_results["cuda_available"] or cuda_results["torch_available"], "CUDA-capable PyTorch")
-    check(cuda_results["torch_cuda"], "CUDA available in PyTorch", cuda_results.get("cuda_version", ""))
+    check(
+        cuda_results["cuda_available"] or cuda_results["torch_available"],
+        "CUDA-capable PyTorch",
+    )
+    check(
+        cuda_results["torch_cuda"],
+        "CUDA available in PyTorch",
+        cuda_results.get("cuda_version", ""),
+    )
     all_results["cuda"] = cuda_results
 
     # === CV-CUDA ===
     section("CV-CUDA (TRANSFORM ACCELERATION)")
     cvcuda_results = check_cvcuda()
-    check(cvcuda_results["cvcuda_installed"], "CV-CUDA installed", cvcuda_results.get("cvcuda_version", ""))
+    check(
+        cvcuda_results["cvcuda_installed"],
+        "CV-CUDA installed",
+        cvcuda_results.get("cvcuda_version", ""),
+    )
     if not cvcuda_results["cvcuda_installed"]:
         print("\n  To install CV-CUDA:")
         print("    pip install cvcuda-cu12  # CUDA 12.x")
@@ -331,8 +363,16 @@ def main() -> None:
     # === PyRoboFrames ===
     section("PYROBOFRAMES")
     prf_results = check_pyroboframes()
-    check(prf_results["pyroboframes_installed"], "PyRoboFrames installed", prf_results.get("version", ""))
-    check(prf_results["cuda_feature"], "CUDA decoder (--features cuda)", prf_results.get("preferred_backend", ""))
+    check(
+        prf_results["pyroboframes_installed"],
+        "PyRoboFrames installed",
+        prf_results.get("version", ""),
+    )
+    check(
+        prf_results["cuda_feature"],
+        "CUDA decoder (--features cuda)",
+        prf_results.get("preferred_backend", ""),
+    )
     check(prf_results["videotoolbox_feature"], "VideoToolbox decoder (macOS)")
     all_results["pyroboframes"] = prf_results
 
@@ -353,7 +393,9 @@ def main() -> None:
         if bench_results.get("success"):
             for backend, metrics in bench_results["measurements"].items():
                 if "error" not in metrics:
-                    print(f"  {backend:10} | Resize: {metrics['resize_ms']:7.2f}ms | Normalize: {metrics['normalize_ms']:7.2f}ms")
+                    print(
+                        f"  {backend:10} | Resize: {metrics['resize_ms']:7.2f}ms | Normalize: {metrics['normalize_ms']:7.2f}ms"
+                    )
         else:
             print(f"  Benchmark failed: {bench_results.get('error', 'unknown')}")
         all_results["benchmarks"] = bench_results
@@ -391,7 +433,9 @@ def main() -> None:
         if summary["nvdec_ready"] and summary["cuda_ready"]:
             print("  • Run GPU benchmark: python benches/nvidia_benchmark.py")
         if summary["cvcuda_ready"]:
-            print("  • Test transforms: python -c \"from pyroboframes import transforms as T; ...\"")
+            print(
+                '  • Test transforms: python -c "from pyroboframes import transforms as T; ..."'
+            )
 
     print()
 

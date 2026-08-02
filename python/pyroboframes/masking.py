@@ -74,7 +74,9 @@ class MaskedDataFrame:
             else:
                 valid = np.ones(len(col), dtype=bool)
 
-            coverage[col_name] = float(np.sum(valid) / len(valid)) if len(valid) > 0 else 0.0
+            coverage[col_name] = (
+                float(np.sum(valid) / len(valid)) if len(valid) > 0 else 0.0
+            )
 
         return coverage
 
@@ -131,7 +133,9 @@ class MaskedDataFrame:
 
 def interpolate_missing(
     dataframe: RoboticsDataFrame,
-    method: Literal["forward_fill", "backward_fill", "linear", "nearest"] = "forward_fill",
+    method: Literal[
+        "forward_fill", "backward_fill", "linear", "nearest"
+    ] = "forward_fill",
     columns: list[str] | None = None,
     inplace: bool = False,
 ) -> RoboticsDataFrame:
@@ -200,9 +204,7 @@ class SensorHealthMonitor:
                 all_coverage[col].append(cov)
 
         # Summarize: mean coverage → failure rate
-        return {
-            col: 1.0 - np.mean(covs) for col, covs in all_coverage.items()
-        }
+        return {col: 1.0 - np.mean(covs) for col, covs in all_coverage.items()}
 
     def failure_episodes(self, threshold: float = 0.1) -> list[int]:
         """Get episodes with > threshold missing data.

@@ -44,8 +44,12 @@ def make_dataset(root: str, episodes=2, length=50, with_video=False):
         {
             "episode_index": pa.array(list(range(episodes)), pa.int64()),
             "length": pa.array([length] * episodes, pa.int64()),
-            "dataset_from_index": pa.array([i * length for i in range(episodes)], pa.int64()),
-            "dataset_to_index": pa.array([(i + 1) * length for i in range(episodes)], pa.int64()),
+            "dataset_from_index": pa.array(
+                [i * length for i in range(episodes)], pa.int64()
+            ),
+            "dataset_to_index": pa.array(
+                [(i + 1) * length for i in range(episodes)], pa.int64()
+            ),
             "data/chunk_index": pa.array([0] * episodes, pa.int64()),
             "data/file_index": pa.array([0] * episodes, pa.int64()),
             f"videos/{CAM}/chunk_index": pa.array([0] * episodes, pa.int64()),
@@ -75,9 +79,17 @@ def make_dataset(root: str, episodes=2, length=50, with_video=False):
         os.makedirs(vdir)
         subprocess.run(
             [
-                "ffmpeg", "-v", "error", "-f", "lavfi",
-                "-i", f"testsrc=size={VID_W}x{VID_H}:rate=30",
-                "-frames:v", str(total), "-pix_fmt", "yuv420p",
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                f"testsrc=size={VID_W}x{VID_H}:rate=30",
+                "-frames:v",
+                str(total),
+                "-pix_fmt",
+                "yuv420p",
                 f"{vdir}/file-000.mp4",
             ],
             check=True,
@@ -175,7 +187,7 @@ def test_frame_loader_returns_image_batches(tmp_path):
 
     b0 = next(iter(loader))
     frames = b0[CAM]
-    assert frames.shape == (4, VID_H, VID_W, 3)   # [batch, H, W, 3]
+    assert frames.shape == (4, VID_H, VID_W, 3)  # [batch, H, W, 3]
     assert frames.dtype == np.uint8
     # tabular features still come along
     assert b0["observation.state"].shape == (4, 3)

@@ -91,7 +91,9 @@ def test_align_tolerance_drops_stale_matches(tmp_path):
 
 
 def test_resample_previous_and_linear(tmp_path):
-    _make_converted(str(tmp_path))  # /state t[10,20,30] x[1,2,3]; /imu t[12,25] a[100,200]
+    _make_converted(
+        str(tmp_path)
+    )  # /state t[10,20,30] x[1,2,3]; /imu t[12,25] a[100,200]
     df = prf.RoboticsDataFrame.from_converted(str(tmp_path))
 
     prev = df.resample(period=10, start=10, end=30, method="previous")  # grid 10,20,30
@@ -101,7 +103,9 @@ def test_resample_previous_and_linear(tmp_path):
     assert np.isnan(imu[0])  # no imu sample at/before t=10
     np.testing.assert_array_equal(imu[1:], [100.0, 200.0])
 
-    lin = df.resample(period=5, start=10, end=30, method="linear")  # grid 10,15,20,25,30
+    lin = df.resample(
+        period=5, start=10, end=30, method="linear"
+    )  # grid 10,15,20,25,30
     np.testing.assert_allclose(lin["state.x"], [1.0, 1.5, 2.0, 2.5, 3.0])
 
 

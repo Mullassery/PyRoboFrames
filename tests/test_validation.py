@@ -108,7 +108,9 @@ def test_full_report_not_ok_with_errors():
 def test_full_report_raise_if_errors():
     report = FullValidationReport()
     report.issues.append(
-        ValidationIssue(severity="error", category="codec_error", message="decode failed")
+        ValidationIssue(
+            severity="error", category="codec_error", message="decode failed"
+        )
     )
     with pytest.raises(ValueError, match="validation failed"):
         report.raise_if_errors()
@@ -121,8 +123,12 @@ def test_full_report_raise_if_no_errors_passes():
 
 def test_full_report_summary_contains_counts():
     report = FullValidationReport(episodes_checked=5, cameras_checked=["top"])
-    report.issues.append(ValidationIssue(severity="error", category="metadata", message="e"))
-    report.issues.append(ValidationIssue(severity="warning", category="metadata", message="w"))
+    report.issues.append(
+        ValidationIssue(severity="error", category="metadata", message="e")
+    )
+    report.issues.append(
+        ValidationIssue(severity="warning", category="metadata", message="w")
+    )
     summary = report.summary()
     assert "1 error" in summary
     assert "1 warning" in summary
@@ -142,7 +148,9 @@ def test_missing_frame_checker_no_ffprobe_returns_info(monkeypatch):
     assert "ffprobe" in issues[0].message.lower()
 
 
-def test_missing_frame_checker_missing_file_returns_no_issue_without_ffprobe(monkeypatch):
+def test_missing_frame_checker_missing_file_returns_no_issue_without_ffprobe(
+    monkeypatch,
+):
     monkeypatch.setattr("shutil.which", lambda cmd: None)
     checker = MissingFrameChecker()
     # Without ffprobe the checker returns info (not an error about missing file)

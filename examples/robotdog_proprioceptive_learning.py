@@ -34,7 +34,8 @@ def example_joint_space_policy():
     # ds = prf.RoboFrameDataset.from_path("hf://datasets/path/to/go2_or_mini_cheetah")
 
     # For demo, show API only
-    print("""
+    print(
+        """
     import pyroboframes as prf
 
     # Load LeRobot dataset (e.g., Unitree Go2 locomotion dataset)
@@ -65,7 +66,8 @@ def example_joint_space_policy():
 
     # Training time: ~2-3 minutes for 200K frames on Apple Silicon
     # (vs. 30-40 minutes if loading video + state together)
-    """)
+    """
+    )
 
 
 def example_imu_based_gait_control():
@@ -74,7 +76,8 @@ def example_imu_based_gait_control():
     print("EXAMPLE 2: IMU-Based Gait Control (Orientation + Joint State)")
     print("=" * 70)
 
-    print("""
+    print(
+        """
     # For quadruped balance control, combine:
     # - IMU orientation (roll, pitch, yaw)
     # - Joint angles
@@ -103,7 +106,8 @@ def example_imu_based_gait_control():
     # Output: [batch=256, time=16, 4] (contact confidence per foot)
 
     # Total training time: ~5-10 minutes for large dataset
-    """)
+    """
+    )
 
 
 def example_multi_modality_without_vision():
@@ -112,7 +116,8 @@ def example_multi_modality_without_vision():
     print("EXAMPLE 3: Multi-Modal Proprioceptive Fusion")
     print("=" * 70)
 
-    print("""
+    print(
+        """
     # Unitree Go2 typically has:
     # - 12 joint angles (3 per leg)
     # - 6-axis IMU (accel + gyro)
@@ -136,7 +141,8 @@ def example_multi_modality_without_vision():
     # Data: ~150 MB per 100K frames
     # Load time: <1 second per epoch
     # Compute time: Depends on model (CNN: ~2 min, Transformer: ~5 min)
-    """)
+    """
+    )
 
 
 def example_real_time_inference():
@@ -145,7 +151,8 @@ def example_real_time_inference():
     print("EXAMPLE 4: Real-Time Inference on Edge (Robot CPU)")
     print("=" * 70)
 
-    print("""
+    print(
+        """
     # Once trained with ProprioceptiveLoader, deploy policy on robot:
 
     import mlx.core as mx
@@ -177,7 +184,8 @@ def example_real_time_inference():
     # On Apple Neural Engine (ANE):
     # - Inference: <10ms per step
     # - Power: <1W (vs. 20-50W for GPU/CPU)
-    """)
+    """
+    )
 
 
 def performance_comparison():
@@ -186,7 +194,8 @@ def performance_comparison():
     print("PERFORMANCE COMPARISON: P0 vs Standard Loader")
     print("=" * 70)
 
-    print("""
+    print(
+        """
     Benchmark: Load 10 batches from 100K frame dataset
     Hardware: M3 Max (30-core GPU)
 
@@ -213,7 +222,8 @@ def performance_comparison():
     Training a quadruped policy:
     - Standard + video: 40-80 hours
     - P0 (proprioceptive): 4-8 hours
-    """)
+    """
+    )
 
 
 def best_practices():
@@ -222,7 +232,8 @@ def best_practices():
     print("BEST PRACTICES FOR ROBOTDOG TRAINING WITH P0")
     print("=" * 70)
 
-    print("""
+    print(
+        """
     1. Feature Selection
        - Include: Joint angles, IMU (essential for balance)
        - Consider: Foot contact (if available)
@@ -252,7 +263,8 @@ def best_practices():
        - Add noise to proprioceptive data (sensor noise simulation)
        - Temporal jittering (variable frame rates)
        - Skip video-specific augmentations (crop, flip, brightness)
-    """)
+    """
+    )
 
 
 def when_to_use_p0():
@@ -261,7 +273,8 @@ def when_to_use_p0():
     print("DECISION GUIDE: When to Use ProprioceptiveLoader (P0)")
     print("=" * 70)
 
-    print("""
+    print(
+        """
     Use ProprioceptiveLoader if:
     ✓ Policy uses joint angles, IMU, or proprioceptive sensors
     ✓ You're training on Apple Silicon M1+ (best case)
@@ -278,7 +291,8 @@ def when_to_use_p0():
     ✗ Primary input is RGB/depth camera frames
     ✗ Running on CPU only (proprioceptive reads still IO-bound)
     ✗ Need real-time video streaming (not applicable)
-    """)
+    """
+    )
 
 
 if __name__ == "__main__":

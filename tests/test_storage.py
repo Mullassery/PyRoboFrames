@@ -10,8 +10,10 @@ import pyroboframes as prf
 def _make_df(tmp_path):
     src = tmp_path / "src"
     src.mkdir()
-    pq.write_table(pa.table({"log_time": [10, 20], "x": [1.0, 2.0], "ok": [True, False]}),
-                   str(src / "state.parquet"))
+    pq.write_table(
+        pa.table({"log_time": [10, 20], "x": [1.0, 2.0], "ok": [True, False]}),
+        str(src / "state.parquet"),
+    )
     (src / "metadata.json").write_text(
         '{"format":"pyroboframes-columnar","version":1,'
         '"topics":[{"topic":"/state","path":"state.parquet","columns":{"x":"float64","ok":"bool"}}]}'
@@ -95,14 +97,16 @@ def test_lerobot_partial_download_creates_dataset_structure(tmp_path):
 
     # Create a fake LeRobot dataset structure locally
     repo_id = "test/dataset"
-    ep_table = pa.table({
-        "episode_index": [0, 1],
-        "length": [3, 3],
-        "data/chunk_index": [0, 0],
-        "data/file_index": [0, 0],
-        "videos/cam0/chunk_index": [0, 0],
-        "videos/cam0/file_index": [0, 1],
-    })
+    ep_table = pa.table(
+        {
+            "episode_index": [0, 1],
+            "length": [3, 3],
+            "data/chunk_index": [0, 0],
+            "data/file_index": [0, 0],
+            "videos/cam0/chunk_index": [0, 0],
+            "videos/cam0/file_index": [0, 1],
+        }
+    )
 
     def mock_hf_download(repo_id, filename, **kwargs):
         local_dir = kwargs.get("local_dir", "/mock")

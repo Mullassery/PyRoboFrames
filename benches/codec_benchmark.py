@@ -117,11 +117,7 @@ Examples:
     args = parser.parse_args()
 
     num_frames = args.frames
-    print(
-        f"\n{'='*70}"
-        f"\nCodec Benchmark: {num_frames} frames"
-        f"\n{'='*70}\n"
-    )
+    print(f"\n{'='*70}" f"\nCodec Benchmark: {num_frames} frames" f"\n{'='*70}\n")
 
     results = []
 
@@ -165,7 +161,9 @@ Examples:
         savings = ((h264_size - r["size_bytes"]) / h264_size) * 100 if h264_size else 0
         savings_str = f"-{savings:.1f}%" if savings > 0 else "(baseline)"
 
-        print(f"{codec_display:20} {r['size_mb']:8.1f} MB   {savings_str:>12}   {r['encode_time_s']:6.1f}s")
+        print(
+            f"{codec_display:20} {r['size_mb']:8.1f} MB   {savings_str:>12}   {r['encode_time_s']:6.1f}s"
+        )
 
     print(f"\nTotal frames: {num_frames}")
     print(f"Episode structure: [{num_frames//2}, {num_frames//2}]")
@@ -176,12 +174,8 @@ Examples:
     hevc_result = results[1]
     av1_result = results[2]
 
-    hevc_compression = (
-        (1 - hevc_result["size_bytes"] / h264_result["size_bytes"]) * 100
-    )
-    av1_compression = (
-        (1 - av1_result["size_bytes"] / h264_result["size_bytes"]) * 100
-    )
+    hevc_compression = (1 - hevc_result["size_bytes"] / h264_result["size_bytes"]) * 100
+    av1_compression = (1 - av1_result["size_bytes"] / h264_result["size_bytes"]) * 100
 
     hevc_speed = hevc_result["encode_time_s"] / h264_result["encode_time_s"]
     av1_speed = av1_result["encode_time_s"] / h264_result["encode_time_s"]

@@ -56,7 +56,9 @@ def resolve_device(device: str = "auto") -> str:
         device = os.environ.get("PYROBOFRAMES_DEVICE", "auto")
     if device != "auto":
         if device not in VALID_DEVICES:
-            raise ValueError(f"device must be one of {VALID_DEVICES} or 'auto' (got {device!r})")
+            raise ValueError(
+                f"device must be one of {VALID_DEVICES} or 'auto' (got {device!r})"
+            )
         return device
 
     torch = _torch()
@@ -75,7 +77,9 @@ def default_framework(device: str) -> str:
     """The native array framework for a (resolved) backend: ``"mlx"`` on Apple-MLX, ``"torch"`` on
     cuda/mps, ``"numpy"`` on cpu. This is the seam behind "no manual ``output=``": the loader can
     pick the right tensor type from the device alone."""
-    return {"mlx": "mlx", "cuda": "torch", "mps": "torch", "cpu": "numpy"}[resolve_device(device)]
+    return {"mlx": "mlx", "cuda": "torch", "mps": "torch", "cpu": "numpy"}[
+        resolve_device(device)
+    ]
 
 
 def to_backend(obj, device: str = "auto"):

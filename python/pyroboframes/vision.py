@@ -41,7 +41,9 @@ class CLIPEmbedder:
         try:
             import clip
         except ImportError:
-            raise ImportError("CLIPEmbedder requires clip-by-openai (pip install clip-by-openai)")
+            raise ImportError(
+                "CLIPEmbedder requires clip-by-openai (pip install clip-by-openai)"
+            )
 
         self.model_name = model
         self.device = device
@@ -134,7 +136,10 @@ class SAM2Segmenter:
         import numpy as np
 
         results = {
-            "masks": np.zeros((len(frames), frames.shape[1], frames.shape[2], len(prompts or [])), dtype=bool),
+            "masks": np.zeros(
+                (len(frames), frames.shape[1], frames.shape[2], len(prompts or [])),
+                dtype=bool,
+            ),
             "iou_predictions": np.zeros((len(frames), len(prompts or [])), dtype=float),
         }
 
@@ -146,7 +151,9 @@ class SAM2Segmenter:
 
             if points:
                 input_points = np.array(points)
-                masks, iou = self.model.predict(point_coords=input_points, point_labels=np.ones(len(points)))
+                masks, iou = self.model.predict(
+                    point_coords=input_points, point_labels=np.ones(len(points))
+                )
                 results["masks"][i] = masks.transpose(1, 2, 0)
                 results["iou_predictions"][i] = iou
 
