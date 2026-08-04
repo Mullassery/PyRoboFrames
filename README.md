@@ -1,4 +1,10 @@
-# PyRoboFrames v2.0.0
+# PyRoboFrames
+
+High-performance ML dataloader for robotics. Stream large robot datasets (LeRobot format) with hardware-accelerated video decode, zero-copy pipeline, MLX arrays. Perfect for training perception models on robotics data.
+
+```bash
+pip install pyroboframes
+```
 
 **ML Dataset Metadata Discovery (11 MCP tools)**
 
