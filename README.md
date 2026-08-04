@@ -9,11 +9,13 @@ pip install pyroboframes
 **ML Dataset Metadata Discovery (11 MCP tools)**
 
 ## Overview
+See [INSTALL.md](.github/INSTALL.md) for platform-specific installation guidance.
 
 
 PyRoboFrames is part of the unified **MCP 2.0 Mega-Platform** (207 tools across 18 projects). This project provides AI-native tools via Model Context Protocol (MCP 2.0).
 
 ## Features
+See [INSTALL.md](.github/INSTALL.md) for platform-specific installation guidance.
 
 - **MCP 2.0 Support**: Discoverable via MCP protocol protocol on port 8771
 - **Async Handlers**: All tools are async-first for high-performance execution
@@ -22,6 +24,7 @@ PyRoboFrames is part of the unified **MCP 2.0 Mega-Platform** (207 tools across 
 - **Production-Ready**: Mock implementations ready for real data integration
 
 ## Installation
+See [INSTALL.md](.github/INSTALL.md) for platform-specific installation guidance.
 
 ```bash
 pip install PyRoboFrames
@@ -34,6 +37,7 @@ pip install --only-binary=:all: PyRoboFrames
 ```
 
 ## MCP 2.0 Integration
+See [INSTALL.md](.github/INSTALL.md) for platform-specific installation guidance.
 
 Enable MCP tools on port **8771** (see MCP_QUICKSTART.md for details).
 
@@ -44,16 +48,19 @@ AI systems discover all 207 tools across 18 projects, enabling:
 - Cost-optimized inference routing
 
 ## Quick Start
+See [INSTALL.md](.github/INSTALL.md) for platform-specific installation guidance.
 
 See [MCP_QUICKSTART.md](PyRoboFrames/MCP_QUICKSTART.md) for detailed tool documentation.
 
 ## Part of Unified Platform
+See [INSTALL.md](.github/INSTALL.md) for platform-specific installation guidance.
 
 18 projects, 207 tools, 18 simultaneous MCP endpoints (8765-8782).
 
 **All tools discoverable via MCP protocol in a single connection.**
 
 ## Version History
+See [INSTALL.md](.github/INSTALL.md) for platform-specific installation guidance.
 
 ### v2.0.0 (Current)
 - ✅ MCP 2.0 Support
@@ -63,6 +70,7 @@ See [MCP_QUICKSTART.md](PyRoboFrames/MCP_QUICKSTART.md) for detailed tool docume
 - ✅ Production-ready (wheels only)
 
 ## License
+See [INSTALL.md](.github/INSTALL.md) for platform-specific installation guidance.
 
 MIT
 
