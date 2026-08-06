@@ -27,6 +27,7 @@ pub mod rosbag;
 pub mod sampler;
 pub mod split;
 pub mod stats;
+pub mod streaming;
 pub mod validate;
 pub mod window;
 
