@@ -13,6 +13,7 @@ pub mod cache;
 pub mod decisions;
 pub mod distributed;
 pub mod ensemble;
+pub mod feedback;
 pub mod models;
 pub mod quality;
 pub mod calibration;
