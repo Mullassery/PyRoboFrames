@@ -11,6 +11,7 @@ pub mod adaptive;
 pub mod anomaly;
 pub mod cache;
 pub mod decisions;
+pub mod ensemble;
 pub mod models;
 pub mod quality;
 pub mod calibration;
