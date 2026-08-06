@@ -18,6 +18,7 @@ pub mod info;
 pub mod loader;
 pub mod mcap;
 pub mod mcp;
+pub mod metrics;
 pub mod pipeline;
 pub mod resilience;
 pub mod rng;
