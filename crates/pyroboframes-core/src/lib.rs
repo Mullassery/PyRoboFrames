@@ -7,6 +7,7 @@
 
 use thiserror::Error;
 
+pub mod cache;
 pub mod calibration;
 pub mod data;
 pub mod dataset;

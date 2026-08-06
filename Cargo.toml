@@ -17,6 +17,7 @@ description = "Fast ML dataloader for robot learning — LeRobot, RLDS, HDF5, Ne
 [workspace.dependencies]
 thiserror = "2"
 crossbeam-channel = "0.5"
+parking_lot = "0.12"
 
 [profile.release]
 lto = "thin"
