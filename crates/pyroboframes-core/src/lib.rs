@@ -16,6 +16,7 @@ pub mod episodes;
 pub mod info;
 pub mod loader;
 pub mod mcap;
+pub mod mcp;
 pub mod pipeline;
 pub mod rng;
 pub mod ros2;
