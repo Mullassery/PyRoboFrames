@@ -19,6 +19,7 @@ pub mod loader;
 pub mod mcap;
 pub mod mcp;
 pub mod pipeline;
+pub mod resilience;
 pub mod rng;
 pub mod ros2;
 pub mod rosbag;
