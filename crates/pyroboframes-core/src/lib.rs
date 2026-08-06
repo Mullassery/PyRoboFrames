@@ -15,6 +15,7 @@ pub mod decode;
 pub mod depth;
 pub mod episodes;
 pub mod info;
+pub mod intelligence;
 pub mod loader;
 pub mod mcap;
 pub mod mcp;
