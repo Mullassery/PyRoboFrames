@@ -10,6 +10,8 @@ use thiserror::Error;
 pub mod adaptive;
 pub mod anomaly;
 pub mod cache;
+pub mod decisions;
+pub mod models;
 pub mod quality;
 pub mod calibration;
 pub mod data;
