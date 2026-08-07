@@ -29,30 +29,37 @@ use pyroboframes_core::pipeline::{AssemblerConfig, Prefetcher, RustBatch};
 use pyroboframes_core::sampler::{chunked_order, weighted_with_replacement, Sampler};
 use pyroboframes_core::window::WindowSpec;
 
-/// Core-typed decoder factory handed to prefetch workers (each builds its own decoder).
-#[cfg(feature = "ffmpeg")]
-fn core_decoder_factory() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
+/// Picks the best available decoder for this build: native VideoToolbox
+/// (real, zero-copy hardware decode) on macOS when built with the
+/// `videotoolbox` feature, else the ffmpeg-CLI decoder when built with the
+/// `ffmpeg` feature, else an error explaining what's missing.
+#[cfg(all(target_os = "macos", feature = "videotoolbox"))]
+fn new_frame_decoder_impl() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
+    Ok(Box::new(pyroboframes_core::decode::VideoToolboxDecoder::default()))
+}
+
+#[cfg(all(not(all(target_os = "macos", feature = "videotoolbox")), feature = "ffmpeg"))]
+fn new_frame_decoder_impl() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
     Ok(Box::new(pyroboframes_core::decode::FfmpegDecoder::default()))
 }
 
-#[cfg(not(feature = "ffmpeg"))]
-fn core_decoder_factory() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
+#[cfg(not(any(all(target_os = "macos", feature = "videotoolbox"), feature = "ffmpeg")))]
+fn new_frame_decoder_impl() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
     Err(pyroboframes_core::Error::Decode(
-        "frame decoding requires the 'ffmpeg' build feature (and ffmpeg/ffprobe on PATH)".into(),
+        "frame decoding requires either the 'videotoolbox' build feature (macOS) or the \
+         'ffmpeg' build feature (and ffmpeg/ffprobe on PATH)"
+            .into(),
     ))
 }
 
-/// Construct the frame decoder. FFmpeg-CLI based; available when built with the `ffmpeg` feature.
-#[cfg(feature = "ffmpeg")]
-fn new_frame_decoder() -> PyResult<Box<dyn Decoder + Send>> {
-    Ok(Box::new(pyroboframes_core::decode::FfmpegDecoder::default()))
+/// Core-typed decoder factory handed to prefetch workers (each builds its own decoder).
+fn core_decoder_factory() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
+    new_frame_decoder_impl()
 }
 
-#[cfg(not(feature = "ffmpeg"))]
+/// Construct the frame decoder for the main-thread dataset handle.
 fn new_frame_decoder() -> PyResult<Box<dyn Decoder + Send>> {
-    Err(PyRuntimeError::new_err(
-        "frame decoding requires the 'ffmpeg' build feature (and ffmpeg/ffprobe on PATH)",
-    ))
+    new_frame_decoder_impl().map_err(core_err)
 }
 
 fn core_err(e: pyroboframes_core::Error) -> PyErr {
@@ -493,7 +500,7 @@ impl Loader {
                                     "frames in a batch have inconsistent dimensions",
                                 ));
                             }
-                            entry.2.extend_from_slice(frame.pixels.as_bytes());
+                            entry.2.extend_from_slice(&frame.to_rgb24_bytes());
                         }
                     }
                     for (cam, (w, h, data)) in acc {
@@ -524,7 +531,7 @@ impl Loader {
                                 ));
                             }
                             for f in &frames {
-                                entry.3.extend_from_slice(f.pixels.as_bytes());
+                                entry.3.extend_from_slice(&f.to_rgb24_bytes());
                             }
                         }
                     }

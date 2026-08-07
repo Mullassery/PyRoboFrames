@@ -68,9 +68,19 @@ Based on analysis of dataset loading market (Hugging Face Datasets, PyArrow, tor
   - **Why:** Robot learning has 5+ dataset formats; single-format is limiting
 
 ### HIGH (Reduces Addressable Market)
-- **Not truly zero-copy yet** — Claims zero-copy but still copies memory
-  - **Competitor Advantage:** PyArrow native zero-copy for columnar data
-  - **Timeline:** v1.2.0 (Q3 2026) should deliver true zero-copy
+- **VideoToolbox decode is now genuinely zero-copy (v1.4.0)** — the macOS
+  decode path (`videotoolbox` feature) drives `VTDecompressionSession`
+  directly (real MP4 demux + CMSampleBuffer construction, no `ffmpeg` CLI
+  subprocess), producing an IOSurface-backed `CVPixelBuffer` in-process.
+  Verified with real hardware decode tests, including a pixel-level
+  cross-check against ffmpeg's software decode of the same bitstream
+  (`crates/pyroboframes-core/src/videotoolbox_native.rs`).
+  - **Still not done:** the numpy-array batch path (`Loader`) still copies
+    frame bytes into a combined array (`Frame::to_rgb24_bytes`) — that's an
+    inherent cost of building one combined `[batch, H, W, 3]` array from
+    many independent frames, not something zero-copy decode alone removes.
+    A true zero-copy `mx.array` handoff via DLPack (bypassing numpy
+    entirely) is still future work.
   - **Why:** Memory is the bottleneck for 100GB+ datasets
 
 - **Distributed loading incomplete** — Ray integration not fully tested
@@ -92,7 +102,9 @@ Based on analysis of dataset loading market (Hugging Face Datasets, PyArrow, tor
 ## 📋 Roadmap
 
 ### v1.2.0 (Q3 2026) — Zero-Copy MLX + Temporal Windows
-- [ ] True zero-copy MLX arrays (no intermediate numpy)
+- [x] Real VideoToolbox hardware decode (VTDecompressionSession, IOSurface-backed
+      CVPixelBuffer) — delivered v1.4.0
+- [ ] True zero-copy MLX arrays via DLPack (no intermediate numpy)
 - [ ] Temporal window edge case handling
 - [ ] Better CPU fallback warnings
 - [ ] Validation suite for temporal queries
@@ -123,7 +135,8 @@ Based on analysis of dataset loading market (Hugging Face Datasets, PyArrow, tor
 - ❌ NetCDF support (coming v1.4.0)
 
 ### 🟡 Experimental Features
-- 🔄 Zero-copy MLX integration (memory copying still happening)
+- 🔄 Zero-copy MLX array handoff via DLPack (decode itself is zero-copy as
+  of v1.4.0; the numpy-array batch path still copies — see above)
 - 🔄 Ray distributed loading (incomplete, not fully tested)
 - 🔄 Temporal windows (edge cases need validation)
 - 🔄 Hardware video decode fallback (warning not displayed)
@@ -132,6 +145,7 @@ Based on analysis of dataset loading market (Hugging Face Datasets, PyArrow, tor
 - ✅ LeRobot dataset loading
 - ✅ Episode prefetching
 - ✅ Multi-output formats (PyTorch, NumPy, JAX)
+- ✅ Native VideoToolbox hardware decode (macOS, `videotoolbox` feature)
 - ✅ Hardware video decode (VideoToolbox, NVDEC)
 - ✅ Batch loading
 

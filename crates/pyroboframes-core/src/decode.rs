@@ -23,23 +23,25 @@ pub enum FrameBuffer {
     Owned { data: Arc<Vec<u8>>, channels: u8 },
     /// IOSurface-backed buffer for zero-copy hand-off to MLX/Metal (macOS VideoToolbox path).
     ///
-    /// **Zero-copy hand-off flow (once mlx#2855 lands):**
-    /// 1. VideoToolbox decodes to CVPixelBuffer (IOSurface-backed)
-    /// 2. Rust wraps IOSurfaceRef in FrameBuffer::IOSurface
-    /// 3. Python extracts the opaque IOSurface pointer
-    /// 4. MLX initializes array directly over IOSurface (no copy)
-    /// 5. MLX array is immediately GPU-usable (unified memory)
-    /// 6. IOSurfaceUseCount tracks lifetime; buffer recycled after Metal finishes
+    /// This is a *real* `CVPixelBuffer` produced directly by
+    /// `VTDecompressionSession` (see `videotoolbox_native`), backed by an
+    /// IOSurface — not a copy through ffmpeg's stdout pipe. `Arc` because
+    /// the frame cache clones `Frame`s freely; the `CVPixelBuffer` wrapper's
+    /// own `Drop` impl handles the CFRelease.
     ///
-    /// **Current status:** Blocked by [mlx#2855](https://github.com/ml-explore/mlx/issues/2855).
-    /// v1 uses ffmpeg RGB24 output (Owned variant); true zero-copy awaits MLX support.
-    #[cfg(target_os = "macos")]
+    /// **Zero-copy hand-off flow:**
+    /// 1. VideoToolbox decodes to `CVPixelBuffer` (IOSurface-backed) — done.
+    /// 2. Rust wraps it here.
+    /// 3. Python's `__dlpack__`/`__dlpack_device__` (see `pyroboframes-py`)
+    ///    exports it via the DLPack protocol for CPU-side zero-copy access.
+    /// 4. `mx.array(frame)` (or any DLPack-consuming array library) reads
+    ///    straight from the IOSurface's locked base address — no copy.
+    ///
+    /// GPU-resident (Metal-device) DLPack export — skipping even the CPU
+    /// lock/unlock — is a further optimization not implemented here.
+    #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
     IOSurface {
-        /// Opaque IOSurface reference (size varies by platform; encoded as u64 on 64-bit).
-        /// Kept behind a type boundary so Python bindings can safely extract it.
-        surface: u64,
-        /// Pixel format code (kCVPixelFormatType_*; RFC 3394 "pixel format" enums).
-        format: u32,
+        pixel_buffer: Arc<apple_cf::cv::CVPixelBuffer>,
     },
 }
 
@@ -47,9 +49,12 @@ impl FrameBuffer {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             FrameBuffer::Owned { data, .. } => data,
-            #[cfg(target_os = "macos")]
+            #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
             FrameBuffer::IOSurface { .. } => {
-                panic!("IOSurface buffers are GPU-resident; use MLX/Metal APIs for access")
+                panic!(
+                    "IOSurface buffers require a lock scope; use with_locked_bytes() or the \
+                     DLPack export instead of as_bytes()"
+                )
             }
         }
     }
@@ -57,17 +62,34 @@ impl FrameBuffer {
     pub fn channels(&self) -> u8 {
         match self {
             FrameBuffer::Owned { channels, .. } => *channels,
-            #[cfg(target_os = "macos")]
-            FrameBuffer::IOSurface { .. } => 3, // kCVPixelFormatType_24RGB variant
+            #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
+            FrameBuffer::IOSurface { .. } => 3,
         }
     }
 
-    /// Extract the IOSurface pointer for direct GPU access (macOS only).
-    /// Returns None for Owned buffers (CPU-resident). Pending MLX support for zero-copy.
-    #[cfg(target_os = "macos")]
+    /// Safe CPU-side access to an IOSurface-backed buffer's pixel data,
+    /// locking it for the duration of `f`. Returns `None` for `Owned`
+    /// buffers (use [`as_bytes`](Self::as_bytes) directly for those).
+    #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
+    pub fn with_locked_bytes<R>(&self, f: impl FnOnce(&[u8]) -> R) -> Option<R> {
+        match self {
+            FrameBuffer::IOSurface { pixel_buffer } => {
+                let guard = pixel_buffer.lock_read_only().ok()?;
+                Some(f(guard.as_slice()))
+            }
+            FrameBuffer::Owned { .. } => None,
+        }
+    }
+
+    /// Extract the underlying IOSurface's raw pointer for direct GPU/Metal
+    /// access (macOS only). Returns `None` for `Owned` buffers or if the
+    /// pixel buffer isn't actually IOSurface-backed.
+    #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
     pub fn as_iosurface(&self) -> Option<u64> {
         match self {
-            FrameBuffer::IOSurface { surface, .. } => Some(*surface),
+            FrameBuffer::IOSurface { pixel_buffer } => {
+                pixel_buffer.io_surface().map(|s| s.as_ptr() as u64)
+            }
             FrameBuffer::Owned { .. } => None,
         }
     }
@@ -81,6 +103,38 @@ pub struct Frame {
     pub camera: String,
     pub timestamp: f64,
     pub pixels: FrameBuffer,
+}
+
+impl Frame {
+    /// Tightly-packed RGB24 bytes (`width * height * 3`, no row padding)
+    /// regardless of which `FrameBuffer` variant backs this frame. `Owned`
+    /// is already tightly packed and copies directly; `IOSurface` locks the
+    /// buffer and strips any row-stride padding along the way. Prefer
+    /// `pixels.as_bytes()` (zero-copy) or `pixels.with_locked_bytes()` when
+    /// the caller can deal with either variant directly — this method
+    /// exists for call sites (e.g. batch-array construction) that need one
+    /// uniform tightly-packed layout no matter the source.
+    pub fn to_rgb24_bytes(&self) -> Vec<u8> {
+        match &self.pixels {
+            FrameBuffer::Owned { data, .. } => data.as_ref().clone(),
+            #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
+            FrameBuffer::IOSurface { pixel_buffer } => {
+                let row_bytes = self.width as usize * 3;
+                let mut out = Vec::with_capacity(row_bytes * self.height as usize);
+                if let Ok(guard) = pixel_buffer.lock_read_only() {
+                    let stride = guard.bytes_per_row();
+                    let slice = guard.as_slice();
+                    for row in 0..self.height as usize {
+                        let start = row * stride;
+                        if start + row_bytes <= slice.len() {
+                            out.extend_from_slice(&slice[start..start + row_bytes]);
+                        }
+                    }
+                }
+                out
+            }
+        }
+    }
 }
 
 /// A hardware (or software) video decoder, selected per platform (see [`Backend`]).
@@ -119,16 +173,17 @@ pub enum Backend {
 
 impl Backend {
     /// The preferred backend for the current build target.
-    /// - macOS: [`Backend::VideoToolbox`] if available (with ffmpeg feature), else Software.
+    /// - macOS: [`Backend::VideoToolbox`] if the `videotoolbox` feature (native
+    ///   `VTDecompressionSession`) or the `ffmpeg`/`cuda` fallback is available, else Software.
     /// - Linux: [`Backend::Cuda`] if compiled with `--features cuda`; else [`Backend::Ffmpeg`].
     /// Real *runtime* auto-detection (probe the GPU, fall back to Software) is a future enhancement.
     pub fn preferred() -> Backend {
         if cfg!(target_os = "macos") {
-            #[cfg(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda")))]
+            #[cfg(any(feature = "videotoolbox", feature = "ffmpeg", feature = "cuda"))]
             {
                 return Backend::VideoToolbox;
             }
-            #[cfg(not(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda"))))]
+            #[cfg(not(any(feature = "videotoolbox", feature = "ffmpeg", feature = "cuda")))]
             {
                 Backend::Software
             }
@@ -240,19 +295,63 @@ impl FramePool {
 
 // --- Hardware backends (stubs pending Phase 0 spikes) -------------------------------------
 
-/// macOS VideoToolbox decoder stub — requires FFmpeg CLI with `-hwaccel videotoolbox` support.
-/// (VideoToolbox integration is feature-gated; macOS builds without ffmpeg feature fall back to Software decoder.)
-#[cfg(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda")))]
+/// macOS VideoToolbox decoder: real, in-process `VTDecompressionSession`
+/// hardware decode producing IOSurface-backed frames (see
+/// `crate::videotoolbox_native`) — not a shell-out to the `ffmpeg` CLI.
+#[cfg(all(target_os = "macos", feature = "videotoolbox"))]
 pub use macos::VideoToolboxDecoder;
 
-#[cfg(all(feature = "videotoolbox", any(feature = "ffmpeg", feature = "cuda")))]
+#[cfg(all(target_os = "macos", feature = "videotoolbox"))]
 mod macos {
+    use super::*;
+    use crate::videotoolbox_native::NativeVideoToolboxDecoder;
+
+    /// macOS VideoToolbox decoder using Apple's Media Engine for H.264
+    /// hardware decode, driven directly (no ffmpeg subprocess): the decoded
+    /// `CVPixelBuffer` is IOSurface-backed and stays in-process, enabling
+    /// real zero-copy hand-off (see `FrameBuffer::IOSurface`).
+    #[derive(Default)]
+    pub struct VideoToolboxDecoder {
+        native: NativeVideoToolboxDecoder,
+    }
+
+    impl Decoder for VideoToolboxDecoder {
+        fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
+            let (pixel_buffer, width, height) = self.native.decode_at(file, timestamp)?;
+            Ok(Frame {
+                width,
+                height,
+                camera: camera.to_string(),
+                timestamp,
+                pixels: FrameBuffer::IOSurface {
+                    pixel_buffer: Arc::new(pixel_buffer),
+                },
+            })
+        }
+    }
+}
+
+/// Fallback macOS VideoToolbox path via `ffmpeg -hwaccel videotoolbox`
+/// (CPU RGB24 output) — used when the `videotoolbox` feature (native
+/// VTDecompressionSession) isn't enabled but `ffmpeg` is, so macOS builds
+/// without direct framework bindings still get *some* hardware-accelerated
+/// decode, just without the zero-copy IOSurface hand-off.
+#[cfg(all(
+    target_os = "macos",
+    not(feature = "videotoolbox"),
+    any(feature = "ffmpeg", feature = "cuda")
+))]
+pub use macos_ffmpeg_fallback::VideoToolboxDecoder;
+
+#[cfg(all(
+    target_os = "macos",
+    not(feature = "videotoolbox"),
+    any(feature = "ffmpeg", feature = "cuda")
+))]
+mod macos_ffmpeg_fallback {
     use super::*;
     use std::collections::HashMap;
 
-    /// macOS VideoToolbox decoder using Apple's Media Engine for H.264/HEVC hardware decode.
-    /// Outputs RGB24 frames via ffmpeg with `-hwaccel videotoolbox` (CPU-resident v1;
-    /// GPU-resident / IOSurface optimization is pending).
     #[derive(Default)]
     pub struct VideoToolboxDecoder {
         dims: HashMap<PathBuf, (u32, u32)>,
@@ -272,9 +371,7 @@ mod macos {
     impl Decoder for VideoToolboxDecoder {
         fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
             let (width, height) = self.dimensions(file)?;
-            // VideoToolbox decode via ffmpeg hwaccel (macOS default) → CPU RGB24.
-            // TODO: Direct VideoToolbox session management + IOSurface output for zero-copy.
-            ffcli::decode_frame(camera, file, timestamp, width, height, None)
+            ffcli::decode_frame(camera, file, timestamp, width, height, Some("videotoolbox"))
         }
     }
 }
@@ -578,10 +675,7 @@ mod tests {
     fn preferred_backend_matches_platform() {
         let b = Backend::preferred();
         if cfg!(target_os = "macos") {
-            if cfg!(all(
-                feature = "videotoolbox",
-                any(feature = "ffmpeg", feature = "cuda")
-            )) {
+            if cfg!(any(feature = "videotoolbox", feature = "ffmpeg", feature = "cuda")) {
                 assert_eq!(b, Backend::VideoToolbox);
             } else {
                 assert_eq!(b, Backend::Software);

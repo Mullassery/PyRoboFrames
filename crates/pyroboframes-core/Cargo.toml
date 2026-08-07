@@ -22,13 +22,17 @@ bytes = "1.6"
 prost-reflect = { version = "0.14", features = ["serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 videotoolbox = { version = "0.18", features = ["decompression"], optional = true }
+apple-cf = { version = "0.9", optional = true }
+mp4 = { version = "0.14.0", optional = true }
 
 [features]
 # Real hardware decode backends:
-#   videotoolbox — Apple Media Engine HW decode (macOS) via ffmpeg -hwaccel videotoolbox
+#   videotoolbox — Apple Media Engine HW decode (macOS): real VTDecompressionSession
+#                  driven directly (MP4 demux -> CMSampleBuffer -> hardware decode ->
+#                  IOSurface-backed CVPixelBuffer), not a shell-out to the ffmpeg CLI.
 #   ffmpeg       — FFmpeg decode (Linux VAAPI + software)
 #   cuda         — NVIDIA NVDEC + CUDA decode/output (Linux with CUDA libraries present)
-videotoolbox = ["dep:videotoolbox"]
+videotoolbox = ["dep:videotoolbox", "dep:apple-cf", "dep:mp4"]
 ffmpeg = []
 cuda = []
 
