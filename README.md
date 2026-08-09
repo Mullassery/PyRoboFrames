@@ -1,5 +1,7 @@
 # PyRoboFrames
 
+[![CI](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml/badge.svg)](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml)
+
 High-performance ML dataloader for robotics. Stream large robot datasets (LeRobot format) with hardware-accelerated video decode, zero-copy pipeline, MLX arrays. Perfect for training perception models on robotics data.
 
 ```bash
