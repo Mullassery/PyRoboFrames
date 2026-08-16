@@ -305,9 +305,9 @@ class DatasetValidator:
                 ValidationIssue(severity="warning", category="metadata", message=msg)
             )
 
-        num_episodes = self.dataset.num_episodes()
-        fps = self.dataset.fps()
-        cameras = self.dataset.cameras()
+        num_episodes = self.dataset.num_episodes
+        fps = self.dataset.fps
+        cameras = self.dataset.cameras
         report.cameras_checked = cameras
 
         # Select episodes to deep-check
@@ -348,7 +348,7 @@ class DatasetValidator:
         import os
 
         issues: list[ValidationIssue] = []
-        dataset_path = self.dataset.path()
+        dataset_path = self.dataset.path
         episodes = self.dataset.episodes()
         if episode_index >= len(episodes):
             return [
@@ -388,7 +388,7 @@ class DatasetValidator:
                 )
 
         # Video checks
-        for cam in self.dataset.cameras():
+        for cam in self.dataset.cameras:
             video_rel = ep.get("videos", {}).get(cam, {}).get("path", "")
             if not video_rel:
                 continue

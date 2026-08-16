@@ -99,8 +99,8 @@ def test_convert_hdf5_lerobot_loadable(tmp_path):
     convert_hdf5(hdf5_path, out_dir)
 
     ds = prf.RoboFrameDataset.from_path(out_dir)
-    assert ds.num_episodes() == 2
-    assert ds.total_frames() == 20
+    assert ds.num_episodes == 2
+    assert ds.num_frames == 20
 
 
 def test_hdf5_to_lerobot_report(tmp_path):

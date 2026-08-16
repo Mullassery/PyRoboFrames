@@ -42,7 +42,7 @@ class EpisodeFilter:
             dataframe: RoboticsDataFrame to filter
         """
         self._dataframe = dataframe
-        self._episode_indices = list(range(dataframe.num_episodes()))
+        self._episode_indices = list(range(dataframe.num_episodes))
         self._conditions: list[tuple[str, str, Any]] = []
 
     def where(self, **kwargs) -> EpisodeFilter:
@@ -145,7 +145,7 @@ class EpisodeFilter:
 
     def reset(self) -> EpisodeFilter:
         """Reset all filters."""
-        self._episode_indices = list(range(self._dataframe.num_episodes()))
+        self._episode_indices = list(range(self._dataframe.num_episodes))
         self._conditions = []
         return self
 

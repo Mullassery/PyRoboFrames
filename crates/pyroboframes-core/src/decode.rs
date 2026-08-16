@@ -176,12 +176,13 @@ impl Backend {
     /// - macOS: [`Backend::VideoToolbox`] if the `videotoolbox` feature (native
     ///   `VTDecompressionSession`) or the `ffmpeg`/`cuda` fallback is available, else Software.
     /// - Linux: [`Backend::Cuda`] if compiled with `--features cuda`; else [`Backend::Ffmpeg`].
+    ///
     /// Real *runtime* auto-detection (probe the GPU, fall back to Software) is a future enhancement.
     pub fn preferred() -> Backend {
         if cfg!(target_os = "macos") {
             #[cfg(any(feature = "videotoolbox", feature = "ffmpeg", feature = "cuda"))]
             {
-                return Backend::VideoToolbox;
+                Backend::VideoToolbox
             }
             #[cfg(not(any(feature = "videotoolbox", feature = "ffmpeg", feature = "cuda")))]
             {
@@ -675,7 +676,11 @@ mod tests {
     fn preferred_backend_matches_platform() {
         let b = Backend::preferred();
         if cfg!(target_os = "macos") {
-            if cfg!(any(feature = "videotoolbox", feature = "ffmpeg", feature = "cuda")) {
+            if cfg!(any(
+                feature = "videotoolbox",
+                feature = "ffmpeg",
+                feature = "cuda"
+            )) {
                 assert_eq!(b, Backend::VideoToolbox);
             } else {
                 assert_eq!(b, Backend::Software);

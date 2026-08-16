@@ -75,7 +75,7 @@ class EpisodeScorer:
             Dict mapping episode_index → quality metrics dict
         """
         scores = {}
-        for ep_idx in range(dataframe.num_episodes()):
+        for ep_idx in range(dataframe.num_episodes):
             scores[ep_idx] = self.score_episode(
                 dataframe,
                 ep_idx,

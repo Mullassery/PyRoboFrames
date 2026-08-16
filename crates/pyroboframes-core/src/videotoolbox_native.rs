@@ -24,7 +24,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use apple_cf::cm::{CMBlockBuffer, CMFormatDescription, CMSampleBuffer, CMSampleTimingInfo, CMTime};
+use apple_cf::cm::{
+    CMBlockBuffer, CMFormatDescription, CMSampleBuffer, CMSampleTimingInfo, CMTime,
+};
 use apple_cf::cv::CVPixelBuffer;
 use apple_cf::raw;
 use videotoolbox::decompression::{DecodedFrame, DecompressionSession};
@@ -114,8 +116,9 @@ fn create_h264_format_description(sps: &[u8], pps: &[u8]) -> Result<CMFormatDesc
             "CMVideoFormatDescriptionCreateFromH264ParameterSets failed: OSStatus {status}"
         )));
     }
-    CMFormatDescription::from_raw(format_desc_ref as *mut std::ffi::c_void)
-        .ok_or_else(|| Error::Decode("CMVideoFormatDescriptionCreateFromH264ParameterSets returned null".into()))
+    CMFormatDescription::from_raw(format_desc_ref as *mut std::ffi::c_void).ok_or_else(|| {
+        Error::Decode("CMVideoFormatDescriptionCreateFromH264ParameterSets returned null".into())
+    })
 }
 
 /// Wraps one AVCC-format compressed sample (already length-prefixed by the
@@ -132,7 +135,10 @@ fn create_sample_buffer(
         .ok_or_else(|| Error::Decode("CMBlockBufferCreateWithMemoryBlock failed".into()))?;
 
     let dts = CMTime::new(start_time as i64, timescale as i32);
-    let pts = CMTime::new(start_time as i64 + rendering_offset as i64, timescale as i32);
+    let pts = CMTime::new(
+        start_time as i64 + rendering_offset as i64,
+        timescale as i32,
+    );
     let dur = CMTime::new(duration as i64, timescale as i32);
     let timing = CMSampleTimingInfo::with_times(dur, pts, dts);
 
@@ -214,8 +220,8 @@ pub struct NativeVideoToolboxFile {
 
 impl NativeVideoToolboxFile {
     pub fn open(file: &Path) -> Result<Self> {
-        let f = File::open(file)
-            .map_err(|e| Error::Decode(format!("open {}: {e}", file.display())))?;
+        let f =
+            File::open(file).map_err(|e| Error::Decode(format!("open {}: {e}", file.display())))?;
         let size = f
             .metadata()
             .map_err(|e| Error::Decode(format!("stat {}: {e}", file.display())))?
@@ -346,7 +352,8 @@ impl NativeVideoToolboxFile {
             decoded += 1;
         }
 
-        self.collector.wait_until_at_least(decoded, DECODE_WAIT_TIMEOUT);
+        self.collector
+            .wait_until_at_least(decoded, DECODE_WAIT_TIMEOUT);
         let frames = self.collector.drain();
         if frames.len() < decoded {
             return Err(Error::Decode(format!(
@@ -390,7 +397,11 @@ impl NativeVideoToolboxDecoder {
         }
     }
 
-    pub fn decode_at(&mut self, file: &Path, timestamp_s: f64) -> Result<(CVPixelBuffer, u32, u32)> {
+    pub fn decode_at(
+        &mut self,
+        file: &Path,
+        timestamp_s: f64,
+    ) -> Result<(CVPixelBuffer, u32, u32)> {
         if !self.files.contains_key(file) {
             let opened = NativeVideoToolboxFile::open(file)?;
             self.files.insert(file.to_path_buf(), opened);
@@ -415,14 +426,23 @@ mod tests {
         let mp4_path = dir.join("clip.mp4");
         let status = Command::new("ffmpeg")
             .args([
-                "-v", "error", "-y",
-                "-f", "lavfi",
-                "-i", &format!("testsrc=size={width}x{height}:rate=10"),
-                "-frames:v", "20",
-                "-pix_fmt", "yuv420p",
-                "-c:v", "libx264",
-                "-profile:v", "baseline", // no B-frames: decode order == display order
-                "-g", "10",
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                &format!("testsrc=size={width}x{height}:rate=10"),
+                "-frames:v",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:v",
+                "libx264",
+                "-profile:v",
+                "baseline", // no B-frames: decode order == display order
+                "-g",
+                "10",
             ])
             .arg(&mp4_path)
             .status()
@@ -474,7 +494,7 @@ mod tests {
         // include row-alignment padding, so check the real invariant
         // (>= 3 bytes/pixel, full slice == height * stride) rather than
         // assuming a tightly-packed `width * height * 3`.
-        assert_eq!(pixel_buffer.pixel_format(), raw::kCVPixelFormatType_24RGB as u32);
+        assert_eq!(pixel_buffer.pixel_format(), raw::kCVPixelFormatType_24RGB);
         assert!(pixel_buffer.bytes_per_row() >= (width * 3) as usize);
         assert_eq!(bytes.len(), height as usize * pixel_buffer.bytes_per_row());
     }

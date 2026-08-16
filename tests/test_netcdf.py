@@ -117,5 +117,5 @@ def test_convert_netcdf_lerobot_loadable(tmp_path):
     convert_netcdf(path, out_dir)
 
     ds = prf.RoboFrameDataset.from_path(out_dir)
-    assert ds.num_episodes() == 3
-    assert ds.total_frames() == 30
+    assert ds.num_episodes == 3
+    assert ds.num_frames == 30

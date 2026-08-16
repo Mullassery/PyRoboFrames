@@ -63,10 +63,12 @@ def test_same_script_conformance_cpu_vs_auto(tmp_path):
 
 
 def _to_numpy(v):
-    """Bring an array from any backend back to NumPy for comparison."""
-    if hasattr(v, "__array__"):
-        return np.asarray(v)
-    try:  # torch tensors
+    """Bring an array from any backend back to NumPy for comparison.
+
+    Torch tensors expose `__array__` regardless of device, but it only actually works for
+    CPU tensors (MPS/CUDA raise `TypeError`) — so a non-CPU torch tensor must be moved home
+    via `.cpu()` *before* falling back to the generic `__array__` duck-typed path.
+    """
+    if hasattr(v, "cpu") and hasattr(v, "numpy"):  # torch tensor, any device
         return v.cpu().numpy()
-    except AttributeError:
-        return np.asarray(v)
+    return np.asarray(v)

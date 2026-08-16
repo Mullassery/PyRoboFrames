@@ -179,7 +179,7 @@ class DistributedLoader:
 
         # Create sampler
         self.sampler = DistributedSampler(
-            num_episodes=dataset.num_episodes(),
+            num_episodes=dataset.num_episodes,
             num_replicas=world_size,
             rank=rank,
             shuffle=shuffle,
@@ -209,9 +209,7 @@ class DistributedLoader:
         """Number of batches for this worker."""
         num_episodes = len(self.sampler)
         # Approximate batches (true count depends on episode length)
-        avg_episode_length = self.dataset.total_frames() / max(
-            1, self.dataset.num_episodes()
-        )
+        avg_episode_length = self.dataset.num_frames / max(1, self.dataset.num_episodes)
         total_frames = num_episodes * avg_episode_length
         return int(math.ceil(total_frames / self.batch_size))
 
@@ -461,7 +459,7 @@ class RayDistributedLoader:
         self.loader_kwargs = loader_kwargs
 
         self._dataset = RoboFrameDataset.from_path(dataset_path)
-        self._episodes = shard_episodes(self._dataset.num_episodes(), world_size, rank)
+        self._episodes = shard_episodes(self._dataset.num_episodes, world_size, rank)
         self._loader_kwargs = {
             **loader_kwargs,
             "episodes": self._episodes,
@@ -495,7 +493,7 @@ class RayDistributedLoader:
         return iter(loader)
 
     def __len__(self) -> int:
-        avg = self._dataset.total_frames() / max(1, self._dataset.num_episodes())
+        avg = self._dataset.num_frames / max(1, self._dataset.num_episodes)
         total = len(self._episodes) * avg
         batch_size = self.loader_kwargs.get("batch_size", 32)
         return max(1, int(math.ceil(total / batch_size)))

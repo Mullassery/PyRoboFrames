@@ -35,10 +35,15 @@ use pyroboframes_core::window::WindowSpec;
 /// `ffmpeg` feature, else an error explaining what's missing.
 #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
 fn new_frame_decoder_impl() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
-    Ok(Box::new(pyroboframes_core::decode::VideoToolboxDecoder::default()))
+    Ok(Box::new(
+        pyroboframes_core::decode::VideoToolboxDecoder::default(),
+    ))
 }
 
-#[cfg(all(not(all(target_os = "macos", feature = "videotoolbox")), feature = "ffmpeg"))]
+#[cfg(all(
+    not(all(target_os = "macos", feature = "videotoolbox")),
+    feature = "ffmpeg"
+))]
 fn new_frame_decoder_impl() -> pyroboframes_core::Result<Box<dyn Decoder + Send>> {
     Ok(Box::new(pyroboframes_core::decode::FfmpegDecoder::default()))
 }
@@ -142,6 +147,14 @@ impl RoboFrameDataset {
     #[getter]
     fn cameras(&self) -> Vec<String> {
         self.dataset.cameras()
+    }
+
+    /// The dataset's root directory (the directory holding `meta/`, `data/`, `videos/`) — the
+    /// same path originally passed to [`RoboFrameDataset.from_path`]. Needed by callers (e.g.
+    /// `DatasetValidator`) that resolve video/shard files relative to the dataset root.
+    #[getter]
+    fn path(&self) -> PathBuf {
+        self.dataset.root().to_path_buf()
     }
 
     /// Validate dataset metadata integrity (frame-range contiguity, lengths, timestamps, totals).

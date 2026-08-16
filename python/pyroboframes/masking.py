@@ -84,7 +84,7 @@ class MaskedDataFrame:
         """Print coverage report for all episodes."""
         report_lines = ["Coverage Report:", "================"]
 
-        for ep_idx in range(self._df.num_episodes()):
+        for ep_idx in range(self._df.num_episodes):
             coverage = self.coverage_by_column(ep_idx)
             report_lines.append(f"\nEpisode {ep_idx}:")
             for col, cov in coverage.items():
@@ -196,7 +196,7 @@ class SensorHealthMonitor:
         """Compute failure rate (% missing) for each column across all episodes."""
         all_coverage = {}
 
-        for ep_idx in range(self._df.num_episodes()):
+        for ep_idx in range(self._df.num_episodes):
             ep_coverage = MaskedDataFrame(self._df).coverage_by_column(ep_idx)
             for col, cov in ep_coverage.items():
                 if col not in all_coverage:
@@ -216,7 +216,7 @@ class SensorHealthMonitor:
             Episode indices to exclude from training
         """
         failed = []
-        for ep_idx in range(self._df.num_episodes()):
+        for ep_idx in range(self._df.num_episodes):
             masked = MaskedDataFrame(self._df)
             coverage = masked.coverage_by_column(ep_idx)
             failure_rate = 1.0 - np.mean(list(coverage.values()))

@@ -110,7 +110,7 @@ class DatasetVersion:
                 "tag": tag,
                 "created": datetime.now().isoformat(),
                 "description": description,
-                "episodes": new_dataframe.num_episodes(),
+                "episodes": new_dataframe.num_episodes,
             }
         )
         self._metadata["current"] = tag

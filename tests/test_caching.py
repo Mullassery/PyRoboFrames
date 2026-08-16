@@ -14,9 +14,8 @@ def test_episode_cache_returns_consistent_arrays(tmp_path):
     from pyroboframes.episode_cache import EpisodeCache
     import pyroboframes as prf
 
-    ds = prf.RoboFrameDataset.from_path(
-        str(make_dataset(tmp_path, episodes=3, length=10))
-    )
+    make_dataset(tmp_path, episodes=3, length=10)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
     cache = EpisodeCache(ds, max_episodes=3, cameras=[], output="numpy")
 
     ep0_first = cache.get_episode(0)
@@ -29,9 +28,8 @@ def test_episode_cache_lru_eviction(tmp_path):
     from pyroboframes.episode_cache import EpisodeCache
     import pyroboframes as prf
 
-    ds = prf.RoboFrameDataset.from_path(
-        str(make_dataset(tmp_path, episodes=4, length=10))
-    )
+    make_dataset(tmp_path, episodes=4, length=10)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
     cache = EpisodeCache(ds, max_episodes=2, cameras=[], output="numpy")
 
     cache.get_episode(0)
@@ -49,8 +47,8 @@ def test_episode_cache_arrays_have_correct_shape(tmp_path):
     from pyroboframes.episode_cache import EpisodeCache
     import pyroboframes as prf
 
-    root = make_dataset(tmp_path, episodes=2, length=15)
-    ds = prf.RoboFrameDataset.from_path(str(root))
+    make_dataset(tmp_path, episodes=2, length=15)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
     cache = EpisodeCache(ds, max_episodes=4, cameras=[], output="numpy")
 
     ep = cache.get_episode(0)
@@ -63,9 +61,8 @@ def test_episode_cache_clear(tmp_path):
     from pyroboframes.episode_cache import EpisodeCache
     import pyroboframes as prf
 
-    ds = prf.RoboFrameDataset.from_path(
-        str(make_dataset(tmp_path, episodes=3, length=5))
-    )
+    make_dataset(tmp_path, episodes=3, length=5)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
     cache = EpisodeCache(ds, max_episodes=3, cameras=[], output="numpy")
     cache.get_episode(0)
     cache.get_episode(1)
@@ -79,9 +76,8 @@ def test_episode_cache_prefetch_nonblocking(tmp_path):
     import pyroboframes as prf
     import time
 
-    ds = prf.RoboFrameDataset.from_path(
-        str(make_dataset(tmp_path, episodes=3, length=5))
-    )
+    make_dataset(tmp_path, episodes=3, length=5)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
     cache = EpisodeCache(ds, max_episodes=3, cameras=[], output="numpy")
 
     # prefetch should return immediately.

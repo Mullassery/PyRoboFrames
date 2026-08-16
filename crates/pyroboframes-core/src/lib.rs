@@ -24,9 +24,9 @@ pub mod sampler;
 pub mod split;
 pub mod stats;
 pub mod validate;
-pub mod window;
 #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
 pub mod videotoolbox_native;
+pub mod window;
 
 pub use decode::{Decoder, Frame};
 

@@ -274,20 +274,31 @@ def _resize_mlx(x, out_h: int, out_w: int, interpolation: str):
 
 
 def _resize_torch(x, out_h: int, out_w: int, interpolation: str):
-    """Resize using Torch (CPU/CUDA, includes MPS for macOS)."""
+    """Resize using Torch (CPU/CUDA, includes MPS for macOS).
+
+    Matches the NumPy backend's contract: bilinear returns float32, nearest preserves the
+    input dtype (`F.interpolate` requires a floating dtype regardless of mode, so nearest
+    casts back to the original dtype afterward rather than skipping the float conversion).
+    """
     import torch
     import torch.nn.functional as F
 
+    orig_dtype = x.dtype
     x_t = torch.from_numpy(x).float()
     x_t = x_t.permute(0, 3, 1, 2)
 
     mode = "nearest" if interpolation == "nearest" else "bilinear"
-    align_corners = mode == "bilinear"
+    # `align_corners` is only a valid kwarg for the interpolating modes (bilinear/bicubic/...);
+    # torch raises ValueError if it's passed as non-None for "nearest".
+    align_corners = True if mode == "bilinear" else None
     x_resized = F.interpolate(
         x_t, size=(out_h, out_w), mode=mode, align_corners=align_corners
     )
 
-    return x_resized.permute(0, 2, 3, 1).numpy()
+    out = x_resized.permute(0, 2, 3, 1).numpy()
+    if interpolation == "nearest":
+        out = out.astype(orig_dtype, copy=False)
+    return out
 
 
 def _normalize_mlx(x, mean, std, scale: float):

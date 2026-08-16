@@ -1,187 +1,125 @@
-# PyRoboFrames Development Roadmap
+# PyRoboFrames — Honest Status
 
-**Current Version:** v1.1.0  
-**Last Updated:** July 2026  
-**Status:** Beta for LeRobot dataset loading; advanced formats in development
+**Current Version:** v2.4.0
+**Last Updated:** 2026-08-16
+**Status:** Beta. Core LeRobot loading + native macOS video decode are solid and tested;
+other formats and distributed/streaming features are real but less battle-tested.
 
----
-
-## ✅ Completed Milestones (v1.0.0 - v1.1.0)
-
-### v1.0.0 — Core Dataset Loading ✅
-- ✅ LeRobot dataset support
-- ✅ Episode prefetching with LRU cache
-- ✅ Multi-output formats (PyTorch, NumPy, JAX)
-- ✅ Hardware video decode (VideoToolbox, NVDEC)
-- ✅ Batch loading with worker threads
-
-### v1.0.2 — Security Hardening ✅
-- ✅ **HIGH:** Pin all 6 dependencies to exact versions
-- ✅ **HIGH:** S3/GCS credential handling guide (use IAM roles)
-- ✅ **MEDIUM:** Path traversal protection (validate dataset paths)
-- ✅ **MEDIUM:** Hardware decode fallback warnings
-- ✅ **Audit:** Security audit completed (SECURITY_AUDIT.md)
-- ✅ **Guide:** Deployment security guide (DEPLOYMENT_SECURITY.md)
-- ✅ **Error Messages:** 7 detailed error types with recovery steps
+This file exists to say plainly what works, what's rough, and what's aspirational —
+`README.md` documents the intended public API; this file is the "have we actually
+verified this" companion.
 
 ---
 
-## 🔒 Security Implementation Status
+## 🟢 Solid (real implementation, real test coverage)
 
-### HIGH Priority Issues — ✅ FIXED
-- [x] Floating dependency versions
-  - **Impact:** Supply chain vulnerability
-  - **Fix:** Pinned all 6 dependencies to exact versions
-  - **Timeline:** ✅ v1.0.2
+- **LeRobot v3.0 dataset reading** — native Rust core (`crates/pyroboframes-core`).
+  Episode indexing, temporal windowing, train/val split, per-feature stats, batch
+  loading with worker threads. Extensively covered by `cargo test` (75 unit tests) and
+  `pytest` (`tests/test_loader.py`, `test_dataset_loaders.py`, etc.).
+- **VideoToolbox hardware decode (macOS/Apple Silicon)** — a real, in-process
+  `VTDecompressionSession`: MP4 demux + `CMSampleBuffer` construction in Rust, decoded
+  frames come back as a real IOSurface-backed `CVPixelBuffer`. Not a shell-out to the
+  `ffmpeg` CLI (a subprocess boundary can only hand back copied bytes; this stays
+  in-process). Verified on real Apple Silicon hardware: `crates/pyroboframes-core/src/videotoolbox_native.rs`'s
+  test module generates a real H.264 clip via `ffmpeg`, decodes it through the real
+  `VTDecompressionSession` path, confirms genuine IOSurface backing, and cross-validates
+  hardware-decoded pixels against `ffmpeg`'s software decode of the same bitstream.
+  **Known scope limits:** H.264 only (no HEVC parameter-set extraction yet); decode-order
+  reordering handles the no-B-frames case and isolated lookups correctly, not a full
+  streaming reorder buffer.
+- **FFmpeg / NVDEC fallback decode paths** — cross-platform, real (shells out to the
+  `ffmpeg` CLI), used when `videotoolbox` isn't available or on Linux.
+- **MCAP / ROS2 bag → Parquet conversion** — native Rust, real (not a stub); covered by
+  `cargo test` (`mcap::tests`, `rosbag::tests`).
+- **HDF5 / NetCDF / RLDS → LeRobot conversion** — real readers using `h5py` / `xarray`+
+  `netCDF4` / `tensorflow_datasets` respectively (all optional dependencies; a clear
+  `ImportError` is raised if missing, not a silent no-op). Covered by
+  `tests/test_hdf5.py`, `test_netcdf.py`, `test_dataset_loaders.py` (RLDS tests
+  `importorskip` if `tensorflow_datasets` isn't installed).
+- **S3 / GCS dataset access** — real, via `fsspec` + `s3fs`/`gcsfs`. Downloads to a local
+  cache directory and reads from there — **this is on-demand local caching, not a true
+  zero-copy remote stream.** Construction and error-path tested
+  (`tests/test_distributed.py`); a full download round-trip against a real bucket isn't
+  exercised by the offline test suite (no test infrastructure for that).
+- **Multi-framework array output** — NumPy (default), PyTorch (`device="cpu"/"cuda"/"mps"`),
+  MLX, JAX. `pyroboframes.backend`/`transforms`/`unified_outputs` resolve a fallback
+  chain (CV-CUDA → MLX → Torch → NumPy) so the same script degrades gracefully across
+  hardware.
+- **Distributed loading (PyTorch)** — `DistributedSampler`/`DistributedLoader` do real
+  episode sharding with no overlap across ranks; unit-tested directly
+  (`test_shard_episodes_*`).
+- **Filtering / masking / quality scoring / augmentation / versioning** — real,
+  dependency-free NumPy/Arrow implementations, each with direct test coverage.
 
-- [x] Insecure credential handling
-  - **Impact:** Long-term credentials in code
-  - **Fix:** Documentation and best practices (DEPLOYMENT_SECURITY.md)
-  - **Timeline:** ✅ v1.0.2
+## 🟡 Real but thinner coverage
 
-### MEDIUM Priority Issues — ✅ FIXED
-- [x] Path traversal vulnerabilities
-  - **Impact:** Directory escape attacks on dataset paths
-  - **Fix:** Path validation in validate_dataset_path()
-  - **Timeline:** ✅ v1.1.0
+- **Ray distributed loading (`RayDistributedLoader`)** — real integration code, but only
+  its import/construction path is tested in this repo's offline suite (no `ray` cluster
+  in CI). If you rely on this, test it against your own cluster before trusting it.
+- **Streaming ingestion (MQTT/Kafka)** — real `MQTTStreamer`/`KafkaStreamer` with a
+  thread-safe message buffer and time-windowed alignment; not exercised against a live
+  broker in the test suite.
+- **3D occupancy grid / LiDAR processing** (`occupancy_3d.py`) — real NumPy
+  implementations; the surface-normal computation silently falls back to zero-vectors
+  without `scikit-learn` installed (a `UserWarning` is emitted — check for it if you
+  depend on real normals, don't just check the return shape).
+- **GPU-acceleration transforms** (`gpu_acceleration.py`) — real CuPy/MLX/NumPy paths;
+  the `scipy`-backed resize/filter paths need `scipy<1.13` under this package's pinned
+  `numpy==1.24` (newer `scipy` requires `numpy>=1.26.4` and fails to import).
 
-- [x] Silent hardware degradation
-  - **Impact:** Unpredictable performance on non-GPU hardware
-  - **Fix:** Hardware capability checks and fallback warnings
-  - **Timeline:** ✅ v1.1.0
+## 🔴 Known gaps / not done
 
-- [x] No user-friendly error messages
-  - **Impact:** Poor debugging of dataset loading failures
-  - **Fix:** Added error_messages.py with 7 dataset-specific error types
-  - **Timeline:** ✅ v1.1.0
+- **True zero-copy array handoff (DLPack, skipping NumPy entirely)** — decode-to-buffer
+  is zero-copy on macOS as of v2.3.0, but `Loader`'s batch path still copies frame bytes
+  into one combined `[batch, H, W, 3]` NumPy array to build a batch from independent
+  per-frame buffers. Not something zero-copy decode alone removes; still future work.
+- **HEVC decode** in the native VideoToolbox path.
+- **Only macOS (Apple Silicon) wheels published to PyPI.** No Linux or Windows wheel has
+  been published; Linux/Windows users build from the source distribution (requires a
+  Rust toolchain + `ffmpeg` at build time). Linux `aarch64` and Windows haven't been
+  validated at all.
+- **`numpy==1.24` pin friction** — hard-pinned for the compiled extension's ABI and the
+  Parquet path, but recent `scipy`/`scikit-learn`/`pandas` releases require
+  `numpy>=1.26`. Real, documented friction (see `SECURITY.md`), not silently papered
+  over — pin companion packages below their numpy-2-requiring thresholds.
+- **No adversarial-input hardening.** Format parsers (Parquet/MP4/HDF5/NetCDF/MCAP)
+  assume trusted input; none have been fuzz-tested. `pyroboframes.security.validate_dataset_path()`
+  exists but most entry points don't call it automatically — see `SECURITY.md`.
 
----
+## Fixed this release (v2.4.0)
 
-## 🔍 Competitive Gaps vs Market
-
-Based on analysis of dataset loading market (Hugging Face Datasets, PyArrow, torchvision, TensorFlow), these gaps exist:
-
-### CRITICAL (Blocks Adoption for Non-LeRobot)
-- **LeRobot-only support** — Cannot load RLDS, HDF5, NetCDF (only formats in README)
-  - **Market Impact:** Robot teams locked into single dataset format
-  - **Recommended Fix:** Multi-format support in v1.3-1.4 is on track
-  - **Why:** Robot learning has 5+ dataset formats; single-format is limiting
-
-### HIGH (Reduces Addressable Market)
-- **VideoToolbox decode is now genuinely zero-copy (v1.4.0)** — the macOS
-  decode path (`videotoolbox` feature) drives `VTDecompressionSession`
-  directly (real MP4 demux + CMSampleBuffer construction, no `ffmpeg` CLI
-  subprocess), producing an IOSurface-backed `CVPixelBuffer` in-process.
-  Verified with real hardware decode tests, including a pixel-level
-  cross-check against ffmpeg's software decode of the same bitstream
-  (`crates/pyroboframes-core/src/videotoolbox_native.rs`).
-  - **Still not done:** the numpy-array batch path (`Loader`) still copies
-    frame bytes into a combined array (`Frame::to_rgb24_bytes`) — that's an
-    inherent cost of building one combined `[batch, H, W, 3]` array from
-    many independent frames, not something zero-copy decode alone removes.
-    A true zero-copy `mx.array` handoff via DLPack (bypassing numpy
-    entirely) is still future work.
-  - **Why:** Memory is the bottleneck for 100GB+ datasets
-
-- **Distributed loading incomplete** — Ray integration not fully tested
-  - **Market Impact:** Teams cannot distribute loading across clusters
-  - **Timeline:** v1.3.0 (Q4 2026)
-  - **Why:** Enterprise robot learning requires distributed pipelines
-
-- **No S3/GCS streaming** — Must download datasets to local disk
-  - **Competitor Advantage:** Hugging Face Datasets streams from cloud
-  - **Timeline:** v2.0.0 (Q1 2027)
-  - **Why:** Avoids massive local storage requirements
-
-### MEDIUM (Nice-to-Have)
-- **Hardware decode fallback silent** — CPU fallback 10x slower but no warning
-  - **Timeline:** v1.2.0 (Q3 2026) for better warnings
-
----
-
-## 📋 Roadmap
-
-### v1.2.0 (Q3 2026) — Zero-Copy MLX + Temporal Windows
-- [x] Real VideoToolbox hardware decode (VTDecompressionSession, IOSurface-backed
-      CVPixelBuffer) — delivered v1.4.0
-- [ ] True zero-copy MLX arrays via DLPack (no intermediate numpy)
-- [ ] Temporal window edge case handling
-- [ ] Better CPU fallback warnings
-- [ ] Validation suite for temporal queries
-
-### v1.3.0 (Q4 2026) — Distributed Loading + HDF5
-- [ ] Ray distributed loading (working implementation)
-- [ ] HDF5 dataset support
-- [ ] Performance benchmarks across hardware
-
-### v1.4.0 (Q1 2027) — Additional Formats
-- [ ] RLDS (Open X-Embodiment datasets)
-- [ ] NetCDF support
-- [ ] Proprietary format adapters (plugin system)
-
-### v2.0.0 (Q1 2027) — Advanced Features
-- [ ] Data augmentation pipeline
-- [ ] Offline reinforcement learning integration
-- [ ] Multi-dataset batch loading
-- [ ] Streaming from S3/GCS
-
----
-
-## Known Limitations (v1.1.0)
-
-### 🔴 NOT Implemented (Despite README Claims)
-- ❌ RLDS format support (coming v1.4.0)
-- ❌ HDF5 format support (coming v1.3.0)
-- ❌ NetCDF support (coming v1.4.0)
-
-### 🟡 Experimental Features
-- 🔄 Zero-copy MLX array handoff via DLPack (decode itself is zero-copy as
-  of v1.4.0; the numpy-array batch path still copies — see above)
-- 🔄 Ray distributed loading (incomplete, not fully tested)
-- 🔄 Temporal windows (edge cases need validation)
-- 🔄 Hardware video decode fallback (warning not displayed)
-
-### 🟢 Working/Stable
-- ✅ LeRobot dataset loading
-- ✅ Episode prefetching
-- ✅ Multi-output formats (PyTorch, NumPy, JAX)
-- ✅ Native VideoToolbox hardware decode (macOS, `videotoolbox` feature)
-- ✅ Hardware video decode (VideoToolbox, NVDEC)
-- ✅ Batch loading
-
-### 🚫 Not Shipped
-- ❌ Real-time data streaming (prerecorded datasets only)
-- ❌ Multi-language support (Python only)
-- ❌ GUI/interactive visualization
+A round of correctness fixes surfaced during a fresh audit pass — see `CHANGELOG.md` for
+full detail. Highlights: `RoboFrameDataset.num_episodes`/`.fps`/`.cameras` were PyO3
+*properties*, but several call sites across the public API (`DatasetValidator`,
+`EpisodeCache`, `EpisodeFilter`, `MaskedDataFrame`, `DatasetVersion`, every
+`distributed.py` entry point, `EpisodeScorer`) called them as *methods*, which crashed
+with `TypeError` on first use against a real dataset. `DatasetValidator.validate()`
+crashed on every episode (`.dataset.path()` didn't exist — added a real `path` getter).
+`transforms.Resize(interpolation="nearest")` crashed on the Torch backend and, once
+fixed, was found to also violate its own documented dtype-preservation contract. Also
+removed ~700 lines of dead code (`cli_workflow.py`, `server_workflow.py`, two `examples/mcp_*.py`
+scripts, an unpackaged top-level `pyroboframes/` directory) that returned hardcoded fake
+data and had zero real callers — leftover from an unrelated project template, along with
+the README boilerplate from the same source.
 
 ---
 
 ## Hardware Support
 
-Prebuilt wheels available for:
-- ✅ macOS (Apple Silicon M1/M2/M3)
-- ✅ Linux (x86_64)
-- ❌ Linux (aarch64) — needs testing
-- ❌ Windows — not supported
-
----
-
-## Performance Notes
-
-Current observations:
-- Apple M-series: Fast hardware decode
-- Intel/AMD: CPU fallback is slow (benchmark first!)
-- Always test on your target hardware
-
----
+Prebuilt wheels:
+- ✅ macOS (Apple Silicon, arm64) — `videotoolbox` feature enabled
+- ❌ macOS (Intel) — not published; should build from source with the `ffmpeg` feature
+- ❌ Linux (x86_64/aarch64) — not published; build from source (`ffmpeg` feature)
+- ❌ Windows — not supported/tested
 
 ## Dependencies
 
-All pinned to exact versions:
+Hard-pinned (see `pyproject.toml` for the authoritative list):
 ```
-torch==2.0.0
-numpy==1.24.3
-mlx==0.0.8
+numpy==1.24
+pyarrow==14
 ```
-
-See `pyproject.toml` for full list.
+Optional extras (`mlx`, `dev`) and format-specific optional imports (`h5py`, `xarray`,
+`netCDF4`, `tensorflow_datasets`, `fsspec`+`s3fs`/`gcsfs`, `torch`, `jax`, `scipy`,
+`scikit-learn`) are not hard dependencies — install what you need.
