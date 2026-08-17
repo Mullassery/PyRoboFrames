@@ -70,6 +70,9 @@ from ._format_registry import (
     load_dataset,
 )
 
+# MCP 2.0 Support (v1.2+) — AI-native ML dataset metadata & discovery
+from ._mcp_connector import DatasetMetadata
+
 # Public aliases for depth and calibration classes
 PointCloud = PointCloudPy
 CameraIntrinsics = CameraIntrinsicsPy
@@ -176,6 +179,8 @@ __all__ = [
     "HDF5Loader",
     "get_registry",
     "load_dataset",
+    # MCP 2.0 (v1.2+)
+    "DatasetMetadata",
 ]
 
 __version__: str = _core.__version__

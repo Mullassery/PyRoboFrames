@@ -1,0 +1,25 @@
+[mcp]
+enabled = true
+port = 8771
+discovery_method = "stdio"
+
+[mcp.tools]
+search_datasets = true
+list_datasets = true
+get_dataset_info = true
+get_frame_metadata = true
+list_annotations = true
+get_annotation = true
+verify_dataset_integrity = true
+get_dataset_stats = true
+search_frames = true
+export_dataset_manifest = true
+detect_format_compatibility = true
+
+[mcp.security]
+require_auth = false
+allowed_models = []
+
+[mcp.performance]
+cache_results = true
+cache_ttl_seconds = 3600

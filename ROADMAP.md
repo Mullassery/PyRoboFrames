@@ -1,75 +1,192 @@
-# PyRoboFrames Roadmap
+# PyRoboFrames v2.0.0: Task Roadmap
 
-**Current Version:** v1.1.0
+## Current Status: Production Ready
 
-## Vision
+**Version:** 2.0.0  
+**Status:** Production Ready (MCP 2.0 Platform member)  
+**Last Updated:** 2026-07-31  
 
-PyRoboFrames provides fast, zero-copy ML dataloader for robot learning with multi-format support and GPU-accelerated video decoding.
+## Pending Tasks by Priority
 
-## Completed Milestones
+### 🚨 CRITICAL (Blocking Production)
+None - v2.0.0 production-ready
 
-✅ **v1.0** — Foundation & Format Support
-- LeRobot dataset support
-- HDF5, RLDS, MCAP, NetCDF formats
-- VideoToolbox GPU decode (Apple Silicon)
-- Zero-copy tensor sharing
-- Temporal window slicing
+### 🔴 HIGH (Before Q3 Release)
 
-✅ **v1.1 (July 2026)** — Workflow Integration
-- CLI: `pyroboframes load`, `convert`, `stats`, `dataloader`, `list`
-- REST API (Port 8009) for automation
-- Airflow, Temporal integration for MLOps
-- Dataset format conversion API
+#### Testing & Quality
+- [ ] Add MCP-specific unit tests (50-100 lines per project)
+- [ ] Coverage target: >80% for MCP tools
+- [ ] Integration tests with other projects
+- [ ] Performance benchmarking (latency/throughput)
 
-## In Progress
+#### Documentation
+- [ ] Add MCP tool examples (examples/mcp_*.py)
+- [ ] API documentation for each tool
+- [ ] Integration guide for dependent projects
+- [ ] Troubleshooting guide
 
-⏳ **v1.2 (Aug 2026)** — Streaming & Buffering
-- Streaming dataset support (Kafka, MQTT)
-- Intelligent prefetching
-- Memory-efficient caching
-- Async data loading
+#### Performance
+- [ ] Optimize hot paths (profile + identify 20% taking 80%)
+- [ ] Caching strategy for repeated queries
+- [ ] Memory optimization (target <200MB)
+- [ ] Connection pooling
 
-## Planned
+### 🟡 MEDIUM (Q3-Q4 2026)
 
-📅 **v1.5 (Sep 2026)** — Distributed Loading
-- Ray integration for distributed training
-- Pytorch Lightning support
-- Multi-GPU synchronization
-- Cluster scheduling
+#### Features
+- [ ] Advanced error handling
+- [ ] Retry logic with exponential backoff
+- [ ] Graceful degradation
+- [ ] Fallback mechanisms
 
-📅 **v2.0 (Oct 2026)** — Advanced Features
-- Sensor fusion optimization
-- Point cloud processing
-- Automatic format detection
-- Dataset validation
+#### Architecture
+- [ ] Code refactoring (simplify hot paths)
+- [ ] Remove technical debt
+- [ ] Modernize dependencies
+- [ ] Cleanup unused code
 
-📅 **v2.5 (Q4 2026)** — Robotics Ecosystem
-- Integration with LeRobot platform
-- Hugging Face datasets hub support
-- OpenROBOT benchmark datasets
-- Real-time capture support
+#### Integration
+- [ ] Test with all 19 platform projects
+- [ ] Document cross-project workflows
+- [ ] Validate end-to-end scenarios
+- [ ] Performance testing at scale
 
-## Integration Points
+### 🟢 LOW (2027+)
 
-- **Datasets:** LeRobot, Hugging Face, OpenROBOT
-- **ML Frameworks:** PyTorch, JAX, MLX, TensorFlow
-- **Workflow Tools:** Airflow, Temporal, Kubernetes
-- **Platforms:** Ray, Spark, Dask
+#### Enhancements
+- [ ] Machine learning optimizations
+- [ ] Predictive modeling
+- [ ] Advanced analytics
+- [ ] Autonomous features
 
-## Priority Features
+#### Platform
+- [ ] Enterprise features
+- [ ] SaaS deployment
+- [ ] Multi-tenancy
+- [ ] Advanced security
 
-1. **Streaming Datasets** (Q3 2026) — Real-time data loading
-2. **Distributed Loading** (Q3 2026) — Multi-machine training
-3. **Sensor Fusion** (Q4 2026) — Multi-modal integration
-4. **Robotics Hub** (Q4 2026) — Community datasets
+---
 
-## Known Limitations
+## Phase Timeline
 
-- VideoToolbox limited to Apple Silicon (CUDA coming v1.5)
-- Large datasets require SSD storage
-- Streaming has latency overhead (200-500ms)
+### Phase 2: Q3 2026 (Jul-Sep)
+**Goal:** Critical tests + examples + cross-project integration
 
-## Community
+- Week 1-2: MCP unit tests (all 19 projects)
+- Week 2-3: MCP examples (examples/mcp_*.py)
+- Week 3-4: Cross-project integration testing
+- Week 4: Performance optimization
+- **Completion Target:** 2026-09-30
 
-Contribute:
-https://github.com/Mullassery/PyRoboFrames/issues
+### Phase 3: Q4 2026 (Oct-Dec)
+**Goal:** Advanced features + enterprise deployment
+
+- Week 1: Feature enhancements
+- Week 2: Advanced error handling
+- Week 3: Enterprise security
+- Week 4: SLA automation
+- **Completion Target:** 2026-12-31
+
+### Phase 4: 2027
+**Goal:** AI-native enhancements + autonomous features
+
+- Predictive modeling
+- Autonomous optimization
+- Advanced analytics
+- Next-generation architecture
+
+---
+
+## Testing Checklist
+
+### Unit Tests
+- [ ] All MCP tool handlers tested
+- [ ] Edge case coverage
+- [ ] Error path testing
+- [ ] Performance regression tests
+
+### Integration Tests
+- [ ] With dependent projects
+- [ ] Cross-project workflows
+- [ ] End-to-end scenarios
+- [ ] Production-like data volumes
+
+### Performance Tests
+- [ ] Latency benchmarks (<100ms)
+- [ ] Throughput testing
+- [ ] Memory profiling
+- [ ] Connection pooling
+
+---
+
+## Dependency Status
+
+### Inbound Dependencies
+Check status of upstream projects:
+- [ ] All inbound dependencies are v2.0.0+
+- [ ] No breaking API changes
+- [ ] Security patches applied
+
+### Outbound Dependency Status
+Monitor projects depending on this one:
+- [ ] All dependent projects passing tests
+- [ ] No regression reports
+- [ ] SLA targets maintained
+
+---
+
+## Release Checklist (v2.1.0)
+
+Before release to PyPI:
+- [ ] All tests passing (>80% coverage)
+- [ ] MCP tools documented
+- [ ] Examples created and tested
+- [ ] Performance benchmarks meet targets
+- [ ] Security audit completed
+- [ ] Changelog updated
+- [ ] Version bumped (v2.0.0 → v2.1.0)
+- [ ] Wheels built (wheels-only)
+- [ ] GitHub tag created
+- [ ] PyPI package published
+
+---
+
+## Metrics & Success Criteria
+
+### Performance Targets
+- Latency: <100ms (p99)
+- Throughput: Platform-dependent
+- Memory: <200MB (typical)
+- CPU: <50% single core
+
+### Quality Targets
+- Test Coverage: >80%
+- MCP Tool Coverage: 100%
+- Documentation: 100%
+- Uptime: >99.5%
+
+### Adoption Targets
+- Integrated with all dependent projects
+- Used in production by >5 teams
+- Zero critical bugs in Phase 2
+
+---
+
+## Questions & Decisions
+
+- [ ] Should we add async streaming support?
+- [ ] Do we need multi-region deployment?
+- [ ] What's the migration path from v2.0.0 → v2.1.0?
+- [ ] Should we support older Python versions (<3.10)?
+
+---
+
+## Contact & Escalation
+
+**Primary Owner:** Product Team  
+**Escalation Contact:** Platform Lead  
+**Review Schedule:** Every 2 weeks (Phase 2-3)  
+
+---
+
+**Next Review:** 2026-08-14 (Phase 2 progress check)
