@@ -38,6 +38,8 @@ pub mod split;
 pub mod stats;
 pub mod streaming;
 pub mod validate;
+#[cfg(all(target_os = "macos", feature = "videotoolbox"))]
+pub mod videotoolbox_native;
 pub mod window;
 
 pub use decode::{Decoder, Frame};

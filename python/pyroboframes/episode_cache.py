@@ -10,7 +10,7 @@ from pyroboframes.episode_cache import EpisodeCache
 cache = EpisodeCache(ds, max_episodes=8)
 
 for epoch in range(10):
-    for ep_idx in range(ds.num_episodes()):
+    for ep_idx in range(ds.num_episodes):
         ep = cache.get_episode(ep_idx)
         states = ep["observation.state"]   # [T, D]
         frames = ep.get("observation.images.top")  # [T, H, W, 3] or None

@@ -58,8 +58,12 @@ def make_dataset(root: str, episodes: int, length: int, vw: int, vh: int) -> int
         {
             "episode_index": pa.array(range(episodes), pa.int64()),
             "length": pa.array([length] * episodes, pa.int64()),
-            "dataset_from_index": pa.array([i * length for i in range(episodes)], pa.int64()),
-            "dataset_to_index": pa.array([(i + 1) * length for i in range(episodes)], pa.int64()),
+            "dataset_from_index": pa.array(
+                [i * length for i in range(episodes)], pa.int64()
+            ),
+            "dataset_to_index": pa.array(
+                [(i + 1) * length for i in range(episodes)], pa.int64()
+            ),
             "data/chunk_index": pa.array([0] * episodes, pa.int64()),
             "data/file_index": pa.array([0] * episodes, pa.int64()),
             f"videos/{CAM}/chunk_index": pa.array([0] * episodes, pa.int64()),
@@ -80,7 +84,9 @@ def make_dataset(root: str, episodes: int, length: int, vw: int, vh: int) -> int
             "observation.state": pa.array(
                 rng.standard_normal((total, 7)).tolist(), pa.list_(pa.float32())
             ),
-            "action": pa.array(rng.standard_normal((total, 7)).tolist(), pa.list_(pa.float32())),
+            "action": pa.array(
+                rng.standard_normal((total, 7)).tolist(), pa.list_(pa.float32())
+            ),
         }
     )
     pq.write_table(data, f"{root}/data/chunk-000/file-000.parquet")
@@ -88,8 +94,20 @@ def make_dataset(root: str, episodes: int, length: int, vw: int, vh: int) -> int
     vdir = f"{root}/videos/{CAM}/chunk-000"
     os.makedirs(vdir)
     subprocess.run(
-        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"testsrc=size={vw}x{vh}:rate=30",
-         "-frames:v", str(total), "-pix_fmt", "yuv420p", f"{vdir}/file-000.mp4"],
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"testsrc=size={vw}x{vh}:rate=30",
+            "-frames:v",
+            str(total),
+            "-pix_fmt",
+            "yuv420p",
+            f"{vdir}/file-000.mp4",
+        ],
         check=True,
     )
     return total
@@ -135,7 +153,9 @@ def main() -> None:
     ap.add_argument("--length", type=int, default=200)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--workers", type=int, nargs="+", default=[0, 1, 2])
-    ap.add_argument("--video-size", type=int, nargs=2, default=[640, 480], metavar=("W", "H"))
+    ap.add_argument(
+        "--video-size", type=int, nargs=2, default=[640, 480], metavar=("W", "H")
+    )
     args = ap.parse_args()
 
     have_ffmpeg = shutil.which("ffmpeg") is not None
@@ -150,8 +170,10 @@ def main() -> None:
         total = make_dataset(root, args.episodes, args.length, vw, vh)
         ds = prf.RoboFrameDataset.from_path(root)
 
-        print(f"\nPyRoboFrames NVIDIA Benchmark — {total} frames "
-              f"({args.episodes} ep × {args.length}), batch={args.batch_size}")
+        print(
+            f"\nPyRoboFrames NVIDIA Benchmark — {total} frames "
+            f"({args.episodes} ep × {args.length}), batch={args.batch_size}"
+        )
         print(f"Video: {vw}x{vh} MP4 (YUV420p)\n")
 
         print("== FFmpeg (CPU decode) baseline ==")
@@ -171,8 +193,12 @@ def main() -> None:
         print("NVDEC Benchmark Note:")
         print("- This benchmark runs the FFmpeg decode path (CPU/software)")
         print("- NVDEC testing requires GPU hardware (RTX 5090, H100, RunPod, etc.)")
-        print("- PyRoboFrames is built with --features cuda; functional sign-off pending")
-        print("- Expected speedup: 3–5× for decode, 1.5–2× end-to-end with GPU transforms")
+        print(
+            "- PyRoboFrames is built with --features cuda; functional sign-off pending"
+        )
+        print(
+            "- Expected speedup: 3–5× for decode, 1.5–2× end-to-end with GPU transforms"
+        )
         print()
 
         # Future: add NVDEC testing here once GPU hardware is available

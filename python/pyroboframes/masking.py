@@ -74,7 +74,9 @@ class MaskedDataFrame:
             else:
                 valid = np.ones(len(col), dtype=bool)
 
-            coverage[col_name] = float(np.sum(valid) / len(valid)) if len(valid) > 0 else 0.0
+            coverage[col_name] = (
+                float(np.sum(valid) / len(valid)) if len(valid) > 0 else 0.0
+            )
 
         return coverage
 
@@ -82,7 +84,7 @@ class MaskedDataFrame:
         """Print coverage report for all episodes."""
         report_lines = ["Coverage Report:", "================"]
 
-        for ep_idx in range(self._df.num_episodes()):
+        for ep_idx in range(self._df.num_episodes):
             coverage = self.coverage_by_column(ep_idx)
             report_lines.append(f"\nEpisode {ep_idx}:")
             for col, cov in coverage.items():
@@ -131,7 +133,9 @@ class MaskedDataFrame:
 
 def interpolate_missing(
     dataframe: RoboticsDataFrame,
-    method: Literal["forward_fill", "backward_fill", "linear", "nearest"] = "forward_fill",
+    method: Literal[
+        "forward_fill", "backward_fill", "linear", "nearest"
+    ] = "forward_fill",
     columns: list[str] | None = None,
     inplace: bool = False,
 ) -> RoboticsDataFrame:
@@ -192,7 +196,7 @@ class SensorHealthMonitor:
         """Compute failure rate (% missing) for each column across all episodes."""
         all_coverage = {}
 
-        for ep_idx in range(self._df.num_episodes()):
+        for ep_idx in range(self._df.num_episodes):
             ep_coverage = MaskedDataFrame(self._df).coverage_by_column(ep_idx)
             for col, cov in ep_coverage.items():
                 if col not in all_coverage:
@@ -200,9 +204,7 @@ class SensorHealthMonitor:
                 all_coverage[col].append(cov)
 
         # Summarize: mean coverage → failure rate
-        return {
-            col: 1.0 - np.mean(covs) for col, covs in all_coverage.items()
-        }
+        return {col: 1.0 - np.mean(covs) for col, covs in all_coverage.items()}
 
     def failure_episodes(self, threshold: float = 0.1) -> list[int]:
         """Get episodes with > threshold missing data.
@@ -214,7 +216,7 @@ class SensorHealthMonitor:
             Episode indices to exclude from training
         """
         failed = []
-        for ep_idx in range(self._df.num_episodes()):
+        for ep_idx in range(self._df.num_episodes):
             masked = MaskedDataFrame(self._df)
             coverage = masked.coverage_by_column(ep_idx)
             failure_rate = 1.0 - np.mean(list(coverage.values()))

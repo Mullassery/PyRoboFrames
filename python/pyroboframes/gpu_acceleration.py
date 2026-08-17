@@ -25,6 +25,7 @@ class GPUTransforms:
         if self.device == "cuda":
             try:
                 import cupy  # noqa: F401
+
                 return "cupy"
             except ImportError:
                 warnings.warn("CuPy not available, falling back to NumPy")
@@ -33,6 +34,7 @@ class GPUTransforms:
         if self.device == "mlx" or self.device == "auto":
             try:
                 import mlx.core as mx  # noqa: F401
+
                 if self.device == "mlx":
                     return "mlx"
                 # For auto, MLX is secondary to CuPy
@@ -42,17 +44,21 @@ class GPUTransforms:
         if self.device == "auto":
             try:
                 import cupy  # noqa: F401
+
                 return "cupy"
             except ImportError:
                 try:
                     import mlx.core  # noqa: F401
+
                     return "mlx"
                 except ImportError:
                     return "numpy"
 
         return "numpy"
 
-    def resize_cupy(self, image: np.ndarray, size: tuple, interpolation: str = "bilinear") -> np.ndarray:
+    def resize_cupy(
+        self, image: np.ndarray, size: tuple, interpolation: str = "bilinear"
+    ) -> np.ndarray:
         """Resize using CuPy (NVIDIA GPU)."""
         try:
             import cupy as cp
@@ -77,7 +83,9 @@ class GPUTransforms:
             warnings.warn(f"CuPy resize failed: {e}, falling back to NumPy")
             return self.resize_numpy(image, size, interpolation)
 
-    def resize_mlx(self, image: np.ndarray, size: tuple, interpolation: str = "bilinear") -> np.ndarray:
+    def resize_mlx(
+        self, image: np.ndarray, size: tuple, interpolation: str = "bilinear"
+    ) -> np.ndarray:
         """Resize using MLX (Apple Silicon GPU)."""
         try:
             import mlx.core as mx
@@ -106,7 +114,9 @@ class GPUTransforms:
             warnings.warn(f"MLX resize failed: {e}, falling back to NumPy")
             return self.resize_numpy(image, size, interpolation)
 
-    def resize_numpy(self, image: np.ndarray, size: tuple, interpolation: str = "bilinear") -> np.ndarray:
+    def resize_numpy(
+        self, image: np.ndarray, size: tuple, interpolation: str = "bilinear"
+    ) -> np.ndarray:
         """Resize using NumPy (CPU fallback)."""
         from scipy import ndimage
 
@@ -123,7 +133,9 @@ class GPUTransforms:
         resized = ndimage.zoom(image, (scale_h, scale_w, 1), order=order)
         return resized.astype(np.uint8)
 
-    def resize(self, image: np.ndarray, size: tuple, interpolation: str = "bilinear") -> np.ndarray:
+    def resize(
+        self, image: np.ndarray, size: tuple, interpolation: str = "bilinear"
+    ) -> np.ndarray:
         """Resize image to target size."""
         if self.backend == "cupy":
             return self.resize_cupy(image, size, interpolation)
@@ -184,7 +196,9 @@ class OpticalFlowEstimator:
     """Optical flow estimation for temporal consistency."""
 
     @staticmethod
-    def estimate_lucas_kanade(frame1: np.ndarray, frame2: np.ndarray, window_size: int = 15) -> np.ndarray:
+    def estimate_lucas_kanade(
+        frame1: np.ndarray, frame2: np.ndarray, window_size: int = 15
+    ) -> np.ndarray:
         """Estimate optical flow using Lucas-Kanade method."""
         try:
             import cv2
@@ -200,7 +214,9 @@ class OpticalFlowEstimator:
             gray1, gray2 = frame1, frame2
 
         # Compute optical flow
-        flow = cv2.calcOpticalFlowFarneback(gray1, gray2, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+        flow = cv2.calcOpticalFlowFarneback(
+            gray1, gray2, None, 0.5, 3, 15, 3, 5, 1.2, 0
+        )
         return flow
 
     @staticmethod
@@ -279,11 +295,11 @@ class TemporalFilter:
 
         # Apply median filter along time axis
         pad = kernel_size // 2
-        padded = np.pad(frames, ((pad, pad), (0, 0), (0, 0), (0, 0)), mode='edge')
+        padded = np.pad(frames, ((pad, pad), (0, 0), (0, 0), (0, 0)), mode="edge")
 
         output = np.zeros_like(frames)
         for t in range(len(frames)):
-            window = padded[t:t + kernel_size]
+            window = padded[t : t + kernel_size]
             output[t] = np.median(window, axis=0).astype(np.uint8)
 
         return output
@@ -299,6 +315,7 @@ class MLXTransforms:
         """Initialize MLX transforms."""
         try:
             import mlx.core as mx
+
             self.mx = mx
             self.available = True
         except ImportError:
@@ -443,6 +460,7 @@ class MPSTransforms:
         """Initialize MPS transforms."""
         try:
             import torch
+
             self.torch = torch
             self.available = torch.backends.mps.is_available()
         except (ImportError, AttributeError):
@@ -492,7 +510,12 @@ class MPSTransforms:
 
         # Resize
         mode = "nearest" if interpolation == "nearest" else "bilinear"
-        resized = F.interpolate(tensor, size=size, mode=mode, align_corners=False if mode == "bilinear" else None)
+        resized = F.interpolate(
+            tensor,
+            size=size,
+            mode=mode,
+            align_corners=False if mode == "bilinear" else None,
+        )
 
         # Reorder back to [B, H, W, C]
         resized = resized.permute(0, 2, 3, 1).contiguous()

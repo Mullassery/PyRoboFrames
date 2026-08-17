@@ -45,7 +45,9 @@ def to_tf_dataset(
     try:
         import tensorflow as tf
     except ImportError:
-        raise ImportError("TensorFlow not installed. Install with: pip install tensorflow")
+        raise ImportError(
+            "TensorFlow not installed. Install with: pip install tensorflow"
+        )
 
     if output_signature is None:
         # Infer from first batch
@@ -58,7 +60,9 @@ def to_tf_dataset(
             yield batch
 
     # Create dataset from generator
-    dataset = tf.data.Dataset.from_generator(generator, output_signature=output_signature)
+    dataset = tf.data.Dataset.from_generator(
+        generator, output_signature=output_signature
+    )
 
     if cache:
         dataset = dataset.cache()
@@ -88,12 +92,16 @@ def _infer_tensor_spec(batch: dict[str, Any]) -> dict[str, Any]:
     specs = {}
     for key, value in batch.items():
         if isinstance(value, np.ndarray):
-            specs[key] = tf.TensorSpec(shape=value.shape, dtype=tf.as_dtype(value.dtype))
+            specs[key] = tf.TensorSpec(
+                shape=value.shape, dtype=tf.as_dtype(value.dtype)
+            )
         elif isinstance(value, (list, tuple)):
             # Assume uniform list of arrays
             if len(value) > 0 and isinstance(value[0], np.ndarray):
                 arr = np.stack(value)
-                specs[key] = tf.TensorSpec(shape=arr.shape, dtype=tf.as_dtype(arr.dtype))
+                specs[key] = tf.TensorSpec(
+                    shape=arr.shape, dtype=tf.as_dtype(arr.dtype)
+                )
         else:
             # Scalar or other
             specs[key] = tf.TensorSpec(shape=(), dtype=tf.as_dtype(type(value)))

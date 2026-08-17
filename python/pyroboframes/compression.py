@@ -95,7 +95,9 @@ class SparseArray:
     Stores present values + indices, handling missing data gracefully.
     """
 
-    def __init__(self, values: np.ndarray | None = None, mask: np.ndarray | None = None):
+    def __init__(
+        self, values: np.ndarray | None = None, mask: np.ndarray | None = None
+    ):
         """Initialize sparse array.
 
         Args:
@@ -103,7 +105,11 @@ class SparseArray:
             mask: Boolean mask [N, D] indicating valid entries
         """
         self.values = np.asarray(values) if values is not None else np.array([])
-        self.mask = np.asarray(mask) if mask is not None else np.ones_like(self.values, dtype=bool)
+        self.mask = (
+            np.asarray(mask)
+            if mask is not None
+            else np.ones_like(self.values, dtype=bool)
+        )
 
     @staticmethod
     def from_dense(values: np.ndarray, sentinel: float = np.nan) -> SparseArray:

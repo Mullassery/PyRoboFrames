@@ -66,7 +66,10 @@ def test_shard_episodes_returns_sorted():
 def test_remote_dataset_from_s3_constructs():
     try:
         from pyroboframes.distributed import RemoteDataset
-        ds = RemoteDataset.from_s3("s3://my-bucket/dataset", cache_dir="/tmp/test_cache")
+
+        ds = RemoteDataset.from_s3(
+            "s3://my-bucket/dataset", cache_dir="/tmp/test_cache"
+        )
         assert ds.remote_uri == "s3://my-bucket/dataset"
         assert "test_cache" in ds.cache_dir
     except ImportError:
@@ -75,6 +78,7 @@ def test_remote_dataset_from_s3_constructs():
 
 def test_remote_dataset_import_error_without_fsspec(monkeypatch):
     import builtins
+
     real_import = builtins.__import__
 
     def _block_fsspec(name, *args, **kwargs):
@@ -85,6 +89,7 @@ def test_remote_dataset_import_error_without_fsspec(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", _block_fsspec)
 
     from pyroboframes.distributed import RemoteDataset
+
     with pytest.raises(ImportError, match="fsspec"):
         RemoteDataset("s3://bucket/path")
 
@@ -104,6 +109,7 @@ def test_ray_distributed_loader_import(tmp_path):
 
 def test_ray_import_error_without_ray(monkeypatch):
     import builtins
+
     real_import = builtins.__import__
 
     def _block_ray(name, *args, **kwargs):
@@ -114,6 +120,7 @@ def test_ray_import_error_without_ray(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", _block_ray)
 
     from pyroboframes.distributed import RayDistributedLoader
+
     with pytest.raises(ImportError, match="ray"):
         # The import error is raised at __init__ time.
         RayDistributedLoader.__new__(RayDistributedLoader).__init__(

@@ -22,7 +22,9 @@ from pyroboframes.sensor_fusion import (
 )
 
 
-def create_synthetic_humanoid_dataset(num_episodes: int = 5, frames_per_episode: int = 500):
+def create_synthetic_humanoid_dataset(
+    num_episodes: int = 5, frames_per_episode: int = 500
+):
     """Create a synthetic humanoid robot dataset for demonstration.
 
     Args:
@@ -39,11 +41,21 @@ def create_synthetic_humanoid_dataset(num_episodes: int = 5, frames_per_episode:
     # Create synthetic tabular features (video would be encoded separately)
     total_frames = num_episodes * frames_per_episode
     features = {
-        "observation.state": np.random.randn(total_frames, 14).astype(np.float32),  # Robot state
-        "observation.gripper_position": np.random.rand(total_frames, 1).astype(np.float32),
-        "observation.depth_stats": np.random.rand(total_frames, 3).astype(np.float32),  # min/mean/max
-        "action": np.random.randn(total_frames, 7).astype(np.float32),  # 7D gripper action
-        "action.gripper": np.random.rand(total_frames, 1).astype(np.float32),  # Gripper command
+        "observation.state": np.random.randn(total_frames, 14).astype(
+            np.float32
+        ),  # Robot state
+        "observation.gripper_position": np.random.rand(total_frames, 1).astype(
+            np.float32
+        ),
+        "observation.depth_stats": np.random.rand(total_frames, 3).astype(
+            np.float32
+        ),  # min/mean/max
+        "action": np.random.randn(total_frames, 7).astype(
+            np.float32
+        ),  # 7D gripper action
+        "action.gripper": np.random.rand(total_frames, 1).astype(
+            np.float32
+        ),  # Gripper command
     }
 
     episode_lengths = [frames_per_episode] * num_episodes
@@ -93,7 +105,9 @@ class HumanoidDataLoader:
             drop_last=True,
         )
 
-        print(f"✓ Loaded dataset: {self.ds.num_frames} frames, {self.ds.num_episodes} episodes")
+        print(
+            f"✓ Loaded dataset: {self.ds.num_frames} frames, {self.ds.num_episodes} episodes"
+        )
 
     def get_multimodal_batch(self) -> dict[str, np.ndarray]:
         """Get a multimodal batch with RGB + depth + state.
@@ -115,12 +129,23 @@ class HumanoidDataLoader:
 
         # Simulate video frames (in practice, these would be decoded from .mp4)
         # Use state to seed random generation for reproducibility
-        rgb_head = (np.random.RandomState(int(state[0, 0])).rand(self.batch_size, 480, 640, 3) * 255).astype(np.uint8)
-        rgb_chest = (np.random.RandomState(int(state[0, 1])).rand(self.batch_size, 480, 640, 3) * 255).astype(np.uint8)
-        rgb_wrist = (np.random.RandomState(int(state[0, 2])).rand(self.batch_size, 480, 640, 3) * 255).astype(np.uint8)
+        rgb_head = (
+            np.random.RandomState(int(state[0, 0])).rand(self.batch_size, 480, 640, 3)
+            * 255
+        ).astype(np.uint8)
+        rgb_chest = (
+            np.random.RandomState(int(state[0, 1])).rand(self.batch_size, 480, 640, 3)
+            * 255
+        ).astype(np.uint8)
+        rgb_wrist = (
+            np.random.RandomState(int(state[0, 2])).rand(self.batch_size, 480, 640, 3)
+            * 255
+        ).astype(np.uint8)
 
         # Simulate depth map
-        depth_wrist = np.random.rand(self.batch_size, 480, 640).astype(np.float32) * 2.0  # 0-2 meters
+        depth_wrist = (
+            np.random.rand(self.batch_size, 480, 640).astype(np.float32) * 2.0
+        )  # 0-2 meters
 
         output = {
             "rgb_head": rgb_head,
@@ -153,7 +178,9 @@ def demonstrate_sensor_fusion():
     print("=" * 70)
 
     # Create synthetic dataset
-    dataset_path = create_synthetic_humanoid_dataset(num_episodes=3, frames_per_episode=200)
+    dataset_path = create_synthetic_humanoid_dataset(
+        num_episodes=3, frames_per_episode=200
+    )
 
     # Initialize dataloader
     dataloader = HumanoidDataLoader(dataset_path, batch_size=8)
@@ -196,7 +223,9 @@ def demonstrate_sensor_fusion():
     # Statistics
     print("\n📊 Batch statistics:")
     print(f"  RGB brightness: {batch['rgb_head'].mean():.1f} (0-255)")
-    print(f"  Depth range: {batch['depth_wrist'].min():.2f}-{batch['depth_wrist'].max():.2f} m")
+    print(
+        f"  Depth range: {batch['depth_wrist'].min():.2f}-{batch['depth_wrist'].max():.2f} m"
+    )
     print(f"  State range: {batch['state'].min():.2f} to {batch['state'].max():.2f}")
     print(f"  Action range: {batch['action'].min():.2f} to {batch['action'].max():.2f}")
 
@@ -246,7 +275,9 @@ def train_step_example(batch: dict[str, np.ndarray]) -> float:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Humanoid multimodal sensor fusion example")
+    parser = argparse.ArgumentParser(
+        description="Humanoid multimodal sensor fusion example"
+    )
     parser.add_argument(
         "--dataset",
         type=str,

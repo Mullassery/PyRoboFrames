@@ -25,6 +25,7 @@ def has_cvcuda() -> bool:
     """Check if cv-cuda is available."""
     try:
         import cvcuda
+
         return True
     except ImportError:
         return False
@@ -47,9 +48,7 @@ class CvCudaResize:
         self.interpolation = interpolation
 
         if not has_cvcuda():
-            raise ImportError(
-                "CvCudaResize requires cv-cuda (pip install cv-cuda)"
-            )
+            raise ImportError("CvCudaResize requires cv-cuda (pip install cv-cuda)")
 
         import cvcuda
 
@@ -106,7 +105,12 @@ class CvCudaNormalize:
     Scales to [0, 1] then standardizes per-channel: (x - mean) / std.
     """
 
-    def __init__(self, mean: list[float] | tuple[float, ...], std: list[float] | tuple[float, ...], scale: float = 255.0):
+    def __init__(
+        self,
+        mean: list[float] | tuple[float, ...],
+        std: list[float] | tuple[float, ...],
+        scale: float = 255.0,
+    ):
         import torch
 
         self.mean = torch.tensor(mean, dtype=torch.float32).view(1, 1, 1, -1)
@@ -114,9 +118,7 @@ class CvCudaNormalize:
         self.scale = float(scale)
 
         if not has_cvcuda():
-            raise ImportError(
-                "CvCudaNormalize requires cv-cuda (pip install cv-cuda)"
-            )
+            raise ImportError("CvCudaNormalize requires cv-cuda (pip install cv-cuda)")
 
     def __call__(self, x: Any) -> Any:
         """Normalize [N,H,W,C] tensor on GPU.
@@ -154,9 +156,7 @@ class CvCudaCenterCrop:
         self.width = width
 
         if not has_cvcuda():
-            raise ImportError(
-                "CvCudaCenterCrop requires cv-cuda (pip install cv-cuda)"
-            )
+            raise ImportError("CvCudaCenterCrop requires cv-cuda (pip install cv-cuda)")
 
     def __call__(self, x: Any) -> Any:
         """Crop [N,H,W,C] tensor on GPU.

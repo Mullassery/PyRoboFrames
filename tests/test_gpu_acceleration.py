@@ -2,7 +2,11 @@
 
 import numpy as np
 import pytest
-from pyroboframes.gpu_acceleration import GPUTransforms, OpticalFlowEstimator, TemporalFilter
+from pyroboframes.gpu_acceleration import (
+    GPUTransforms,
+    OpticalFlowEstimator,
+    TemporalFilter,
+)
 
 
 class TestGPUTransforms:
@@ -24,9 +28,7 @@ class TestGPUTransforms:
         image = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
 
         normalized = transforms.normalize(
-            image,
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
+            image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         )
 
         assert normalized.shape == (480, 640, 3)
@@ -50,9 +52,7 @@ class TestGPUTransforms:
         image = np.full((100, 100, 3), 128, dtype=np.uint8)
 
         normalized = transforms.normalize(
-            image,
-            mean=[0.5, 0.5, 0.5],
-            std=[0.2, 0.2, 0.2]
+            image, mean=[0.5, 0.5, 0.5], std=[0.2, 0.2, 0.2]
         )
 
         # 128/255 ≈ 0.502, normalized ≈ (0.502 - 0.5) / 0.2 ≈ 0.1
@@ -95,10 +95,7 @@ class TestTemporalFilter:
     def test_exponential_smoothing(self):
         """Test exponential moving average smoothing."""
         # Create noisy temporal sequence
-        frames = [
-            np.full((10, 10, 3), i * 50, dtype=np.uint8)
-            for i in range(5)
-        ]
+        frames = [np.full((10, 10, 3), i * 50, dtype=np.uint8) for i in range(5)]
 
         smoothed = TemporalFilter.apply_temporal_smoothing(frames, alpha=0.7)
 
@@ -110,8 +107,7 @@ class TestTemporalFilter:
     def test_median_filtering(self):
         """Test median filtering over time."""
         frames = [
-            np.random.randint(0, 256, (10, 10, 3), dtype=np.uint8)
-            for _ in range(5)
+            np.random.randint(0, 256, (10, 10, 3), dtype=np.uint8) for _ in range(5)
         ]
 
         filtered = TemporalFilter.apply_median_filter(frames, kernel_size=3)

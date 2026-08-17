@@ -49,7 +49,7 @@ def resolve_transform_backend(prefer: str = "auto") -> str:
         if prefer not in TRANSFORM_BACKENDS:
             raise ValueError(f"prefer must be one of {TRANSFORM_BACKENDS} or 'auto'")
         # Honor the preference if usable, else fall through the chain below it.
-        chain = TRANSFORM_BACKENDS[TRANSFORM_BACKENDS.index(prefer):]
+        chain = TRANSFORM_BACKENDS[TRANSFORM_BACKENDS.index(prefer) :]
     else:
         chain = TRANSFORM_BACKENDS
     return next(b for b in chain if available[b])
@@ -110,7 +110,9 @@ class Resize:
             raise ValueError(f"Unsupported backend: {self._backend}")
 
     def __repr__(self) -> str:
-        return f"Resize({self.height}, {self.width}, interpolation={self.interpolation!r})"
+        return (
+            f"Resize({self.height}, {self.width}, interpolation={self.interpolation!r})"
+        )
 
 
 def _bilinear_resize(x, out_h: int, out_w: int):
@@ -130,8 +132,12 @@ def _bilinear_resize(x, out_h: int, out_w: int):
     wx = (src_x - x0)[None, :]  # [1, out_w]
 
     # Gather the four neighbors: [N, out_h, out_w, C].
-    top = xf[:, y0][:, :, x0] * (1 - wx)[..., None] + xf[:, y0][:, :, x1] * wx[..., None]
-    bot = xf[:, y1][:, :, x0] * (1 - wx)[..., None] + xf[:, y1][:, :, x1] * wx[..., None]
+    top = (
+        xf[:, y0][:, :, x0] * (1 - wx)[..., None] + xf[:, y0][:, :, x1] * wx[..., None]
+    )
+    bot = (
+        xf[:, y1][:, :, x0] * (1 - wx)[..., None] + xf[:, y1][:, :, x1] * wx[..., None]
+    )
     return (top * (1 - wy)[..., None] + bot * wy[..., None]).astype(np.float32)
 
 
@@ -230,6 +236,7 @@ class RandomCrop:
 # ───────────────────────────────────────────────────────────────────────────────
 # MLX native implementations
 
+
 def _resize_mlx(x, out_h: int, out_w: int, interpolation: str):
     """Resize using MLX (Apple Silicon GPU/CPU)."""
     import mlx.core as mx
@@ -267,18 +274,31 @@ def _resize_mlx(x, out_h: int, out_w: int, interpolation: str):
 
 
 def _resize_torch(x, out_h: int, out_w: int, interpolation: str):
-    """Resize using Torch (CPU/CUDA, includes MPS for macOS)."""
+    """Resize using Torch (CPU/CUDA, includes MPS for macOS).
+
+    Matches the NumPy backend's contract: bilinear returns float32, nearest preserves the
+    input dtype (`F.interpolate` requires a floating dtype regardless of mode, so nearest
+    casts back to the original dtype afterward rather than skipping the float conversion).
+    """
     import torch
     import torch.nn.functional as F
 
+    orig_dtype = x.dtype
     x_t = torch.from_numpy(x).float()
     x_t = x_t.permute(0, 3, 1, 2)
 
     mode = "nearest" if interpolation == "nearest" else "bilinear"
-    align_corners = (mode == "bilinear")
-    x_resized = F.interpolate(x_t, size=(out_h, out_w), mode=mode, align_corners=align_corners)
+    # `align_corners` is only a valid kwarg for the interpolating modes (bilinear/bicubic/...);
+    # torch raises ValueError if it's passed as non-None for "nearest".
+    align_corners = True if mode == "bilinear" else None
+    x_resized = F.interpolate(
+        x_t, size=(out_h, out_w), mode=mode, align_corners=align_corners
+    )
 
-    return x_resized.permute(0, 2, 3, 1).numpy()
+    out = x_resized.permute(0, 2, 3, 1).numpy()
+    if interpolation == "nearest":
+        out = out.astype(orig_dtype, copy=False)
+    return out
 
 
 def _normalize_mlx(x, mean, std, scale: float):
@@ -306,6 +326,7 @@ def _normalize_torch(x, mean, std, scale: float):
 # ───────────────────────────────────────────────────────────────────────────────
 # CV-CUDA native implementations (NVIDIA hardware only)
 
+
 def _resize_cvcuda(x, out_h: int, out_w: int, interpolation: str):
     """Resize using CV-CUDA (NVIDIA GPU acceleration).
 
@@ -326,9 +347,13 @@ def _resize_cvcuda(x, out_h: int, out_w: int, interpolation: str):
     x_gpu = cvcuda.as_tensor(x_reordered)
 
     # Resize with specified interpolation
-    interp = cvcuda.Interp.LINEAR if interpolation == "bilinear" else cvcuda.Interp.NEAREST
+    interp = (
+        cvcuda.Interp.LINEAR if interpolation == "bilinear" else cvcuda.Interp.NEAREST
+    )
     x_resized = cvcuda.resize(
-        x_gpu, (out_h, out_w), cvcuda.Interp.LINEAR if interpolation == "bilinear" else cvcuda.Interp.NEAREST
+        x_gpu,
+        (out_h, out_w),
+        cvcuda.Interp.LINEAR if interpolation == "bilinear" else cvcuda.Interp.NEAREST,
     )
 
     # Convert back to NumPy and reorder to [N, H, W, C]

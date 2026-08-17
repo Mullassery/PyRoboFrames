@@ -21,7 +21,9 @@ def _write_mcap(path: str) -> None:
         w.start()
 
         sid = w.register_schema(name="state", encoding="jsonschema", data=b"")
-        json_chan = w.register_channel(topic="/state", message_encoding="json", schema_id=sid)
+        json_chan = w.register_channel(
+            topic="/state", message_encoding="json", schema_id=sid
+        )
         for i, state in enumerate([[1.0, 2.0], [3.0, 4.0]]):
             payload = json.dumps({"observation": {"state": state}, "gripper": i == 0})
             w.add_message(
@@ -34,8 +36,16 @@ def _write_mcap(path: str) -> None:
 
         # A non-JSON topic that must be reported as skipped.
         rid = w.register_schema(name="raw", encoding="protobuf", data=b"")
-        raw_chan = w.register_channel(topic="/raw", message_encoding="protobuf", schema_id=rid)
-        w.add_message(channel_id=raw_chan, log_time=5000, publish_time=5000, sequence=0, data=b"\xde\xad")
+        raw_chan = w.register_channel(
+            topic="/raw", message_encoding="protobuf", schema_id=rid
+        )
+        w.add_message(
+            channel_id=raw_chan,
+            log_time=5000,
+            publish_time=5000,
+            sequence=0,
+            data=b"\xde\xad",
+        )
 
         w.finish()
 

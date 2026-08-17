@@ -24,3 +24,7 @@ numpy = "0.22"
 extension-module = ["pyo3/extension-module"]
 # Enable the FFmpeg-CLI frame decoder (requires ffmpeg/ffprobe on PATH at runtime).
 ffmpeg = ["pyroboframes-core/ffmpeg"]
+# Native VideoToolbox hardware decode (macOS): real VTDecompressionSession,
+# IOSurface-backed zero-copy frames. Takes priority over `ffmpeg` when both
+# are enabled on macOS.
+videotoolbox = ["pyroboframes-core/videotoolbox"]

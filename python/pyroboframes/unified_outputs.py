@@ -63,6 +63,7 @@ class TorchAdapter(TensorAdapter):
     def is_available(self) -> bool:
         try:
             import torch  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -82,6 +83,7 @@ class JAXAdapter(TensorAdapter):
     def is_available(self) -> bool:
         try:
             import jax  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -101,6 +103,7 @@ class MLXAdapter(TensorAdapter):
     def is_available(self) -> bool:
         try:
             import mlx.core  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -127,6 +130,7 @@ class TensorFlowAdapter(TensorAdapter):
     def is_available(self) -> bool:
         try:
             import tensorflow  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -146,7 +150,9 @@ class ToTensorAdapter:
 
     def __init__(
         self,
-        framework: Literal["auto", "numpy", "torch", "jax", "mlx", "tensorflow"] = "auto",
+        framework: Literal[
+            "auto", "numpy", "torch", "jax", "mlx", "tensorflow"
+        ] = "auto",
         device: str | None = None,
     ):
         """Initialize unified adapter.

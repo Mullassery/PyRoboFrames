@@ -79,7 +79,12 @@ def test_load_dataset_with_codec_metadata():
             "action": np.random.randn(100, 7).astype(np.float32),
         }
         prf.write_lerobot_dataset(
-            tmp, features_in, [50, 50], fps=30.0, video_codec="hevc", video_profile="main"
+            tmp,
+            features_in,
+            [50, 50],
+            fps=30.0,
+            video_codec="hevc",
+            video_profile="main",
         )
 
         # Load dataset (verifies no errors)

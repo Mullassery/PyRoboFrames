@@ -2,6 +2,82 @@
 
 All notable changes to PyRoboFrames are documented in this file.
 
+## [2.4.0] — 2026-08-16
+
+Engineering/correctness pass: real bug fixes across the public Python API, dead-code
+removal, and documentation accuracy. No new dataset formats in this release.
+
+### Fixed
+- **`RoboFrameDataset.num_episodes` / `.fps` / `.cameras` called as methods.** These are
+  PyO3 `#[getter]` properties, not methods — `ds.num_episodes()` raised
+  `TypeError: 'int' object is not callable`. This was live-broken in
+  `DatasetValidator.validate()`, `EpisodeCache`, `EpisodeFilter`, `MaskedDataFrame`,
+  `DatasetVersion.append()`, `EpisodeScorer`, and every `distributed.py` entry point
+  (`DistributedLoader`, `RayDistributedLoader`) — i.e. calling `.validate()` on a real
+  dataset, or constructing any of those classes with a real `RoboFrameDataset`, crashed.
+  Also fixed two call sites using a nonexistent `.total_frames()` method (the real getter
+  is `.num_frames`).
+- **`DatasetValidator` crashed on every episode.** `validate_episode()` called
+  `self.dataset.path()`, which didn't exist on `RoboFrameDataset` at all. Added a real
+  `path` getter (`crates/pyroboframes-py/src/lib.rs`) backed by the Rust core's existing
+  `Dataset::root()`, and fixed the call site to use it as a property.
+- **`transforms.Resize(..., interpolation="nearest")` crashed on the Torch backend** —
+  `align_corners` was passed as `False` (not `None`) for `mode="nearest"`, which Torch
+  rejects (`align_corners` is only valid for interpolating modes). Fixed, and also fixed
+  nearest-neighbor resize silently upcasting `uint8` frames to `float32` (violated the
+  documented contract that nearest preserves input dtype).
+- **`tests/test_caching.py`** passed the wrong value as a dataset path in 5 tests —
+  `make_dataset()` returns the frame count, not the path, so `RoboFrameDataset.from_path(str(make_dataset(...)))`
+  was opening a path like `"30"`. Fixed to use `tmp_path` (where `make_dataset` actually
+  writes) as the dataset path.
+- **`test_backend_parity.py`'s `_to_numpy` helper** never actually exercised its
+  `.cpu().numpy()` fallback for non-CPU Torch tensors (MPS/CUDA), because `hasattr(v,
+  "__array__")` is `True` for Torch tensors regardless of device — masking a real
+  `device="auto"` vs `device="cpu"` conformance test on Apple Silicon (MPS).
+- `cargo clippy -- -D warnings` failures (doc-comment formatting, a needless `return`, an
+  `Iterator::last` on a `DoubleEndedIterator`, an unnecessary cast) and `cargo fmt`
+  drift across `decode.rs`, `depth.rs`, `videotoolbox_native.rs`, `lib.rs`.
+
+### Removed
+- **`python/pyroboframes/cli_workflow.py` and `server_workflow.py`** — dead code (not
+  imported by `__init__.py`, no console-script entry point, no tests, no docs) left over
+  from an unrelated project template. Every method returned hardcoded fake data
+  (`"episodes": 100,  # Simulated`, `"conversion_time_s": 45.2`) regardless of input —
+  none of it touched a real dataset.
+- **`examples/mcp_datasets.py` and `mcp_pyroboframes.py`** — example scripts importing
+  `DatasetMetadata` / `PerceptionEngine`, neither of which exist anywhere in this
+  package; leftover from the same unrelated template.
+- **Top-level `pyroboframes/` directory** (`okf_dataset_composition.py`,
+  `scripts/post_install.py`) — not part of the packaged source (`pyproject.toml`'s
+  `python-source = "python"` only packages `python/pyroboframes/`), not imported by
+  anything, dead.
+- README's leftover "MCP 2.0 Mega-Platform" boilerplate (wrong license claim, fake tool
+  counts, ports, and unrelated project description) — full rewrite from the real public
+  API.
+
+### Changed
+- `pyproject.toml`'s `dev` extra now includes `pandas`, `scipy`, and `scikit-learn`
+  (version-capped to stay importable under the `numpy==1.24` pin) — `tests/test_storage.py`
+  unconditionally needs `pandas` (via `hub.py`'s HuggingFace-hub download path), and the
+  GPU-acceleration/occupancy-grid tests need `scipy`/`scikit-learn`; without these the
+  `pip install -e ".[dev]"` step in CI could not actually run the full suite.
+- `SECURITY.md` updated to reflect the current state (was still describing "v1.1.0
+  NO PRODUCTION USE" against a package that has since shipped VideoToolbox hardware
+  decode, HDF5/NetCDF/RLDS conversion, and S3/GCS remote datasets).
+
+## [2.3.0] — 2026-08-07
+
+Real, in-process VideoToolbox hardware decode (see `ed84820` in git history for full
+detail): `VTDecompressionSession` driven directly via MP4 demux + `CMSampleBuffer`
+construction, producing a real IOSurface-backed `CVPixelBuffer` — not a shell-out to the
+`ffmpeg` CLI. Verified against real Apple Silicon hardware with pixel-level cross-checks
+against ffmpeg's software decode of the same bitstream.
+
+*(Changelog entries between 1.2.0 and 2.3.0 were not maintained day-to-day; see `git log`
+or GitHub Releases for the full history of that range — multi-format dataset support,
+GPU acceleration, 3D occupancy/LiDAR processing, and workflow tooling all landed in this
+window.)*
+
 ## [1.2.0] — 2026-07-17
 
 ### 🎉 Major Features (Complete Phases 4-7)

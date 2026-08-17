@@ -239,6 +239,7 @@ def _write_lerobot_layout(
 
     os.makedirs(out_dir, exist_ok=True)
     from .lerobot import write_lerobot_dataset
+
     write_lerobot_dataset(out_dir, stacked_all, episode_lengths)
     report.episodes_converted = len(episode_lengths)
     return report

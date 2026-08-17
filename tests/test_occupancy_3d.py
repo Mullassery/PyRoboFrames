@@ -176,12 +176,14 @@ class TestLiDARProcessor:
 
     def test_filter_by_distance(self):
         """Test distance filtering."""
-        points = np.array([
-            [0, 0, 0],
-            [5, 5, 0],
-            [20, 20, 0],
-            [50, 50, 0],
-        ])
+        points = np.array(
+            [
+                [0, 0, 0],
+                [5, 5, 0],
+                [20, 20, 0],
+                [50, 50, 0],
+            ]
+        )
 
         filtered = LiDARProcessor.filter_by_distance(points, max_distance=30)
 
@@ -189,14 +191,18 @@ class TestLiDARProcessor:
 
     def test_filter_by_height(self):
         """Test height filtering."""
-        points = np.array([
-            [0, 0, -2.0],
-            [1, 1, 0.0],
-            [2, 2, 1.0],
-            [3, 3, 5.0],
-        ])
+        points = np.array(
+            [
+                [0, 0, -2.0],
+                [1, 1, 0.0],
+                [2, 2, 1.0],
+                [3, 3, 5.0],
+            ]
+        )
 
-        filtered = LiDARProcessor.filter_by_height(points, min_height=-1.0, max_height=3.0)
+        filtered = LiDARProcessor.filter_by_height(
+            points, min_height=-1.0, max_height=3.0
+        )
 
         assert filtered.shape[0] <= points.shape[0]
         assert np.all(filtered[:, 2] >= -1.0)
@@ -204,12 +210,14 @@ class TestLiDARProcessor:
 
     def test_ground_segmentation(self):
         """Test ground segmentation."""
-        points = np.array([
-            [0, 0, -0.5],  # Ground
-            [1, 1, 0.0],   # Ground
-            [2, 2, 0.5],   # Ground
-            [3, 3, 1.5],   # Non-ground
-        ])
+        points = np.array(
+            [
+                [0, 0, -0.5],  # Ground
+                [1, 1, 0.0],  # Ground
+                [2, 2, 0.5],  # Ground
+                [3, 3, 1.5],  # Non-ground
+            ]
+        )
 
         ground, non_ground = LiDARProcessor.ground_segmentation(points, threshold=0.1)
 
@@ -219,12 +227,16 @@ class TestLiDARProcessor:
     def test_clustering(self):
         """Test point clustering."""
         # Create two clusters
-        points = np.vstack([
-            np.random.normal([0, 0, 0], 0.2, (10, 3)),
-            np.random.normal([5, 5, 0], 0.2, (10, 3)),
-        ])
+        points = np.vstack(
+            [
+                np.random.normal([0, 0, 0], 0.2, (10, 3)),
+                np.random.normal([5, 5, 0], 0.2, (10, 3)),
+            ]
+        )
 
-        clusters = LiDARProcessor.cluster_points(points, distance_threshold=1.0, min_points=3)
+        clusters = LiDARProcessor.cluster_points(
+            points, distance_threshold=1.0, min_points=3
+        )
 
         assert len(clusters) > 0
         # Each cluster should have points
@@ -270,20 +282,20 @@ class TestRadarFusionProcessor:
 
     def test_radar_lidar_fusion(self):
         """Test radar-LiDAR fusion."""
-        lidar_points = np.array([
-            [0, 0, 0],
-            [1, 1, 0],
-            [2, 2, 0],
-        ])
+        lidar_points = np.array(
+            [
+                [0, 0, 0],
+                [1, 1, 0],
+                [2, 2, 0],
+            ]
+        )
 
         radar_detections = [
             {"x": 0.1, "y": 0.1, "z": 0, "vx": 1.0, "vy": 0, "vz": 0},
         ]
 
         fused = RadarFusionProcessor.fuse_radar_lidar(
-            lidar_points,
-            radar_detections,
-            distance_threshold=1.0
+            lidar_points, radar_detections, distance_threshold=1.0
         )
 
         assert fused.shape[0] > 0
@@ -296,9 +308,7 @@ class TestRadarFusionProcessor:
         ]
 
         fused = RadarFusionProcessor.fuse_radar_lidar(
-            np.array([]),
-            radar_detections,
-            distance_threshold=1.0
+            np.array([]), radar_detections, distance_threshold=1.0
         )
 
         assert fused.shape[0] == len(radar_detections)

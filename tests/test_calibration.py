@@ -8,7 +8,9 @@ import pyroboframes as prf
 
 def test_camera_intrinsics_creation():
     """Test creating camera intrinsics."""
-    intr = prf.CameraIntrinsics(fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480)
+    intr = prf.CameraIntrinsics(
+        fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480
+    )
     assert intr.fx == 500.0
     assert intr.fy == 500.0
     assert intr.cx == 320.0
@@ -19,7 +21,9 @@ def test_camera_intrinsics_creation():
 
 def test_camera_intrinsics_k_matrix():
     """Test K matrix extraction."""
-    intr = prf.CameraIntrinsics(fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480)
+    intr = prf.CameraIntrinsics(
+        fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480
+    )
     k = intr.k_matrix()
     assert k.shape == (3, 3)
     assert k[0, 0] == 500.0  # fx
@@ -31,7 +35,9 @@ def test_camera_intrinsics_k_matrix():
 
 def test_camera_intrinsics_project():
     """Test projecting 3D points to image plane."""
-    intr = prf.CameraIntrinsics(fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480)
+    intr = prf.CameraIntrinsics(
+        fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480
+    )
     # Point at (1, 1, 2) meters
     u, v = intr.project(1.0, 1.0, 2.0)
     # u = 500 * (1/2) + 320 = 570
@@ -42,14 +48,18 @@ def test_camera_intrinsics_project():
 
 def test_camera_intrinsics_project_behind_camera():
     """Test that points behind camera return None."""
-    intr = prf.CameraIntrinsics(fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480)
+    intr = prf.CameraIntrinsics(
+        fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480
+    )
     assert intr.project(1.0, 1.0, -1.0) is None
     assert intr.project(1.0, 1.0, 0.0) is None
 
 
 def test_camera_intrinsics_unproject_direction():
     """Test unprojecting pixel to 3D ray direction."""
-    intr = prf.CameraIntrinsics(fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480)
+    intr = prf.CameraIntrinsics(
+        fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480
+    )
     # Unproject the principal point (should give [0, 0, 1] direction)
     direction = intr.unproject_direction(320.0, 240.0)
     assert np.allclose(direction, [0.0, 0.0, 1.0], atol=0.01)
@@ -125,7 +135,9 @@ def test_camera_calibration_repr():
 
 def test_camera_intrinsics_repr():
     """Test string representation of intrinsics."""
-    intr = prf.CameraIntrinsics(fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480)
+    intr = prf.CameraIntrinsics(
+        fx=500.0, fy=500.0, cx=320.0, cy=240.0, width=640, height=480
+    )
     repr_str = repr(intr)
     assert "CameraIntrinsics" in repr_str
     assert "500.0" in repr_str

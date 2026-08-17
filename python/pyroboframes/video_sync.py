@@ -103,19 +103,25 @@ class VideoSynchronizer:
         """
         result = {}
 
-        for ref_idx, ref_time in zip(self.reference.frame_indices, self.reference.timestamps):
+        for ref_idx, ref_time in zip(
+            self.reference.frame_indices, self.reference.timestamps
+        ):
             # Find frames within window
             window_start = ref_time - self.window_size_ns // 2
             window_end = ref_time + self.window_size_ns // 2
 
-            candidates = np.where((other.timestamps >= window_start) & (other.timestamps <= window_end))[0]
+            candidates = np.where(
+                (other.timestamps >= window_start) & (other.timestamps <= window_end)
+            )[0]
 
             if len(candidates) == 0:
                 # No match
                 result[int(ref_idx)] = -1
             else:
                 # Pick closest frame
-                closest_idx = candidates[np.argmin(np.abs(other.timestamps[candidates] - ref_time))]
+                closest_idx = candidates[
+                    np.argmin(np.abs(other.timestamps[candidates] - ref_time))
+                ]
                 result[int(ref_idx)] = int(other.frame_indices[closest_idx])
 
         return result
@@ -181,7 +187,8 @@ class JitterFilter:
         smoothed_intervals[0] = intervals[0]
         for i in range(1, len(intervals)):
             smoothed_intervals[i] = (
-                self.alpha * intervals[i] + (1.0 - self.alpha) * smoothed_intervals[i - 1]
+                self.alpha * intervals[i]
+                + (1.0 - self.alpha) * smoothed_intervals[i - 1]
             )
 
         # Reconstruct timestamps
@@ -211,8 +218,12 @@ def align_frame_sequences(
     Returns:
         (aligned_times, aligned_ref_frames, aligned_sec_frames) tuples aligned to reference
     """
-    ref_timeline = CameraTimeline("ref", reference_times, np.arange(len(reference_times)))
-    sec_timeline = CameraTimeline("sec", secondary_times, np.arange(len(secondary_times)))
+    ref_timeline = CameraTimeline(
+        "ref", reference_times, np.arange(len(reference_times))
+    )
+    sec_timeline = CameraTimeline(
+        "sec", secondary_times, np.arange(len(secondary_times))
+    )
 
     sync = VideoSynchronizer(ref_timeline, window_size_ns=window_size_ns)
     mapping = sync.sync_camera(sec_timeline)

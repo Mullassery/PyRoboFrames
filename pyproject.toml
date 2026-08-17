@@ -72,7 +72,19 @@ Discussions = "https://github.com/Mullassery/PyRoboFrames/discussions"
 
 [project.optional-dependencies]
 mlx = ["mlx==0.20"]
-dev = ["pytest==8", "numpy==1.24", "maturin==1.7"]
+# pandas is required (not just optional-import) by tests/test_storage.py's LeRobot
+# hub download path (`hub.py: _download_lerobot_partial` calls `Table.to_pandas()`).
+# scipy/scikit-learn power the optional GPU-acceleration and 3D occupancy morphology
+# paths (gpu_acceleration.py, occupancy_3d.py); pinned below numpy 1.26 requirement
+# thresholds so they stay importable under the numpy==1.24 pin above.
+dev = [
+    "pytest==8",
+    "numpy==1.24",
+    "maturin==1.7",
+    "pandas<2.2",
+    "scipy<1.13",
+    "scikit-learn<1.5",
+]
 
 [tool.maturin]
 manifest-path = "crates/pyroboframes-py/Cargo.toml"

@@ -368,7 +368,7 @@ mod tests {
 
     fn write_temp_file(name: &str, content: &str) -> (tempfile::NamedTempFile, String) {
         use tempfile::Builder;
-        let suffix = format!(".{}", name.split('.').last().unwrap_or("tmp"));
+        let suffix = format!(".{}", name.split('.').next_back().unwrap_or("tmp"));
         let mut file = Builder::new().suffix(&suffix).tempfile().unwrap();
         file.write_all(content.as_bytes()).unwrap();
         let path = file.path().to_string_lossy().to_string();

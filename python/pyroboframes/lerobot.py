@@ -63,7 +63,9 @@ def encode_video_frames(
     import subprocess
 
     if codec not in _CODEC_TO_ENCODER:
-        raise ValueError(f"codec must be one of {list(_CODEC_TO_ENCODER)}, got {codec!r}")
+        raise ValueError(
+            f"codec must be one of {list(_CODEC_TO_ENCODER)}, got {codec!r}"
+        )
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg not found on PATH; install ffmpeg to encode video")
 
@@ -75,15 +77,26 @@ def encode_video_frames(
     encoder = _CODEC_TO_ENCODER[codec]
 
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "rawvideo", "-vcodec", "rawvideo",
-        "-pix_fmt", "rgb24",
-        "-s", f"{w}x{h}",
-        "-r", str(fps),
-        "-i", "pipe:0",
-        "-c:v", encoder,
-        "-crf", str(crf),
-        "-pix_fmt", "yuv420p",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-vcodec",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{w}x{h}",
+        "-r",
+        str(fps),
+        "-i",
+        "pipe:0",
+        "-c:v",
+        encoder,
+        "-crf",
+        str(crf),
+        "-pix_fmt",
+        "yuv420p",
     ]
     if profile:
         cmd += ["-profile:v", profile]
@@ -126,12 +139,16 @@ def write_lerobot_dataset(
     if not features:
         raise ValueError("at least one feature is required")
     if video_codec not in _CODEC_TO_ENCODER:
-        raise ValueError(f"video_codec must be one of {list(_CODEC_TO_ENCODER)}, got {video_codec!r}")
+        raise ValueError(
+            f"video_codec must be one of {list(_CODEC_TO_ENCODER)}, got {video_codec!r}"
+        )
 
     arrays = {name: np.asarray(v, dtype=np.float32) for name, v in features.items()}
     for name, arr in arrays.items():
         if arr.ndim != 2:
-            raise ValueError(f"feature {name!r} must be 2-D [N, D], got shape {arr.shape}")
+            raise ValueError(
+                f"feature {name!r} must be 2-D [N, D], got shape {arr.shape}"
+            )
     total = next(iter(arrays.values())).shape[0]
     if any(arr.shape[0] != total for arr in arrays.values()):
         raise ValueError("all features must have the same number of frames")
@@ -145,7 +162,17 @@ def write_lerobot_dataset(
 
     _write_data(path, arrays)
     _write_episodes(path, episode_lengths)
-    _write_info(path, arrays, episode_lengths, total, fps, robot_type, video_codec, video_profile, video_crf)
+    _write_info(
+        path,
+        arrays,
+        episode_lengths,
+        total,
+        fps,
+        robot_type,
+        video_codec,
+        video_profile,
+        video_crf,
+    )
     _write_stats(path, arrays)
 
 
@@ -255,7 +282,11 @@ def write_from_robotics_dataframe(
     # Detect episodes: time gaps indicate new episodes
     time_diffs = np.diff(ref_times)
     # Gap threshold: 2x the median frame interval
-    median_dt = np.median(time_diffs[time_diffs > 0]) if np.any(time_diffs > 0) else 1_000_000_000
+    median_dt = (
+        np.median(time_diffs[time_diffs > 0])
+        if np.any(time_diffs > 0)
+        else 1_000_000_000
+    )
     gap_threshold = median_dt * 2
 
     episode_boundaries = [0]

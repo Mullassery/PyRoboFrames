@@ -150,7 +150,9 @@ def test_transforms_shapes_and_values():
     # red: (1.0 - 0.5)/0.5 = 1.0 ; green/blue: (0 - 0)/1 = 0
     np.testing.assert_allclose(norm[0, 0, 0], [1.0, 0.0, 0.0])
 
-    composed = T.Compose([T.Resize(4, 4), T.Normalize(mean=[0, 0, 0], std=[1, 1, 1])])(x)
+    composed = T.Compose([T.Resize(4, 4), T.Normalize(mean=[0, 0, 0], std=[1, 1, 1])])(
+        x
+    )
     assert composed.shape == (2, 4, 4, 3) and composed.dtype == np.float32
 
 
@@ -259,7 +261,9 @@ def test_episode_chunking_respects_episode_filter(tmp_path):
     make_dataset(str(tmp_path), episodes=4, length=10)
     ds = prf.RoboFrameDataset.from_path(str(tmp_path))
     # Restrict to episodes 1 and 3, episode-chunked.
-    loader = ds.loader(batch_size=5, shuffle=True, seed=1, chunk_size=5, episodes=[1, 3])
+    loader = ds.loader(
+        batch_size=5, shuffle=True, seed=1, chunk_size=5, episodes=[1, 3]
+    )
     seen = sorted(int(round(x)) for b in loader for x in b["observation.state"][:, 0])
     expected = sorted(list(range(10, 20)) + list(range(30, 40)))
     assert seen == expected

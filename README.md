@@ -1,159 +1,179 @@
 # PyRoboFrames
 
-**Load robotics datasets 10x faster. Support for every major source.**
+[![CI](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml/badge.svg)](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml)
 
-High-performance dataloaders for robot learning. Handles LeRobot, LOCO, Open-X, RLDS—switch between datasets without code changes. Built for efficient training at scale.
+A Rust-backed ML dataloader for robot learning datasets. Native support for the
+[LeRobot](https://github.com/huggingface/lerobot) v3.0 dataset format, with hardware
+video decode (real, in-process **VideoToolbox** on Apple Silicon — not an `ffmpeg`
+subprocess), conversion from HDF5/NetCDF/RLDS/MCAP/ROS2-bag, and output as NumPy, PyTorch,
+JAX, or MLX arrays.
 
-[![PyPI](https://img.shields.io/pypi/v/pyroboframes)](https://pypi.org/project/pyroboframes)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org)
-[![Tests: 23 Passing](https://img.shields.io/badge/tests-23%20passing-success)](./tests)
-[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-blue.svg)](./LICENSE)
-
----
-
-## 30-Second Start
-
-```python
-from pyroboframes import DataLoader
-
-# Load any robotics dataset (same code)
-loader = DataLoader("lerobot/pusht")
-# or: "loco/real_world_rl_experiments"
-# or: "openx/rtx"
-
-# Iterate efficiently
-for episode in loader.episodes():
-    for frame in episode.frames:
-        rgb = frame.rgb          # Camera image
-        action = frame.action    # Robot action
-        state = frame.state      # Joint angles
+```bash
+pip install pyroboframes
 ```
 
----
+> **Platform note:** prebuilt wheels are currently published for **macOS (Apple
+> Silicon) only**. Linux/Windows users install from the source distribution, which
+> needs a Rust toolchain at build time — see [Installation](#installation) below.
 
-## Why PyRoboFrames?
+## What this actually is
 
-**The Problem:**
-- Each robotics dataset has a different format (LeRobot, LOCO, Open-X, RLDS)
-- Writing data loaders is complex and repetitive
-- Training is slow due to inefficient I/O
-- Switching datasets requires rewriting code
+The heavy lifting — dataset reading, video decode, temporal windowing — is a compiled
+Rust extension (`pyroboframes._core`, built with PyO3/maturin). The Python package on top
+of it is the ergonomic surface: `RoboFrameDataset`, `DataLoader`, format converters, and
+device adapters. If you're evaluating this against a bigger project like Hugging Face
+`datasets` or `torchcodec`: this is smaller in scope, focused specifically on robot
+learning's LeRobot-style episodic data (state/action/video, aligned by frame index), and
+its differentiating feature is genuine zero-copy hardware video decode on Apple Silicon.
 
-**The Solution:**
-- Unified API across all major robotics datasets
-- Optimized I/O (10x faster than naive loading)
-- Support for multimodal data (vision, proprioception, action)
-- Works with Hugging Face Hub out of the box
+## Quick start
 
----
-
-## Key Features
-
-- **Multi-Source:** LeRobot, LOCO, Open-X, RLDS, custom datasets
-- **Efficient Loading:** Lazy loading, prefetching, memory mapping
-- **Multimodal:** RGB, depth, RGBD, thermal, proprioception, actions
-- **Streaming:** Process datasets without local storage
-- **Batch Processing:** Automatic batching and padding
-- **Video Export:** Write processed episodes to video
-- **ML Framework Support:** PyTorch, TensorFlow, JAX
-
----
-
-## Real-World Use Cases
-
-**Train Imitation Learning Model:**
 ```python
-loader = DataLoader("lerobot/aloha_sim_transfer_cube")
+import pyroboframes as prf
 
-for epoch in range(10):
-    for batch in loader.batch(size=32):
-        images = batch["observation.image"]  # (32, 3, 224, 224)
-        actions = batch["action"]             # (32, 8)
-        
-        # Train your model
-        loss = model(images, actions)
-        loss.backward()
+# Open a local LeRobot v3.0 dataset (the directory holding meta/, data/, videos/)
+ds = prf.RoboFrameDataset.from_path("/path/to/lerobot_dataset")
+print(ds.num_frames, ds.num_episodes, ds.fps, ds.cameras)
+
+# Or pull one from the Hugging Face Hub first
+local_path = prf.download_lerobot_dataset("lerobot/aloha_mobile_cabinet")
+ds = prf.RoboFrameDataset.from_path(local_path)
+
+# Batched iteration — state/action tensors plus decoded camera frames
+loader = ds.loader(
+    batch_size=32,
+    shuffle=True,
+    cameras=["observation.images.top"],  # decodes video on the fly
+    output="numpy",                      # or "torch" / "mlx" / "jax"
+)
+for batch in loader:
+    batch["observation.state"]            # [32, state_dim] float32
+    batch["action"]                       # [32, action_dim] float32
+    batch["observation.images.top"]       # [32, H, W, 3] uint8
 ```
 
-**Compare Datasets:**
-```python
-datasets = ["lerobot/pusht", "loco/real", "openx/bridge"]
+See [`.github/INSTALL.md`](.github/INSTALL.md) for platform-specific install notes,
+[`examples/`](examples/) for full training-loop scripts (humanoid multimodal fusion,
+proprioceptive-only quadruped loading), and [`docs/`](docs/) for deeper architecture notes.
 
-for ds in datasets:
-    loader = DataLoader(ds)
-    print(f"{ds}: {loader.num_episodes} episodes, {loader.total_frames} frames")
-```
+## Hardware video decode
 
-**Export to Video:**
-```python
-loader = DataLoader("lerobot/aloha")
-for i, episode in enumerate(loader.episodes()):
-    episode.save_video(f"episode_{i}.mp4")
-```
+Video decode is the part of this project most worth being skeptical of, so here's
+what's actually true as of this release:
 
----
+- **macOS (Apple Silicon), `videotoolbox` build feature:** a real, in-process
+  `VTDecompressionSession` — MP4 demuxing and `CMSampleBuffer` construction happen in
+  Rust, frames come back as an IOSurface-backed `CVPixelBuffer`, and nothing shells out
+  to the `ffmpeg` CLI. This is what makes zero-copy handoff to Apple's ML frameworks
+  possible: a subprocess can only hand back decoded *bytes* (a copy by construction); an
+  in-process `VTDecompressionSession` hands back a live buffer reference. See
+  `crates/pyroboframes-core/src/videotoolbox_native.rs` for the implementation, and its
+  test module for hardware-decode tests that cross-validate real decoded pixels against
+  `ffmpeg`'s software decode of the same bitstream.
+- **Cross-platform fallback, `ffmpeg` build feature:** shells out to the `ffmpeg` CLI
+  (with `-hwaccel videotoolbox`/`vaapi` where available). This is what ships in the
+  default build config and works everywhere `ffmpeg` is installed, at the cost of a copy
+  through the subprocess pipe.
+- **Linux + NVIDIA, `cuda` build feature:** NVDEC via `ffmpeg -hwaccel cuda`. Also
+  downloads decoded frames to host memory today (not yet a zero-copy CUDA buffer handoff).
 
-## Dataset Support Matrix
+The published macOS wheel is built with `--features videotoolbox`; the source
+distribution defaults to the portable `ffmpeg` feature so it builds on any platform.
 
-| Source | Status | Formats | Notes |
-|--------|--------|---------|-------|
-| LeRobot | ✅ | Parquet, Zarr | Full support |
-| LOCO | ✅ | RLDS TFRecord | Full support |
-| Open-X | ✅ | RLDS TFRecord | Full support |
-| RLDS | ✅ | TFRecord | Full support |
-| Custom | ✅ | Any | Pluggable format |
+**Honest limitation:** the native VideoToolbox path decodes H.264 only (no HEVC yet),
+and doesn't implement a full B-frame reorder buffer — correct for the common no-B-frames
+case and for isolated single-frame lookups, not yet a general streaming-playback decoder.
+Also, `Loader`'s batch path still copies frame bytes into one combined `[batch, H, W, 3]`
+NumPy array — decode-to-CPU-buffer is zero-copy, but building a single batched array from
+independent per-frame buffers isn't free; a true zero-copy `mx.array`/DLPack handoff that
+skips NumPy entirely is still future work.
 
----
+## Dataset formats
 
-## Performance
+| Format | Status | Notes |
+|---|---|---|
+| **LeRobot v3.0** | Native, primary | Direct Rust reader; everything else converts *to* this layout. |
+| **HDF5** (ROBOMIMIC/ACT-style) | Real, via `h5py` (optional dep) | `HDF5Dataset.from_path()`, `convert_hdf5()`. |
+| **NetCDF** | Real, via `xarray`+`netCDF4` (optional deps) | `NetCDFDataset.from_path()`, `convert_netcdf()`. |
+| **RLDS** (Open X-Embodiment) | Real, via `tensorflow_datasets` (optional dep) | `RLDSDataset.from_tfds()` / `.from_directory()`. |
+| **MCAP / ROS2 bag** | Real, native Rust | `convert_mcap()`, `convert_ros2_bag()` → Parquet. |
+| **Cloud object storage** | Real, via `fsspec`+`s3fs`/`gcsfs` (optional deps) | `RemoteDataset.from_s3()`/`from_gcs()` — downloads to a local cache and reads from there; this is *not* a true zero-copy remote stream. |
 
-| Dataset | Size | Load Time (1 epoch) | PyRoboFrames |
-|---------|------|-------------------|--------------|
-| LeRobot | 100K frames | 30s | 3s (10x faster) |
-| LOCO | 500K frames | 120s | 12s (10x faster) |
-| Open-X | 1M+ frames | 300s+ | 30s (10x faster) |
-
----
+Each optional-dependency reader raises a clear `ImportError` with an install hint if the
+dependency is missing, rather than silently producing empty output. `pyroboframes/_format_registry.py`
+adds a unified `load_dataset(path, format=...)` entry point across the above.
 
 ## Installation
 
 ```bash
 pip install pyroboframes
-# or with uv
-uv pip install pyroboframes
 ```
 
-Optional: For specific dataset support:
+This installs a prebuilt wheel on **macOS arm64**. On other platforms `pip` falls back
+to the source distribution, which needs a Rust toolchain and (for the default `ffmpeg`
+build feature) `ffmpeg`/`ffprobe` on `PATH` at build time:
+
 ```bash
-pip install pyroboframes[lerobot]  # LeRobot support
-pip install pyroboframes[loco]     # LOCO support
-pip install pyroboframes[openx]    # Open-X support
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+pip install pyroboframes
 ```
 
----
+Optional extras, installed separately depending on which formats/backends you use:
+`h5py` (HDF5), `xarray netCDF4` (NetCDF), `tensorflow_datasets` (RLDS), `fsspec s3fs
+gcsfs` (cloud object storage), `mlx` (Apple Silicon array output — also `pip install pyroboframes[mlx]`),
+`torch`/`jax` (other array backends), `scipy scikit-learn` (GPU-acceleration transforms
+and 3D occupancy-grid morphology — pin below `scipy<1.13`/`scikit-learn<1.5` to stay
+compatible with this package's `numpy==1.24` pin).
 
-## Documentation
+See [`.github/INSTALL.md`](.github/INSTALL.md) for troubleshooting.
 
-- [Quick Start](docs/QUICKSTART.md) — Load your first dataset
-- [Datasets](docs/DATASETS.md) — All supported robotics sources
-- [Custom Datasets](docs/CUSTOM.md) — Add your own format
-- [Performance Tips](docs/PERFORMANCE.md) — Optimize for training
-- [Examples](examples/) — Real-world robot learning
+## Development
 
----
+```bash
+git clone https://github.com/Mullassery/PyRoboFrames
+cd PyRoboFrames
+pip install -e ".[dev]"
+python -m maturin develop --release   # or: --release --features videotoolbox (macOS)
+pytest tests/ -v
+cargo test --workspace
+cargo clippy --all-targets -- -D warnings
+```
+
+## Status
+
+~248 Python tests / ~76 Rust unit tests as of this revision (counted via `grep -c "def
+test_"` / `grep -c "#\[test\]"`, not a full `pytest`/`cargo test` run — see the CI badge
+above for the authoritative, currently-passing count). See
+[`ROADMAP_HONEST.md`](ROADMAP_HONEST.md) for an unvarnished list of what's solid vs. what's
+still rough, and [`SECURITY.md`](SECURITY.md) for the current security/compliance posture.
+
+## Known Issues
+
+- No open GitHub issues and no real `TODO`/`FIXME`/`XXX` markers in `crates/` or
+  `python/` as of this pass (one `XXX` match is a filename placeholder in a doc
+  comment, not an actual TODO).
+- The Rust/Python test counts in the Status section above had drifted from the
+  actual source (previously stated as `223`/`75`); corrected here based on a
+  `grep` count. Treat the CI badge as authoritative over any number in prose.
+- Package version (`2.4.0`, dynamic from `Cargo.toml`) matches the version
+  currently published on PyPI — no drift as of this pass.
+- The native VideoToolbox decode path is H.264-only (no HEVC) and doesn't
+  implement a full B-frame reorder buffer — see "Hardware video decode" above
+  for the exact scope. `RemoteDataset`'s cloud-storage readers download to a
+  local cache rather than true zero-copy streaming.
+- This working tree had uncommitted local changes (a v2.0.0-era "MCP 2.0"
+  connector module, an OTel/observability setup guide, and a rewritten
+  ROADMAP.md reintroducing emoji/aspirational-checklist content) that predate
+  and conflict with this repository's own documented cleanup pass (see the
+  `git log` entry "Fix live property/method API bugs, remove dead fake code,
+  rewrite docs for accuracy (v2.4.0)"). Those changes were intentionally left
+  uncommitted rather than merged in — see repo owner's own working tree for
+  disposition.
 
 ## License
 
-Proprietary License - Free to use with explicit attribution. See [LICENSE](LICENSE).
+Proprietary — free to use with explicit attribution. See [`LICENSE`](LICENSE).
 
 ---
 
-**PyRoboFrames v2.0.0** | Robotics dataloaders for ML | Python 3.10+ | 23 tests passing
-
-## License
-
-MIT
-
----
-
-**MCP 2.0 Mega-Platform | v2.0.0 | Wheels-Only Distribution**
+Questions or bug reports: [GitHub Issues](https://github.com/Mullassery/PyRoboFrames/issues).

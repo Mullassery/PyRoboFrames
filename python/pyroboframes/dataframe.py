@@ -85,7 +85,10 @@ class TopicFrame:
 
     def to_dict(self) -> dict[str, np.ndarray]:
         """Every column (including ``log_time``) as NumPy arrays."""
-        return {c: self.table.column(c).to_numpy(zero_copy_only=False) for c in self.table.column_names}
+        return {
+            c: self.table.column(c).to_numpy(zero_copy_only=False)
+            for c in self.table.column_names
+        }
 
     def __len__(self) -> int:
         return self.table.num_rows
@@ -143,7 +146,8 @@ class RoboticsDataFrame:
     @classmethod
     def from_converted(cls, path: str) -> "RoboticsDataFrame":
         """Load a directory written by ``convert_mcap`` / ``convert_ros2_bag`` (Parquet tables +
-        ``metadata.json``). Falls back to globbing ``*.parquet`` if no manifest is present."""
+        ``metadata.json``). Falls back to globbing ``*.parquet`` if no manifest is present.
+        """
         meta_path = os.path.join(path, "metadata.json")
         frames: dict[str, TopicFrame] = {}
         metadata: dict = {}
@@ -157,11 +161,15 @@ class RoboticsDataFrame:
             for fn in sorted(os.listdir(path)):
                 if fn.endswith(".parquet"):
                     topic = "/" + fn[: -len(".parquet")]
-                    frames[topic] = TopicFrame(topic, pq.read_table(os.path.join(path, fn)))
+                    frames[topic] = TopicFrame(
+                        topic, pq.read_table(os.path.join(path, fn))
+                    )
         return cls(frames, metadata)
 
     @classmethod
-    def from_mcap(cls, mcap_path: str, out_dir: str | None = None) -> "RoboticsDataFrame":
+    def from_mcap(
+        cls, mcap_path: str, out_dir: str | None = None
+    ) -> "RoboticsDataFrame":
         """Convert an MCAP log and load it. ``out_dir`` defaults to a temp directory."""
         from . import convert_mcap
 
@@ -170,7 +178,9 @@ class RoboticsDataFrame:
         return cls.from_converted(out_dir)
 
     @classmethod
-    def from_ros2_bag(cls, bag_path: str, out_dir: str | None = None) -> "RoboticsDataFrame":
+    def from_ros2_bag(
+        cls, bag_path: str, out_dir: str | None = None
+    ) -> "RoboticsDataFrame":
         """Convert a ROS 2 bag (`.db3`) and load it. ``out_dir`` defaults to a temp directory."""
         from . import convert_ros2_bag
 
@@ -231,17 +241,27 @@ class RoboticsDataFrame:
                 stats[name] = topic_stats
 
             log_time = frame.log_time
-            topics_meta.append({
-                "topic": name,
-                "path": file_name,
-                "num_rows": len(frame),
-                "log_time_start": int(log_time.min()) if len(frame) else None,
-                "log_time_end": int(log_time.max()) if len(frame) else None,
-                "columns": columns,
-            })
+            topics_meta.append(
+                {
+                    "topic": name,
+                    "path": file_name,
+                    "num_rows": len(frame),
+                    "log_time_start": int(log_time.min()) if len(frame) else None,
+                    "log_time_end": int(log_time.max()) if len(frame) else None,
+                    "columns": columns,
+                }
+            )
 
         with open(os.path.join(path, "metadata.json"), "w") as fh:
-            json.dump({"format": "pyroboframes-columnar", "version": 1, "topics": topics_meta}, fh, indent=2)
+            json.dump(
+                {
+                    "format": "pyroboframes-columnar",
+                    "version": 1,
+                    "topics": topics_meta,
+                },
+                fh,
+                indent=2,
+            )
         with open(os.path.join(path, "stats.json"), "w") as fh:
             json.dump(stats, fh, indent=2)
 
@@ -286,7 +306,9 @@ class RoboticsDataFrame:
             valid = idx >= 0
             if tolerance is not None:
                 safe = np.clip(idx, 0, len(t_sorted) - 1)
-                dt = np.where(valid, ref_t_sorted - t_sorted[safe], np.iinfo(np.int64).max)
+                dt = np.where(
+                    valid, ref_t_sorted - t_sorted[safe], np.iinfo(np.int64).max
+                )
                 valid &= dt <= tolerance
 
             prefix = _short(name)
@@ -337,9 +359,13 @@ class RoboticsDataFrame:
         return f"RoboticsDataFrame(topics={self.topics})"
 
 
-def _resample_col(grid: np.ndarray, t: np.ndarray, col: np.ndarray, method: str) -> np.ndarray:
+def _resample_col(
+    grid: np.ndarray, t: np.ndarray, col: np.ndarray, method: str
+) -> np.ndarray:
     """Resample one sorted (``t``, ``col``) series onto ``grid`` by ``method``."""
-    numeric = np.issubdtype(col.dtype, np.number) and not np.issubdtype(col.dtype, np.bool_)
+    numeric = np.issubdtype(col.dtype, np.number) and not np.issubdtype(
+        col.dtype, np.bool_
+    )
 
     if method == "linear" and numeric:
         out = np.interp(grid, t, col.astype(np.float64))
@@ -366,7 +392,9 @@ def _gather(col: np.ndarray, idx: np.ndarray, valid: np.ndarray) -> np.ndarray:
     safe = np.clip(idx, 0, len(col) - 1)
     out = col[safe]
     if not valid.all():
-        if np.issubdtype(out.dtype, np.floating) or np.issubdtype(out.dtype, np.integer):
+        if np.issubdtype(out.dtype, np.floating) or np.issubdtype(
+            out.dtype, np.integer
+        ):
             out = out.astype(np.float64)
             out[~valid] = np.nan
         else:

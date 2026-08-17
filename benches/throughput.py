@@ -31,7 +31,9 @@ import pyroboframes as prf
 CAM = "observation.images.top"
 
 
-def make_dataset(root: str, episodes: int, length: int, with_video: bool, vw: int, vh: int) -> int:
+def make_dataset(
+    root: str, episodes: int, length: int, with_video: bool, vw: int, vh: int
+) -> int:
     total = episodes * length
     os.makedirs(f"{root}/meta/episodes/chunk-000")
     os.makedirs(f"{root}/data/chunk-000")
@@ -57,8 +59,12 @@ def make_dataset(root: str, episodes: int, length: int, with_video: bool, vw: in
         {
             "episode_index": pa.array(range(episodes), pa.int64()),
             "length": pa.array([length] * episodes, pa.int64()),
-            "dataset_from_index": pa.array([i * length for i in range(episodes)], pa.int64()),
-            "dataset_to_index": pa.array([(i + 1) * length for i in range(episodes)], pa.int64()),
+            "dataset_from_index": pa.array(
+                [i * length for i in range(episodes)], pa.int64()
+            ),
+            "dataset_to_index": pa.array(
+                [(i + 1) * length for i in range(episodes)], pa.int64()
+            ),
             "data/chunk_index": pa.array([0] * episodes, pa.int64()),
             "data/file_index": pa.array([0] * episodes, pa.int64()),
             f"videos/{CAM}/chunk_index": pa.array([0] * episodes, pa.int64()),
@@ -79,7 +85,9 @@ def make_dataset(root: str, episodes: int, length: int, with_video: bool, vw: in
             "observation.state": pa.array(
                 rng.standard_normal((total, 7)).tolist(), pa.list_(pa.float32())
             ),
-            "action": pa.array(rng.standard_normal((total, 7)).tolist(), pa.list_(pa.float32())),
+            "action": pa.array(
+                rng.standard_normal((total, 7)).tolist(), pa.list_(pa.float32())
+            ),
         }
     )
     pq.write_table(data, f"{root}/data/chunk-000/file-000.parquet")
@@ -88,8 +96,20 @@ def make_dataset(root: str, episodes: int, length: int, with_video: bool, vw: in
         vdir = f"{root}/videos/{CAM}/chunk-000"
         os.makedirs(vdir)
         subprocess.run(
-            ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"testsrc=size={vw}x{vh}:rate=30",
-             "-frames:v", str(total), "-pix_fmt", "yuv420p", f"{vdir}/file-000.mp4"],
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                f"testsrc=size={vw}x{vh}:rate=30",
+                "-frames:v",
+                str(total),
+                "-pix_fmt",
+                "yuv420p",
+                f"{vdir}/file-000.mp4",
+            ],
             check=True,
         )
     return total
@@ -145,11 +165,17 @@ def main() -> None:
     ap.add_argument("--length", type=int, default=150)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--workers", type=int, nargs="+", default=[0, 1, 2, 4])
-    ap.add_argument("--video-size", type=int, nargs=2, default=[64, 48], metavar=("W", "H"))
-    ap.add_argument("--no-video", action="store_true", help="skip the camera-decode benchmark")
+    ap.add_argument(
+        "--video-size", type=int, nargs=2, default=[64, 48], metavar=("W", "H")
+    )
+    ap.add_argument(
+        "--no-video", action="store_true", help="skip the camera-decode benchmark"
+    )
     args = ap.parse_args()
 
-    have_ffmpeg = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+    have_ffmpeg = (
+        shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+    )
     with_video = have_ffmpeg and not args.no_video
 
     root = tempfile.mkdtemp(prefix="prf_bench_")
@@ -158,9 +184,13 @@ def main() -> None:
         total = make_dataset(root, args.episodes, args.length, with_video, vw, vh)
         ds = prf.RoboFrameDataset.from_path(root)
 
-        print(f"\nPyRoboFrames throughput — {total} frames "
-              f"({args.episodes} ep × {args.length}), batch={args.batch_size}")
-        print(f"ffmpeg: {'yes' if have_ffmpeg else 'no'}  | video case: {'on' if with_video else 'off'}\n")
+        print(
+            f"\nPyRoboFrames throughput — {total} frames "
+            f"({args.episodes} ep × {args.length}), batch={args.batch_size}"
+        )
+        print(
+            f"ffmpeg: {'yes' if have_ffmpeg else 'no'}  | video case: {'on' if with_video else 'off'}\n"
+        )
 
         cases = [("tabular (state/action)", None)]
         if with_video:
@@ -172,7 +202,13 @@ def main() -> None:
             print("-" * 38)
             base = None
             for w in args.workers:
-                fps = time_epoch(ds, total, cameras=cameras, batch_size=args.batch_size, num_workers=w)
+                fps = time_epoch(
+                    ds,
+                    total,
+                    cameras=cameras,
+                    batch_size=args.batch_size,
+                    num_workers=w,
+                )
                 base = base or fps
                 tag = "sync" if w == 0 else f"{w}"
                 print(f"{tag:>12} | {fps:>12,.0f} | {fps / base:>7.2f}x")
@@ -202,8 +238,12 @@ def main() -> None:
         base = None
         for out in seq_outs:
             fps = time_epoch(
-                ds, total, batch_size=args.batch_size, output=out,
-                delta_timestamps=deltas, chunk_size=args.length // 4 or 1,
+                ds,
+                total,
+                batch_size=args.batch_size,
+                output=out,
+                delta_timestamps=deltas,
+                chunk_size=args.length // 4 or 1,
             )
             base = base or fps
             print(f"{out:>12} | {fps:>12,.0f} | {fps / base:>7.2f}x")

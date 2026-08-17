@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class DatasetFormat(Enum):
     """Supported dataset formats."""
+
     LEROBOT = "lerobot"
     RLDS = "rlds"
     HDF5 = "hdf5"
@@ -31,6 +32,7 @@ class DatasetFormat(Enum):
 @dataclass
 class FormatSpec:
     """Specification for a dataset format."""
+
     name: str
     format_enum: DatasetFormat
     file_extensions: List[str]
@@ -70,16 +72,19 @@ class LeRobotLoader(DatasetLoader):
         """Load LeRobot episode."""
         # Implementation delegates to existing lerobot.py
         from .lerobot import load_episode as le_load
+
         return le_load(str(self.path), episode_id)
 
     def load_frame(self, episode_id: int, frame_idx: int) -> Dict[str, Any]:
         """Load single frame from LeRobot episode."""
         from .lerobot import load_frame as le_load_frame
+
         return le_load_frame(str(self.path), episode_id, frame_idx)
 
     def get_episode_count(self) -> int:
         """Get LeRobot episode count."""
         from .lerobot import get_episode_count
+
         return get_episode_count(str(self.path))
 
     def get_metadata(self) -> Dict[str, Any]:
@@ -87,7 +92,7 @@ class LeRobotLoader(DatasetLoader):
         return {
             "format": "lerobot",
             "path": str(self.path),
-            "description": "LeRobot JSONL format"
+            "description": "LeRobot JSONL format",
         }
 
 
@@ -99,10 +104,14 @@ class RLDSLoader(DatasetLoader):
         try:
             import tensorflow as tf
         except ImportError:
-            raise ImportError("RLDS support requires tensorflow. Install: pip install tensorflow")
+            raise ImportError(
+                "RLDS support requires tensorflow. Install: pip install tensorflow"
+            )
 
         # Read TF Record dataset
-        raw_dataset = tf.data.TFRecordDataset(str(self.path / f"episode_{episode_id:06d}.tfrecord"))
+        raw_dataset = tf.data.TFRecordDataset(
+            str(self.path / f"episode_{episode_id:06d}.tfrecord")
+        )
         episode_data = {"frames": []}
 
         for raw_record in raw_dataset:
@@ -119,7 +128,9 @@ class RLDSLoader(DatasetLoader):
         """Load single frame from RLDS."""
         episode = self.load_episode(episode_id)
         if frame_idx >= len(episode["frames"]):
-            raise IndexError(f"Frame {frame_idx} out of range (max {len(episode['frames'])-1})")
+            raise IndexError(
+                f"Frame {frame_idx} out of range (max {len(episode['frames'])-1})"
+            )
         return episode["frames"][frame_idx]
 
     def get_episode_count(self) -> int:
@@ -133,7 +144,7 @@ class RLDSLoader(DatasetLoader):
             "format": "rlds",
             "path": str(self.path),
             "description": "RLDS/Open X-Embodiment TF Records format",
-            "n_episodes": self.get_episode_count()
+            "n_episodes": self.get_episode_count(),
         }
 
     @staticmethod
@@ -219,7 +230,7 @@ class HDF5Loader(DatasetLoader):
             "format": "hdf5",
             "path": str(self.path),
             "description": "HDF5 hierarchical format",
-            "n_episodes": self.get_episode_count()
+            "n_episodes": self.get_episode_count(),
         }
 
 
@@ -245,8 +256,8 @@ class FormatRegistry:
                 loader_class=LeRobotLoader,
                 supports_streaming=True,
                 supports_random_access=False,
-                description="LeRobot JSONL/Parquet format from HuggingFace"
-            )
+                description="LeRobot JSONL/Parquet format from HuggingFace",
+            ),
         )
 
         self.register(
@@ -258,8 +269,8 @@ class FormatRegistry:
                 loader_class=RLDSLoader,
                 supports_streaming=True,
                 supports_random_access=False,
-                description="Open X-Embodiment RLDS TF Records format"
-            )
+                description="Open X-Embodiment RLDS TF Records format",
+            ),
         )
 
         self.register(
@@ -271,17 +282,24 @@ class FormatRegistry:
                 loader_class=HDF5Loader,
                 supports_streaming=False,
                 supports_random_access=True,
-                description="Hierarchical HDF5 format"
-            )
+                description="Hierarchical HDF5 format",
+            ),
         )
 
     def register(self, format_enum: DatasetFormat, spec: FormatSpec):
         """Register a format loader."""
         self.formats[format_enum] = spec
-        logger.info(f"Registered format: {spec.name} ({', '.join(spec.file_extensions)})")
+        logger.info(
+            f"Registered format: {spec.name} ({', '.join(spec.file_extensions)})"
+        )
 
-    def register_custom(self, name: str, file_extensions: List[str], loader_class: Type,
-                       description: str = ""):
+    def register_custom(
+        self,
+        name: str,
+        file_extensions: List[str],
+        loader_class: Type,
+        description: str = "",
+    ):
         """Register a custom format loader."""
         spec = FormatSpec(
             name=name,
@@ -290,11 +308,13 @@ class FormatRegistry:
             loader_class=loader_class,
             supports_streaming=False,
             supports_random_access=False,
-            description=description
+            description=description,
         )
         self.register(DatasetFormat.CUSTOM, spec)
 
-    def get_loader(self, dataset_path: str, format_hint: Optional[str] = None) -> DatasetLoader:
+    def get_loader(
+        self, dataset_path: str, format_hint: Optional[str] = None
+    ) -> DatasetLoader:
         """
         Get appropriate loader for dataset path.
 

@@ -34,9 +34,9 @@ def test_profile_from_scores_percentiles_ordered():
     scores = _make_scores(100, mean=0.5, std=0.15)
     profile = DatasetQualityProfile.from_scores("test", scores)
     for metric, stats in profile.per_metric_stats.items():
-        assert stats["p25"] <= stats["p50"] <= stats["p75"] <= stats["p90"], (
-            f"Percentiles not ordered for {metric}: {stats}"
-        )
+        assert (
+            stats["p25"] <= stats["p50"] <= stats["p75"] <= stats["p90"]
+        ), f"Percentiles not ordered for {metric}: {stats}"
 
 
 def test_profile_empty_scores():

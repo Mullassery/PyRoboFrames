@@ -6,6 +6,7 @@ import tempfile
 import os
 
 import sys
+
 sys.path.insert(0, "/Users/georgimullassery/PyRoboFrames/python")
 
 import pyroboframes as prf
@@ -131,10 +132,12 @@ class TestP5SensorFusion:
         # 100Hz: 10ms intervals
         times_100hz = np.array([0, 10_000_000, 20_000_000], dtype=np.int64)
 
-        rates = engine.detect_rates({
-            "camera": times_30hz,
-            "imu": times_100hz,
-        })
+        rates = engine.detect_rates(
+            {
+                "camera": times_30hz,
+                "imu": times_100hz,
+            }
+        )
 
         # Check rates are close to expected
         assert 25 < rates["camera"] < 35  # ~30Hz

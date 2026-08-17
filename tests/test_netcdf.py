@@ -81,6 +81,7 @@ def test_convert_netcdf_explicit_breaks(tmp_path):
     out_dir = str(tmp_path / "lerobot")
 
     import xarray as xr
+
     T = 40
     ds_xr = xr.Dataset(
         {
@@ -102,7 +103,9 @@ def test_convert_netcdf_creates_parquet(tmp_path):
 
     convert_netcdf(path, out_dir)
     assert os.path.exists(os.path.join(out_dir, "meta", "info.json"))
-    assert os.path.exists(os.path.join(out_dir, "data", "chunk-000", "file-000.parquet"))
+    assert os.path.exists(
+        os.path.join(out_dir, "data", "chunk-000", "file-000.parquet")
+    )
 
 
 def test_convert_netcdf_lerobot_loadable(tmp_path):
@@ -114,5 +117,5 @@ def test_convert_netcdf_lerobot_loadable(tmp_path):
     convert_netcdf(path, out_dir)
 
     ds = prf.RoboFrameDataset.from_path(out_dir)
-    assert ds.num_episodes() == 3
-    assert ds.total_frames() == 30
+    assert ds.num_episodes == 3
+    assert ds.num_frames == 30

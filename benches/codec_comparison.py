@@ -71,7 +71,9 @@ def benchmark_codec(
 
 def print_table(rows: list[dict], n_frames: int, extrapolate_to: int = 10_000) -> None:
     print(f"\n{'─'*72}")
-    print(f"  Codec Comparison  │  {n_frames} frames  │  extrapolated to {extrapolate_to:,} frames")
+    print(
+        f"  Codec Comparison  │  {n_frames} frames  │  extrapolated to {extrapolate_to:,} frames"
+    )
     print(f"{'─'*72}")
     header = f"  {'Codec':<20} {'Size (MB)':>10} {'Encode (s)':>12} {'MB/frame':>10} {'Est. 10k (GB)':>14}"
     print(header)
@@ -95,12 +97,16 @@ def print_table(rows: list[dict], n_frames: int, extrapolate_to: int = 10_000) -
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="PyRoboFrames codec benchmark")
-    parser.add_argument("--frames", type=int, default=200, help="Total frames to encode")
+    parser.add_argument(
+        "--frames", type=int, default=200, help="Total frames to encode"
+    )
     parser.add_argument("--crf", type=int, default=23, help="CRF quality setting")
     args = parser.parse_args()
 
     if shutil.which("ffmpeg") is None:
-        print("ERROR: ffmpeg not found on PATH. Install ffmpeg to run codec benchmarks.")
+        print(
+            "ERROR: ffmpeg not found on PATH. Install ffmpeg to run codec benchmarks."
+        )
         sys.exit(1)
 
     n_frames = args.frames
