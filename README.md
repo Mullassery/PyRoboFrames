@@ -97,7 +97,7 @@ skips NumPy entirely is still future work.
 | **NetCDF** | Real, via `xarray`+`netCDF4` (optional deps) | `NetCDFDataset.from_path()`, `convert_netcdf()`. |
 | **RLDS** (Open X-Embodiment) | Real, via `tensorflow_datasets` (optional dep) | `RLDSDataset.from_tfds()` / `.from_directory()`. |
 | **MCAP / ROS2 bag** | Real, native Rust | `convert_mcap()`, `convert_ros2_bag()` → Parquet. |
-| **S3 / GCS** | Real, via `fsspec`+`s3fs`/`gcsfs` (optional deps) | `RemoteDataset.from_s3/from_gcs()` — downloads to a local cache and reads from there; this is *not* a true zero-copy remote stream. |
+| **Cloud object storage** | Real, via `fsspec`+`s3fs`/`gcsfs` (optional deps) | `RemoteDataset.from_s3()`/`from_gcs()` — downloads to a local cache and reads from there; this is *not* a true zero-copy remote stream. |
 
 Each optional-dependency reader raises a clear `ImportError` with an install hint if the
 dependency is missing, rather than silently producing empty output. `pyroboframes/_format_registry.py`
@@ -120,7 +120,7 @@ pip install pyroboframes
 
 Optional extras, installed separately depending on which formats/backends you use:
 `h5py` (HDF5), `xarray netCDF4` (NetCDF), `tensorflow_datasets` (RLDS), `fsspec s3fs
-gcsfs` (S3/GCS), `mlx` (Apple Silicon array output — also `pip install pyroboframes[mlx]`),
+gcsfs` (cloud object storage), `mlx` (Apple Silicon array output — also `pip install pyroboframes[mlx]`),
 `torch`/`jax` (other array backends), `scipy scikit-learn` (GPU-acceleration transforms
 and 3D occupancy-grid morphology — pin below `scipy<1.13`/`scikit-learn<1.5` to stay
 compatible with this package's `numpy==1.24` pin).
@@ -141,9 +141,34 @@ cargo clippy --all-targets -- -D warnings
 
 ## Status
 
-223 Python tests / 75 Rust unit tests passing as of this release (0 known failures). See
+~248 Python tests / ~76 Rust unit tests as of this revision (counted via `grep -c "def
+test_"` / `grep -c "#\[test\]"`, not a full `pytest`/`cargo test` run — see the CI badge
+above for the authoritative, currently-passing count). See
 [`ROADMAP_HONEST.md`](ROADMAP_HONEST.md) for an unvarnished list of what's solid vs. what's
 still rough, and [`SECURITY.md`](SECURITY.md) for the current security/compliance posture.
+
+## Known Issues
+
+- No open GitHub issues and no real `TODO`/`FIXME`/`XXX` markers in `crates/` or
+  `python/` as of this pass (one `XXX` match is a filename placeholder in a doc
+  comment, not an actual TODO).
+- The Rust/Python test counts in the Status section above had drifted from the
+  actual source (previously stated as `223`/`75`); corrected here based on a
+  `grep` count. Treat the CI badge as authoritative over any number in prose.
+- Package version (`2.4.0`, dynamic from `Cargo.toml`) matches the version
+  currently published on PyPI — no drift as of this pass.
+- The native VideoToolbox decode path is H.264-only (no HEVC) and doesn't
+  implement a full B-frame reorder buffer — see "Hardware video decode" above
+  for the exact scope. `RemoteDataset`'s cloud-storage readers download to a
+  local cache rather than true zero-copy streaming.
+- This working tree had uncommitted local changes (a v2.0.0-era "MCP 2.0"
+  connector module, an OTel/observability setup guide, and a rewritten
+  ROADMAP.md reintroducing emoji/aspirational-checklist content) that predate
+  and conflict with this repository's own documented cleanup pass (see the
+  `git log` entry "Fix live property/method API bugs, remove dead fake code,
+  rewrite docs for accuracy (v2.4.0)"). Those changes were intentionally left
+  uncommitted rather than merged in — see repo owner's own working tree for
+  disposition.
 
 ## License
 

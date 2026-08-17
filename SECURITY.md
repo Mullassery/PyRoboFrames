@@ -46,9 +46,10 @@ data, not yet hardened against adversarial input.
   components and can restrict a path to a base directory, but it is opt-in — most loader
   entry points (`RoboFrameDataset.from_path`, `convert_hdf5`, etc.) do **not** call it
   automatically. Call it yourself if the path comes from an untrusted source.
-- **S3/GCS credentials:** `RemoteDataset.from_s3()` / `.from_gcs()` pass through to
-  `fsspec`'s credential resolution (AWS profile / IAM role / GCS token). Prefer IAM
-  roles over long-lived keys — see `DEPLOYMENT_SECURITY.md`.
+- **Cloud storage credentials:** `RemoteDataset.from_s3()` / `.from_gcs()` pass through
+  to `fsspec`'s credential resolution (cloud provider profile / IAM role / storage
+  token). Prefer short-lived IAM-style roles over long-lived keys — see
+  `DEPLOYMENT_SECURITY.md`.
 - **Dependency pins:** `numpy==1.24` and `pyarrow==14` are hard-pinned (required by the
   compiled extension's ABI and by the LeRobot Parquet path). This is good for supply-chain
   reproducibility but means recent versions of optional companion libraries (`scipy>=1.13`,
