@@ -53,12 +53,33 @@ struct ModelCoefficients {
 }
 
 impl Default for ModelCoefficients {
+    /// Prior for **throughput**: more available memory and lower CPU/GPU
+    /// contention should predict *higher* throughput.
     fn default() -> Self {
         ModelCoefficients {
             intercept: 1000.0,
             batch_size_coeff: 0.1,
             memory_coeff: 0.01,
             cpu_coeff: -0.5,
+            gpu_coeff: 0.02,
+            interaction_coeff: 0.001,
+        }
+    }
+}
+
+impl ModelCoefficients {
+    /// Prior for **latency**: this needs the opposite sign on memory/CPU from
+    /// the throughput prior above - more available memory should predict
+    /// *lower* latency, and higher CPU/GPU contention should predict *higher*
+    /// latency. Reusing `default()` here previously gave latency predictions
+    /// the throughput sign convention, so more resource pressure looked like
+    /// it *reduced* predicted latency.
+    fn default_latency() -> Self {
+        ModelCoefficients {
+            intercept: 1000.0,
+            batch_size_coeff: 0.1,
+            memory_coeff: -0.01,
+            cpu_coeff: 0.5,
             gpu_coeff: 0.02,
             interaction_coeff: 0.001,
         }
@@ -72,7 +93,7 @@ impl PerformanceModel {
             training_data: VecDeque::new(),
             max_training_samples: 10000,
             throughput_coefficients: ModelCoefficients::default(),
-            latency_coefficients: ModelCoefficients::default(),
+            latency_coefficients: ModelCoefficients::default_latency(),
         }
     }
 

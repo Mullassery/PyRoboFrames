@@ -22,9 +22,17 @@ memmap2 = "0.9"
 bytes = "1.6"
 prost-reflect = { version = "0.14", features = ["serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+mp4 = { version = "0.14.0", optional = true }
+
+# videotoolbox/apple-cf bind real macOS system frameworks and cannot build on
+# other platforms at all (their build scripts require Xcode's `libtool`).
+# Declaring them here rather than in [dependencies] means `cargo build
+# --all-features` on Linux/Windows CI doesn't even try to compile them - the
+# `videotoolbox` Cargo feature below still exists everywhere, but actually
+# pulling in these crates is scoped to macOS.
+[target.'cfg(target_os = "macos")'.dependencies]
 videotoolbox = { version = "0.18", features = ["decompression"], optional = true }
 apple-cf = { version = "0.9", optional = true }
-mp4 = { version = "0.14.0", optional = true }
 
 [features]
 # Real hardware decode backends:

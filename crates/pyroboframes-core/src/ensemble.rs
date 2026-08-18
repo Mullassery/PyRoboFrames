@@ -336,8 +336,11 @@ impl EnsembleOrchestrator {
 
                 if avg_accuracy > best_accuracy {
                     best_accuracy = avg_accuracy;
-                    let model_id = key.split('_').next().map(|s| s.to_string());
-                    if let Some(id) = model_id {
+                    // Read model_id from the record itself rather than parsing it back
+                    // out of the "{model_id}_{prediction_type:?}" key - splitting on '_'
+                    // breaks for any model_id that itself contains an underscore (e.g.
+                    // "model_a" -> "model").
+                    if let Some(id) = records.first().map(|r| r.model_id.clone()) {
                         best_model = Some((id, avg_accuracy));
                     }
                 }
@@ -369,6 +372,17 @@ impl EnsembleOrchestrator {
             total_predictions,
             avg_confidence,
         }
+    }
+
+    /// Look up a registered model's metadata (weight, enabled state, etc.) by id.
+    pub fn get_model(&self, model_id: &str) -> Option<&ModelMetadata> {
+        self.models.get(model_id)
+    }
+
+    /// Number of predictions currently held (since the last `clear_predictions`
+    /// or `aggregate_predictions` call).
+    pub fn predictions_count(&self) -> usize {
+        self.predictions.len()
     }
 }
 

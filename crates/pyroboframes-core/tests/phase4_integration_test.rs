@@ -216,14 +216,24 @@ fn test_missing_frames_detection_workflow() {
 fn test_quality_assessment_with_recommendations() {
     let mut assessor = QualityAssessor::new();
 
-    // Create comprehensive quality report
+    // Create comprehensive quality report.
+    // - 50 missing frames out of 5000 gives completeness_score exactly 0.99,
+    //   which doesn't satisfy the "< 0.99" check below; 100 missing frames
+    //   clears that boundary with margin.
+    // - sensor sync score 0.7 (< 0.8) is what actually makes
+    //   generate_recommendations produce a High-severity issue here: the
+    //   AnomalousFrames severity thresholds are absolute counts (>100 for
+    //   High), and getting anomalous_frames that high while keeping
+    //   pass_rate > 0.96 (asserted below) isn't possible at this dataset
+    //   size, so the Temporal Alignment recommendation (always High when
+    //   timeliness_score < 0.8) is the only threshold this test can cross.
     let report = assessor.create_quality_report(
         "test_dataset",
         5000,   // total frames
         150,    // anomalous frames
-        50,     // missing frames
+        100,    // missing frames
         0.88,   // temporal consistency
-        0.92,   // sensor sync score
+        0.7,    // sensor sync score
     );
 
     // Verify quality metrics
@@ -306,15 +316,20 @@ fn test_integrated_quality_and_anomaly_detection() {
         },
     };
 
+    // generate_recommendations' AnomalousFrames severity thresholds are
+    // absolute counts (>100 => High), not fractions of total_frames, so this
+    // needs enough frames for anomaly_count to actually clear 100 - 50 frames
+    // (the original size here) can never produce a High/Critical issue no
+    // matter how anomalous every single one of them is.
     let mut anomaly_count = 0;
-    for i in 0..50 {
+    for i in 0..150 {
         if detector.detect_anomalies(i, &stats, i as u64 * 33).is_some() {
             anomaly_count += 1;
         }
     }
 
     // Generate quality report
-    let report = assessor.create_quality_report("integrated_test", 50, anomaly_count, 0, 0.9, 0.95);
+    let report = assessor.create_quality_report("integrated_test", 150, anomaly_count, 0, 0.9, 0.95);
 
     // Should have recommendations due to anomalies
     assert!(report.anomaly_count > 0);
@@ -452,14 +467,17 @@ fn test_complex_scenario_full_pipeline() {
         },
     };
 
-    detector.set_baseline_statistics(baseline);
+    detector.set_baseline_statistics(baseline.clone());
 
     let mut anomalies_found = 0;
     for i in 0..100 {
         let stats = if i % 15 == 0 {
-            // Inject anomaly
+            // Inject anomaly: baseline mean is 130.0 with std 22.0, so this
+            // needs to be far enough away to clear the z-score threshold
+            // (z = |mean - baseline_mean| / baseline_std > 3.0); 180.0 only
+            // gives z ~= 2.27, which never actually triggers detection.
             FrameStatistics {
-                mean_pixel_value: 180.0, // Outlier
+                mean_pixel_value: 230.0, // Outlier
                 std_pixel_value: 22.0,
                 min_pixel_value: 30,
                 max_pixel_value: 220,

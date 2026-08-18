@@ -59,6 +59,22 @@ pub enum TriggerPriority {
     Low,       // Optional
 }
 
+impl TriggerPriority {
+    /// Higher return value means more urgent. `derive(Ord)`'s declaration-order
+    /// semantics put `Critical` *below* `High`/`Medium`/`Low`, which is the
+    /// opposite of what a natural `priority >= TriggerPriority::High` comparison
+    /// should mean - use this instead of `Ord`/`PartialOrd` wherever "at least
+    /// this urgent" is the intent.
+    pub fn severity_rank(&self) -> u8 {
+        match self {
+            TriggerPriority::Low => 0,
+            TriggerPriority::Medium => 1,
+            TriggerPriority::High => 2,
+            TriggerPriority::Critical => 3,
+        }
+    }
+}
+
 pub struct FeedbackLoop {
     decision_outcomes: VecDeque<DecisionOutcome>,
     prediction_feedback: VecDeque<PredictionFeedback>,
@@ -259,7 +275,7 @@ impl FeedbackLoop {
         let mut models_to_retrain: Vec<String> = self
             .retraining_triggers
             .iter()
-            .filter(|t| t.priority >= TriggerPriority::High)
+            .filter(|t| t.priority.severity_rank() >= TriggerPriority::High.severity_rank())
             .map(|t| t.model_id.clone())
             .collect();
         models_to_retrain.sort();
@@ -365,6 +381,44 @@ impl FeedbackLoop {
         // Remove old prediction feedback
         self.prediction_feedback
             .retain(|p| now - p.timestamp < max_age_seconds);
+    }
+
+    /// Maximum number of decision/prediction records retained before older
+    /// entries are evicted.
+    pub fn max_history(&self) -> usize {
+        self.max_history
+    }
+
+    /// Number of decision outcomes currently recorded.
+    pub fn decision_outcomes_count(&self) -> usize {
+        self.decision_outcomes.len()
+    }
+
+    /// Number of prediction feedback records currently recorded.
+    pub fn prediction_feedback_count(&self) -> usize {
+        self.prediction_feedback.len()
+    }
+
+    /// Iterate over all recorded prediction feedback, oldest first.
+    pub fn prediction_feedback(&self) -> impl Iterator<Item = &PredictionFeedback> {
+        self.prediction_feedback.iter()
+    }
+
+    /// Look up a tracked performance metric by name.
+    pub fn get_metric(&self, name: &str) -> Option<&PerformanceMetric> {
+        self.performance_metrics.get(name)
+    }
+
+    /// All retraining triggers recorded so far (not just critical ones -
+    /// see [`FeedbackLoop::get_critical_triggers`] for that).
+    pub fn retraining_triggers(&self) -> &[RetrainingTrigger] {
+        &self.retraining_triggers
+    }
+
+    /// Record a retraining trigger directly, e.g. one computed externally
+    /// rather than via [`FeedbackLoop::trigger_retraining_if_needed`].
+    pub fn add_retraining_trigger(&mut self, trigger: RetrainingTrigger) {
+        self.retraining_triggers.push(trigger);
     }
 }
 
@@ -478,7 +532,10 @@ mod tests {
         loop_instance.trigger_retraining_if_needed("model_a", 0.1);
 
         assert!(!loop_instance.retraining_triggers.is_empty());
-        assert!(loop_instance.retraining_triggers[0].priority >= TriggerPriority::High);
+        assert!(
+            loop_instance.retraining_triggers[0].priority.severity_rank()
+                >= TriggerPriority::High.severity_rank()
+        );
     }
 
     #[test]
@@ -536,7 +593,10 @@ mod tests {
         let analysis = loop_instance.analyze_prediction_confidence();
         assert!(analysis.high_confidence_accuracy > 0.9);
         assert!(analysis.low_confidence_accuracy < 0.2);
-        assert!(analysis.calibration_score > 0.5);
+        // calibration_score = 1.0 - |high_accuracy - low_accuracy|: it's low when
+        // confidence correctly predicts accuracy (as here - high confidence really is
+        // more accurate) and high when accuracy doesn't track stated confidence at all.
+        assert!(analysis.calibration_score < 0.5);
     }
 
     #[test]

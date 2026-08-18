@@ -35,6 +35,20 @@ pub enum DecisionPriority {
     Low,        // Nice to have
 }
 
+impl DecisionPriority {
+    /// Higher return value means more urgent. `derive(Ord)`'s declaration-order
+    /// semantics put `Critical` *below* `High`/`Medium`/`Low`, which is the
+    /// opposite of "most urgent first" - use this for ranking/sorting instead.
+    pub fn severity_rank(&self) -> u8 {
+        match self {
+            DecisionPriority::Low => 0,
+            DecisionPriority::Medium => 1,
+            DecisionPriority::High => 2,
+            DecisionPriority::Critical => 3,
+        }
+    }
+}
+
 pub struct DecisionEngine {
     decisions_made: Vec<AutonomousDecision>,
     decisions_executed: Vec<String>,
@@ -225,7 +239,7 @@ impl DecisionEngine {
     pub fn rank_decisions_by_priority(&self) -> Vec<&AutonomousDecision> {
         let mut ranked: Vec<_> = self.decisions_made.iter().collect();
         ranked.sort_by(|a, b| {
-            let priority_cmp = b.priority.cmp(&a.priority);
+            let priority_cmp = b.priority.severity_rank().cmp(&a.priority.severity_rank());
             if priority_cmp != std::cmp::Ordering::Equal {
                 priority_cmp
             } else {
@@ -360,7 +374,7 @@ mod tests {
 
         engine.make_batch_size_decision(64, 32, 0.95, 0.95); // Critical
         engine.make_cache_decision(0.9, 4000, 5); // Medium
-        engine.make_quality_decision(0.75, 0.15, 0.02); // High
+        engine.make_quality_decision(0.75, 0.2, 0.02); // High (anomaly_ratio must exceed 0.15)
 
         let ranked = engine.rank_decisions_by_priority();
 

@@ -141,11 +141,60 @@ cargo clippy --all-targets -- -D warnings
 
 ## Status
 
-~248 Python tests / ~76 Rust unit tests as of this revision (counted via `grep -c "def
-test_"` / `grep -c "#\[test\]"`, not a full `pytest`/`cargo test` run — see the CI badge
-above for the authoritative, currently-passing count). See
-[`ROADMAP_HONEST.md`](ROADMAP_HONEST.md) for an unvarnished list of what's solid vs. what's
-still rough, and [`SECURITY.md`](SECURITY.md) for the current security/compliance posture.
+~308 Python tests / ~318 Rust unit+integration tests as of this revision (counted via
+`grep -c "def test_"` / `grep -c "#\[test\]"`). See [`ROADMAP_HONEST.md`](ROADMAP_HONEST.md)
+for an unvarnished list of what's solid vs. what's still rough, and
+[`SECURITY.md`](SECURITY.md) for the current security/compliance posture.
+
+**Don't trust the CI badge above without reading this first.** Before this pass, CI had
+been red on every run for over a week straight, for four independent, real reasons -
+meaning neither the Rust nor the Python test suite was actually being exercised on any
+recent commit, despite the badge being visible in this README the whole time:
+
+1. `--all-features` unconditionally enables `pyroboframes-py`'s `extension-module`
+   feature, which that crate's own `Cargo.toml` documents as only safe to combine with
+   maturin's build (it needs maturin's dynamic-lookup linker flags) - a plain
+   `cargo build`/`cargo test --all-features` fails to link regardless of platform. Fixed
+   by building/testing with `--features ffmpeg` instead (the feature actually relevant to
+   an ubuntu-latest runner; `videotoolbox` is macOS-only and `cuda` needs a CUDA toolkit
+   the runner doesn't have).
+2. `apple-cf`/`videotoolbox` (real macOS-only system-framework bindings, needed for the
+   VideoToolbox hardware decode path) were plain `[dependencies]` rather than scoped to
+   `[target.'cfg(target_os = "macos")'.dependencies]`, so even setting (1) aside, enabling
+   the `videotoolbox` feature on Linux tried to compile them and failed. Fixed.
+3. The Python job ran `cd python && pip install -e ".[dev]"`, but `pyproject.toml` lives at
+   the repo root, not in `python/` - this failed outright on every run, so the Python suite
+   never got a chance to run at all. Fixed to install from the root.
+4. Even if (3) hadn't failed first, the next step checked `if [ -d "python/tests" ]` before
+   running pytest - but the real suite lives in `./tests` at the repo root, so this check
+   was always false and silently printed "No Python tests found" instead of running
+   anything. Fixed to check/run `tests/` at the root.
+
+With all four fixed, running the real suite for the first time surfaced one more real gap:
+`tests/test_storage.py` exercises `hub.py`'s optional `huggingface_hub`-based LeRobot-hub
+download path, but `huggingface_hub` wasn't listed in the `dev` extras, so a clean
+`pip install -e ".[dev]"` couldn't actually run that test. Added it to `dev`. Full result
+after all of the above: 273 passed, 10 skipped (environment-gated, e.g. missing
+ffprobe/OpenCV), 0 failed.
+
+Separately, this pass also ran the full Rust suite (`cargo test --workspace`) locally for
+the first time in a while: 5 of the `crates/pyroboframes-core/tests/*.rs` integration-test
+files didn't even compile (private-field access from an external test crate, a
+borrow-of-moved-value, and a borrow-checker conflict). Fixing the compile errors surfaced
+~19 real assertion failures underneath, roughly split between miscalibrated test fixtures
+(values that didn't actually cross the thresholds they were meant to trigger) and genuine
+production bugs, the more notable of which: `TriggerPriority`/`DecisionPriority`/`CachePriority`
+all derived `Ord` with `Critical` declared first, so a natural `priority >=
+SomeVariant::High` comparison silently ranked `Critical` *below* `High`/`Medium`/`Low` -
+this broke `FeedbackLoop::get_learning_report`'s `models_to_retrain` field for real (not
+just in tests); `EnsembleOrchestrator::get_best_model` parsed a model's id back out of a
+`"{id}_{type}"` key via `.split('_').next()`, which silently truncated any model id
+containing an underscore; `AnomalyDetector` only recorded a frame's timestamp when no
+anomaly was found, so a single detected anomaly permanently broke temporal-jitter tracking
+for every later frame; and `DistributedCoordinator::elect_leader`'s
+`availability / (latency_ms + 1)` scoring let tiny latency differences dominate over large
+availability differences. All of the above (Rust suite and CI itself) are fixed as of this
+pass; the CI badge should reflect that starting with the next run on `main`.
 
 ## Known Issues
 
@@ -161,14 +210,6 @@ still rough, and [`SECURITY.md`](SECURITY.md) for the current security/complianc
   implement a full B-frame reorder buffer — see "Hardware video decode" above
   for the exact scope. `RemoteDataset`'s cloud-storage readers download to a
   local cache rather than true zero-copy streaming.
-- This working tree had uncommitted local changes (a v2.0.0-era "MCP 2.0"
-  connector module, an OTel/observability setup guide, and a rewritten
-  ROADMAP.md reintroducing emoji/aspirational-checklist content) that predate
-  and conflict with this repository's own documented cleanup pass (see the
-  `git log` entry "Fix live property/method API bugs, remove dead fake code,
-  rewrite docs for accuracy (v2.4.0)"). Those changes were intentionally left
-  uncommitted rather than merged in — see repo owner's own working tree for
-  disposition.
 
 ## License
 

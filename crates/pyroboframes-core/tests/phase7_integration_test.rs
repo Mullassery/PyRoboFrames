@@ -6,7 +6,7 @@ use pyroboframes_core::distributed::{DistributedCoordinator, Node, NodeMetrics};
 #[test]
 fn test_distributed_coordinator_creation() {
     let coordinator = DistributedCoordinator::new(3);
-    assert_eq!(coordinator.quorum_size, 3);
+    assert_eq!(coordinator.quorum_size(), 3);
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn test_multi_region_node_registration() {
         });
     }
 
-    assert_eq!(coordinator.nodes.len(), 6);
+    assert_eq!(coordinator.node_count(), 6);
     assert_eq!(coordinator.get_active_nodes().len(), 6);
 }
 
@@ -415,7 +415,7 @@ fn test_cascade_failure_handling() {
     coordinator.mark_node_offline("node_0");
     coordinator.mark_node_offline("node_1");
 
-    assert!(coordinator.can_reach_quorum()); // 3 < 5, but check...
+    assert!(!coordinator.can_reach_quorum()); // 3 < 5
 
     // With 3 remaining, we can't reach quorum of 5
     let active = coordinator.get_active_nodes();

@@ -17,16 +17,24 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            crates
-            core
-            python
+          # The whole repo is a single Cargo workspace rooted here (see the
+          # top-level Cargo.toml's [workspace] members). "crates"/"core"/
+          # "python" as separate cache roots were wrong - "core" doesn't
+          # even exist as a directory, and neither "crates" nor "python" has
+          # its own independent Cargo.lock/target to cache.
+          workspaces: .
 
       - name: Build Rust
-        run: cargo build --release --all-features
+        # Not --all-features: that unconditionally enables pyroboframes-py's
+        # `extension-module` feature too, which is only meant to be combined
+        # with maturin's build (its own Cargo.toml documents this) - it needs
+        # maturin's dynamic-lookup linker flags and fails to link with a
+        # plain `cargo build`/`cargo test`, independent of platform. `cuda`
+        # is also excluded since ubuntu-latest runners have no CUDA toolkit.
+        run: cargo build --release --features ffmpeg
 
       - name: Test Rust
-        run: cargo test --release --all-features
+        run: cargo test --release --features ffmpeg
 
   python-tests:
     name: Python Tests (Python ${{ matrix.python-version }})
@@ -42,7 +50,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: cd python && pip install -e ".[dev]"
+        # pyproject.toml lives at the repo root (it points at python/pyroboframes
+        # as the package dir) - `cd python` before installing looked for a
+        # pyproject.toml/setup.py that was never there, so this step always
+        # failed and never actually installed the package.
+        run: pip install -e ".[dev]"
 
       - name: Run pytest
-        run: if [ -d "python/tests" ]; then cd python && pytest tests/ -v --tb=short; else echo "No Python tests found"; fi
+        # The real test suite lives in ./tests at the repo root, not
+        # python/tests (which doesn't exist) - this condition was always
+        # false, so pytest never actually ran and this step silently
+        # reported success on zero real tests.
+        run: if [ -d "tests" ]; then pytest tests/ -v --tb=short; else echo "No Python tests found"; fi

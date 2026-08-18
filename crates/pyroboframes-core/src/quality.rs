@@ -273,12 +273,15 @@ impl QualityAssessor {
                 return None;
             }
 
-            let recent = scores.iter().rev().take(5);
+            // Newest-first, up to the 5 most recent assessments.
+            let recent: Vec<_> = scores.iter().rev().take(5).collect();
             let mut total_change = 0.0;
             let mut comparisons = 0;
 
-            for window in recent.collect::<Vec<_>>().windows(2) {
-                if let [older, newer] = window {
+            for window in recent.windows(2) {
+                // `recent` is newest-first, so window[0] is the more recent
+                // of the pair and window[1] the older one.
+                if let [newer, older] = window {
                     total_change += newer.overall_score - older.overall_score;
                     comparisons += 1;
                 }
@@ -391,11 +394,16 @@ mod tests {
     fn test_quality_report_creation() {
         let mut assessor = QualityAssessor::new();
 
+        // 150/1000 missing frames pushes completeness_score to 0.85 (< 0.9,
+        // and missing_frame_count > 100), which is what actually crosses
+        // generate_recommendations' threshold for a Critical issue - 5
+        // missing frames out of 1000 doesn't cross any severity threshold,
+        // so no recommendation (and thus no issue) would ever be generated.
         let report =
-            assessor.create_quality_report("test_ds", 1000, 20, 5, 0.92, 0.95);
+            assessor.create_quality_report("test_ds", 1000, 20, 150, 0.92, 0.95);
 
         assert_eq!(report.anomaly_count, 20);
-        assert_eq!(report.missing_frame_count, 5);
+        assert_eq!(report.missing_frame_count, 150);
         assert!(!report.critical_issues.is_empty() || !report.high_priority_issues.is_empty());
     }
 

@@ -102,6 +102,50 @@ impl AnomalyDetector {
         stats: &FrameStatistics,
         timestamp_ms: u64,
     ) -> Option<FrameAnomalyScore> {
+        // Check for temporal jitter first, and record this frame's timestamp
+        // unconditionally (regardless of whether *any* anomaly - jitter or
+        // otherwise - gets flagged below). Previously the timestamp was only
+        // recorded when the frame turned out to be clean, so a single
+        // content-based anomaly (or a jitter hit) would freeze
+        // `temporal_history` and make every later frame's jitter
+        // calculation compare against a stale timestamp - which itself
+        // keeps failing the jitter check and keeps the timestamp frozen,
+        // cascading into every subsequent frame being falsely flagged.
+        let jitter_anomaly = if !self.temporal_history.is_empty() {
+            let last_timestamp = *self.temporal_history.last().unwrap();
+            let expected_interval = if self.temporal_history.len() >= 2 {
+                (self.temporal_history[self.temporal_history.len() - 1]
+                    - self.temporal_history[self.temporal_history.len() - 2])
+                    as f64
+            } else {
+                30.0 // Assume 30Hz by default
+            };
+
+            let actual_interval = (timestamp_ms - last_timestamp) as f64;
+            let jitter = (actual_interval - expected_interval).abs();
+
+            if jitter > self.thresholds.temporal_jitter_threshold_ms {
+                Some(FrameAnomalyScore {
+                    frame_id,
+                    anomaly_type: AnomalyType::TemporalJitter,
+                    severity: (jitter / 50.0).min(1.0),
+                    confidence: 0.8,
+                    metadata: format!("jitter_ms: {:.2}", jitter),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        self.temporal_history.push(timestamp_ms);
+
+        if let Some(score) = jitter_anomaly {
+            self.detection_history.insert(frame_id, score.clone());
+            return Some(score);
+        }
+
         // Check for low contrast (blurred/dark content)
         if stats.std_pixel_value < self.thresholds.pixel_value_stddev_min {
             let score = FrameAnomalyScore {
@@ -155,33 +199,6 @@ impl AnomalyDetector {
             return Some(score);
         }
 
-        // Check for temporal jitter
-        if !self.temporal_history.is_empty() {
-            let last_timestamp = *self.temporal_history.last().unwrap();
-            let expected_interval = if self.temporal_history.len() >= 2 {
-                (self.temporal_history[self.temporal_history.len() - 1]
-                    - self.temporal_history[self.temporal_history.len() - 2])
-                    as f64
-            } else {
-                30.0 // Assume 30Hz by default
-            };
-
-            let actual_interval = (timestamp_ms - last_timestamp) as f64;
-            let jitter = (actual_interval - expected_interval).abs();
-
-            if jitter > self.thresholds.temporal_jitter_threshold_ms {
-                let score = FrameAnomalyScore {
-                    frame_id,
-                    anomaly_type: AnomalyType::TemporalJitter,
-                    severity: (jitter / 50.0).min(1.0),
-                    confidence: 0.8,
-                    metadata: format!("jitter_ms: {:.2}", jitter),
-                };
-                self.detection_history.insert(frame_id, score.clone());
-                return Some(score);
-            }
-        }
-
         // Check for statistical outliers
         if let Some(baseline) = &self.baseline_stats {
             let z_score =
@@ -200,7 +217,6 @@ impl AnomalyDetector {
             }
         }
 
-        self.temporal_history.push(timestamp_ms);
         None
     }
 
@@ -342,7 +358,7 @@ mod tests {
                 red_mean: 128.0,
                 green_mean: 128.0,
                 blue_mean: 128.0,
-                red_std: 25.0,
+                red_std: 60.0,
                 green_std: 5.0,
                 blue_std: 5.0,
             },

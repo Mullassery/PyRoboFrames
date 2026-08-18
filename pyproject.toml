@@ -84,6 +84,11 @@ dev = [
     "pandas<2.2",
     "scipy<1.13",
     "scikit-learn<1.5",
+    # hub.py's LeRobot-hub download path lazily imports huggingface_hub as a
+    # genuinely optional runtime dependency (see hub.py) - but
+    # tests/test_storage.py exercises that path, so it's needed here for a
+    # `pip install -e ".[dev]"` to actually be able to run the full suite.
+    "huggingface_hub>=0.21.0",
 ]
 
 [tool.maturin]

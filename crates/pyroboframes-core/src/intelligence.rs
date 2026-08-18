@@ -31,6 +31,20 @@ pub enum CachePriority {
     Low,       // Unlikely to be accessed
 }
 
+impl CachePriority {
+    /// Higher return value means more urgent. `derive(Ord)`'s declaration-order
+    /// semantics put `Critical` *below* `High`/`Medium`/`Low`, which is the
+    /// opposite of "at least this urgent" - use this for such comparisons.
+    fn severity_rank(&self) -> u8 {
+        match self {
+            CachePriority::Low => 0,
+            CachePriority::Medium => 1,
+            CachePriority::High => 2,
+            CachePriority::Critical => 3,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AccessPattern {
     pub sequential_accesses: u32,
@@ -194,7 +208,7 @@ impl PredictiveCache {
 
     pub fn should_prefetch(&self, frame_id: usize) -> bool {
         if let Some(pred) = self.get_prediction(frame_id) {
-            pred.priority >= CachePriority::High && pred.confidence > 0.6
+            pred.priority.severity_rank() >= CachePriority::High.severity_rank() && pred.confidence > 0.6
         } else {
             false
         }

@@ -110,12 +110,19 @@ impl DistributedCoordinator {
             return None;
         }
 
-        // Leader: lowest latency + highest availability
+        // Leader: lowest latency + highest availability. availability is a
+        // 0-1 fraction and latency_ms/1000.0 keeps the latency penalty on a
+        // comparable scale, so a real availability gap (e.g. 0.99 vs. 0.80)
+        // outweighs a small latency difference, while a small availability
+        // gap (0.99 vs. 0.98) still loses to a large latency difference.
+        // (A raw `availability / (latency_ms + 1.0)` ratio was tried before -
+        // it let latency dominate almost entirely, since 1/latency swings
+        // wildly while availability only varies within [0, 1].)
         let leader = active_nodes
             .into_iter()
             .max_by(|a, b| {
-                let score_a = a.availability / (a.latency_ms as f64 + 1.0);
-                let score_b = b.availability / (b.latency_ms as f64 + 1.0);
+                let score_a = a.availability - (a.latency_ms as f64 / 1000.0);
+                let score_b = b.availability - (b.latency_ms as f64 / 1000.0);
                 score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
             });
 
@@ -181,6 +188,16 @@ impl DistributedCoordinator {
             .iter()
             .filter(|v| v.requires_arbitration)
             .collect()
+    }
+
+    /// Minimum number of nodes required to reach consensus.
+    pub fn quorum_size(&self) -> usize {
+        self.quorum_size
+    }
+
+    /// Total number of registered nodes (active and offline).
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
     }
 }
 
