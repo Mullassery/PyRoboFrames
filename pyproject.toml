@@ -85,7 +85,7 @@ dev = [
     # Python 3.12+. This range keeps 1.24.x on 3.10/3.11 while letting pip
     # resolve to 1.26.x (the first release with 3.12 wheels) there.
     "numpy>=1.24,<1.27",
-    "maturin==1.7",
+    "maturin==1.14.1",
     "pandas<2.2",
     "scipy<1.13",
     "scikit-learn<1.5",
