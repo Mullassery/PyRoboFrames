@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install ffmpeg
+        # The ffmpeg feature (enabled below) has a real test
+        # (decode::tests::ffmpeg_decoder_decodes_a_real_frame) that shells
+        # out to the actual ffmpeg binary, not a mock - it needs to be on
+        # PATH for that to work.
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2

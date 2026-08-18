@@ -147,7 +147,7 @@ for an unvarnished list of what's solid vs. what's still rough, and
 [`SECURITY.md`](SECURITY.md) for the current security/compliance posture.
 
 **Don't trust the CI badge above without reading this first.** Before this pass, CI had
-been red on every run for over a week straight, for four independent, real reasons -
+been red on every run for over a week straight, for six independent, real reasons -
 meaning neither the Rust nor the Python test suite was actually being exercised on any
 recent commit, despite the badge being visible in this README the whole time:
 
@@ -169,8 +169,18 @@ recent commit, despite the badge being visible in this README the whole time:
    running pytest - but the real suite lives in `./tests` at the repo root, so this check
    was always false and silently printed "No Python tests found" instead of running
    anything. Fixed to check/run `tests/` at the root.
+5. `numpy==1.24` (pinned in the `dev` extras) never published a `cp312` wheel - it predates
+   Python 3.12 - so on the `3.12` leg of the Python test matrix, `pip install -e ".[dev]"`
+   fell back to a source build that failed outright (no working
+   `setuptools.build_meta`). Relaxed to `numpy>=1.24,<1.27`, which resolves to 1.24.x on
+   3.10/3.11 and 1.26.4 (the first release with 3.12 wheels) on 3.12 - verified all of
+   numpy/pandas/scipy/scikit-learn still import together cleanly at that combination.
+6. With (1)-(2) fixed, `--features ffmpeg` started actually building and running
+   `decode::tests::ffmpeg_decoder_decodes_a_real_frame`, a real test that shells out to the
+   `ffmpeg` binary - which isn't installed on the `ubuntu-latest` runner by default. Added
+   an explicit `apt-get install -y ffmpeg` step.
 
-With all four fixed, running the real suite for the first time surfaced one more real gap:
+With all six fixed, running the real suite for the first time surfaced one more real gap:
 `tests/test_storage.py` exercises `hub.py`'s optional `huggingface_hub`-based LeRobot-hub
 download path, but `huggingface_hub` wasn't listed in the `dev` extras, so a clean
 `pip install -e ".[dev]"` couldn't actually run that test. Added it to `dev`. Full result
