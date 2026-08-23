@@ -123,7 +123,7 @@ Optional extras, installed separately depending on which formats/backends you us
 gcsfs` (cloud object storage), `mlx` (Apple Silicon array output — also `pip install pyroboframes[mlx]`),
 `torch`/`jax` (other array backends), `scipy scikit-learn` (GPU-acceleration transforms
 and 3D occupancy-grid morphology — pin below `scipy<1.13`/`scikit-learn<1.5` to stay
-compatible with this package's `numpy==1.24` pin).
+compatible with this package's `numpy>=1.24,<1.27` dev-extras pin).
 
 See [`.github/INSTALL.md`](.github/INSTALL.md) for troubleshooting.
 
@@ -184,8 +184,9 @@ With all six fixed, running the real suite for the first time surfaced one more 
 `tests/test_storage.py` exercises `hub.py`'s optional `huggingface_hub`-based LeRobot-hub
 download path, but `huggingface_hub` wasn't listed in the `dev` extras, so a clean
 `pip install -e ".[dev]"` couldn't actually run that test. Added it to `dev`. Full result
-after all of the above: 273 passed, 10 skipped (environment-gated, e.g. missing
-ffprobe/OpenCV), 0 failed.
+after all of the above, re-verified via a real CI run on `main` (Python 3.10/3.11/3.12,
+all three matrix legs identical): 271 passed, 12 skipped (environment-gated, e.g. missing
+ffprobe/OpenCV/torch/jax/mlx), 0 failed.
 
 Separately, this pass also ran the full Rust suite (`cargo test --workspace`) locally for
 the first time in a while: 5 of the `crates/pyroboframes-core/tests/*.rs` integration-test
