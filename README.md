@@ -222,6 +222,17 @@ pass; the CI badge should reflect that starting with the next run on `main`.
   for the exact scope. `RemoteDataset`'s cloud-storage readers download to a
   local cache rather than true zero-copy streaming.
 
+## Cross-repo compatibility
+
+This repo is one of several independently-published robotics packages by
+the same author (`PyRoboSimulator`, `pyroboreplay`, `PyRoboVision`,
+`PyTerrainMap`). Verified by reading every `Cargo.toml`/`pyproject.toml` in
+that group: this repo has no Cargo or pip dependency on any of them.
+PyRoboVision's README documents an intentionally loose, install-separately
+relationship with this repo (feeding PyRoboFrames-loaded data into its
+tracker) — this repo has no corresponding code and makes no claim of its
+own about that relationship.
+
 ## License
 
 Proprietary — free to use with explicit attribution. See [`LICENSE`](LICENSE).
