@@ -114,10 +114,17 @@ can't verify here) and research/heavy items sink. Each line is tagged `effort ·
 ### P7 — Streaming ingestion — ⏸ deferred (skip next batch)
 - [ ] **MQTT / Kafka** connectors + **stream-to-dataset writer** — `L · high · ~test (needs broker)`.
 
-### P8 — Tier-2 vision intelligence — ✅ done (0.1.11+)
-- [x] **CLIP embeddings** over frames — `CLIPEmbedder` extracts semantic embeddings for frames + text. — ✅
-- [x] **SAM2 segmentation** masks + **Grounding DINO** detection → **auto-annotation** — `SAM2Segmenter` +
-      `GroundingDINO` + unified `FrameAnnotator` interface. — ✅
+### P8 — Tier-2 vision intelligence — ⬜ not built (removed 2026-08-24)
+- [ ] **CLIP embeddings** over frames — `python/pyroboframes/vision.py` previously carried a
+      `CLIPEmbedder` class, but it was never imported by `__init__.py` (dead code, not part of
+      the public API) and had zero tests — ⬜.
+- [ ] **SAM2 segmentation** masks + **Grounding DINO** detection → **auto-annotation** — same file
+      had `SAM2Segmenter` (built the model with the wrong constructor signature for the real
+      `sam2` package, and advertised text prompts SAM2 doesn't support) and `GroundingDINO`
+      (`detect()` was a stub that returned empty boxes/labels/confidence for every frame — never
+      called a model). This is the same "hardcoded fake results" pattern `PyRoboVision` already
+      hit and reverted; removed here rather than left in place. See `docs/ROADMAP_V0.5.3_SAM_MODELS.md`
+      (also removed) for context — it proposed extending this with an unverifiable "SAM3" spec. — ⬜.
 - [ ] **Vision-language dataset generation** — utility to auto-label frames using models above ⬜.
 
 ### P9 — NVIDIA / GPU path — ✅ build + operators done; verify pending (0.1.11+)

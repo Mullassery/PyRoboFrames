@@ -212,6 +212,13 @@ pass; the CI badge should reflect that starting with the next run on `main`.
 - No open GitHub issues and no real `TODO`/`FIXME`/`XXX` markers in `crates/` or
   `python/` as of this pass (one `XXX` match is a filename placeholder in a doc
   comment, not an actual TODO).
+- `python/pyroboframes/vision.py` (`CLIPEmbedder`/`SAM2Segmenter`/`GroundingDINO`) and
+  `docs/ROADMAP_V0.5.3_SAM_MODELS.md` were removed 2026-08-24: the module was dead code
+  (never imported by `__init__.py`), untested, and `GroundingDINO.detect()` returned
+  empty results for every frame instead of calling a model. Foundation-model /
+  auto-annotation work for this ecosystem lives in **PyRoboVision** instead, whose own
+  roadmap documents removing this exact "hardcoded fake results" pattern once already —
+  see [Cross-repo compatibility](#cross-repo-compatibility) below.
 - The Rust/Python test counts in the Status section above had drifted from the
   actual source (previously stated as `223`/`75`); corrected here based on a
   `grep` count. Treat the CI badge as authoritative over any number in prose.
