@@ -12,7 +12,7 @@ pub struct DecisionOutcome {
     pub actual_value: f64,
     pub timestamp: u64,
     pub success: bool,
-    pub impact: f64,  // 0-1: magnitude of impact
+    pub impact: f64, // 0-1: magnitude of impact
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -37,9 +37,9 @@ pub struct PerformanceTrend {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TrendDirection {
-    Improving,    // Metric getting better
-    Degrading,    // Metric getting worse
-    Stable,       // Metric stable
+    Improving, // Metric getting better
+    Degrading, // Metric getting worse
+    Stable,    // Metric stable
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,10 +53,10 @@ pub struct RetrainingTrigger {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TriggerPriority {
-    Critical,  // Immediate action needed
-    High,      // Schedule soon
-    Medium,    // Schedule in normal cycle
-    Low,       // Optional
+    Critical, // Immediate action needed
+    High,     // Schedule soon
+    Medium,   // Schedule in normal cycle
+    Low,      // Optional
 }
 
 impl TriggerPriority {
@@ -126,10 +126,8 @@ impl FeedbackLoop {
     pub fn record_prediction_feedback(&mut self, feedback: PredictionFeedback) {
         let error = (feedback.predicted - feedback.actual).abs();
 
-        self.prediction_feedback.push_back(PredictionFeedback {
-            error,
-            ..feedback
-        });
+        self.prediction_feedback
+            .push_back(PredictionFeedback { error, ..feedback });
 
         // Keep history bounded
         if self.prediction_feedback.len() > self.max_history {
@@ -185,8 +183,9 @@ impl FeedbackLoop {
                 TrendDirection::Stable
             };
 
-            let confidence =
-                ((metric.samples_count as f64).log2() / 10.0).min(1.0).max(0.1);
+            let confidence = ((metric.samples_count as f64).log2() / 10.0)
+                .min(1.0)
+                .max(0.1);
 
             trends.push(PerformanceTrend {
                 metric_name: name.clone(),
@@ -246,11 +245,7 @@ impl FeedbackLoop {
 
     pub fn get_learning_report(&self) -> LearningReport {
         let total_decisions = self.decision_outcomes.len();
-        let successful = self
-            .decision_outcomes
-            .iter()
-            .filter(|d| d.success)
-            .count();
+        let successful = self.decision_outcomes.iter().filter(|d| d.success).count();
 
         let success_rate = if total_decisions == 0 {
             0.0
@@ -268,7 +263,10 @@ impl FeedbackLoop {
         let pred_error_mae = if self.prediction_feedback.is_empty() {
             0.0
         } else {
-            self.prediction_feedback.iter().map(|p| p.error).sum::<f64>()
+            self.prediction_feedback
+                .iter()
+                .map(|p| p.error)
+                .sum::<f64>()
                 / self.prediction_feedback.len() as f64
         };
 
@@ -302,11 +300,7 @@ impl FeedbackLoop {
     }
 
     pub fn get_recent_decisions(&self, count: usize) -> Vec<&DecisionOutcome> {
-        self.decision_outcomes
-            .iter()
-            .rev()
-            .take(count)
-            .collect()
+        self.decision_outcomes.iter().rev().take(count).collect()
     }
 
     pub fn get_decision_success_rate(&self) -> f64 {
@@ -314,11 +308,7 @@ impl FeedbackLoop {
             return 0.0;
         }
 
-        let successful = self
-            .decision_outcomes
-            .iter()
-            .filter(|d| d.success)
-            .count();
+        let successful = self.decision_outcomes.iter().filter(|d| d.success).count();
 
         successful as f64 / self.decision_outcomes.len() as f64
     }
@@ -510,7 +500,10 @@ mod tests {
 
         let acc_trend = trends.iter().find(|t| t.metric_name == "accuracy");
         assert!(acc_trend.is_some());
-        assert_eq!(acc_trend.unwrap().trend_direction, TrendDirection::Improving);
+        assert_eq!(
+            acc_trend.unwrap().trend_direction,
+            TrendDirection::Improving
+        );
     }
 
     #[test]
@@ -533,7 +526,9 @@ mod tests {
 
         assert!(!loop_instance.retraining_triggers.is_empty());
         assert!(
-            loop_instance.retraining_triggers[0].priority.severity_rank()
+            loop_instance.retraining_triggers[0]
+                .priority
+                .severity_rank()
                 >= TriggerPriority::High.severity_rank()
         );
     }
@@ -655,7 +650,10 @@ mod tests {
         let acc_trend = trends.iter().find(|t| t.metric_name == "accuracy");
 
         assert!(acc_trend.is_some());
-        assert_eq!(acc_trend.unwrap().trend_direction, TrendDirection::Degrading);
+        assert_eq!(
+            acc_trend.unwrap().trend_direction,
+            TrendDirection::Degrading
+        );
     }
 
     #[test]

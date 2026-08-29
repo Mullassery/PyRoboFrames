@@ -28,7 +28,7 @@ pub struct EnsembleVote {
     pub prediction_type: PredictionType,
     pub consensus_value: f64,
     pub consensus_confidence: f64,
-    pub model_agreement: f64,      // 0-1: how well models agree
+    pub model_agreement: f64, // 0-1: how well models agree
     pub participating_models: usize,
     pub votes: Vec<(String, f64)>, // (model_id, vote_value)
 }
@@ -38,9 +38,9 @@ pub struct ModelPerformanceRecord {
     pub model_id: String,
     pub prediction_type: PredictionType,
     pub total_predictions: usize,
-    pub mae: f64,                   // Mean Absolute Error
-    pub accuracy: f64,              // 0-1 accuracy score
-    pub bias: f64,                  // Systematic over/under prediction
+    pub mae: f64,      // Mean Absolute Error
+    pub accuracy: f64, // 0-1 accuracy score
+    pub bias: f64,     // Systematic over/under prediction
 }
 
 pub struct EnsembleOrchestrator {
@@ -55,16 +55,16 @@ pub struct ModelMetadata {
     pub model_id: String,
     pub model_type: String,
     pub supported_types: Vec<PredictionType>,
-    pub weight: f64,                // 0-1: ensemble weight
+    pub weight: f64, // 0-1: ensemble weight
     pub enabled: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum VotingStrategy {
-    UnweightedMajority,     // Simple majority vote
-    WeightedMajority,       // Weight by confidence
-    ConfidenceWeighted,     // Confidence-based aggregation
-    BayesianEnsemble,       // Bayesian model averaging
+    UnweightedMajority, // Simple majority vote
+    WeightedMajority,   // Weight by confidence
+    ConfidenceWeighted, // Confidence-based aggregation
+    BayesianEnsemble,   // Bayesian model averaging
 }
 
 impl EnsembleOrchestrator {
@@ -99,8 +99,12 @@ impl EnsembleOrchestrator {
         }
     }
 
-    pub fn aggregate_predictions(&mut self, prediction_type: &PredictionType) -> Option<EnsembleVote> {
-        let matching_predictions: Vec<_> = self.predictions
+    pub fn aggregate_predictions(
+        &mut self,
+        prediction_type: &PredictionType,
+    ) -> Option<EnsembleVote> {
+        let matching_predictions: Vec<_> = self
+            .predictions
             .iter()
             .filter(|p| &p.prediction_type == prediction_type)
             .collect();
@@ -119,13 +123,10 @@ impl EnsembleOrchestrator {
         Some(result)
     }
 
-    fn unweighted_majority(
-        &self,
-        predictions: &[&ModelPrediction],
-    ) -> EnsembleVote {
+    fn unweighted_majority(&self, predictions: &[&ModelPrediction]) -> EnsembleVote {
         let avg_value = predictions.iter().map(|p| p.value).sum::<f64>() / predictions.len() as f64;
-        let avg_confidence = predictions.iter().map(|p| p.confidence).sum::<f64>()
-            / predictions.len() as f64;
+        let avg_confidence =
+            predictions.iter().map(|p| p.confidence).sum::<f64>() / predictions.len() as f64;
 
         let std_dev = self.calculate_std_dev(predictions, avg_value);
         let model_agreement = 1.0 / (1.0 + std_dev / (avg_value.abs() + 0.01));
@@ -143,10 +144,7 @@ impl EnsembleOrchestrator {
         }
     }
 
-    fn weighted_majority(
-        &self,
-        predictions: &[&ModelPrediction],
-    ) -> EnsembleVote {
+    fn weighted_majority(&self, predictions: &[&ModelPrediction]) -> EnsembleVote {
         let total_weight: f64 = predictions.iter().map(|p| p.confidence).sum();
 
         let weighted_value = predictions
@@ -172,13 +170,13 @@ impl EnsembleOrchestrator {
         }
     }
 
-    fn confidence_weighted(
-        &self,
-        predictions: &[&ModelPrediction],
-    ) -> EnsembleVote {
+    fn confidence_weighted(&self, predictions: &[&ModelPrediction]) -> EnsembleVote {
         // Weight by confidence and normalize
         let confidences: Vec<f64> = predictions.iter().map(|p| p.confidence).collect();
-        let max_conf = confidences.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let max_conf = confidences
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
 
         let adjusted_weights: Vec<f64> = confidences
             .iter()
@@ -210,10 +208,7 @@ impl EnsembleOrchestrator {
         }
     }
 
-    fn bayesian_ensemble(
-        &self,
-        predictions: &[&ModelPrediction],
-    ) -> EnsembleVote {
+    fn bayesian_ensemble(&self, predictions: &[&ModelPrediction]) -> EnsembleVote {
         // Simplified Bayesian averaging
         let avg_value = predictions.iter().map(|p| p.value).sum::<f64>() / predictions.len() as f64;
 
@@ -322,10 +317,7 @@ impl EnsembleOrchestrator {
         })
     }
 
-    pub fn get_best_model(
-        &self,
-        prediction_type: &PredictionType,
-    ) -> Option<(String, f64)> {
+    pub fn get_best_model(&self, prediction_type: &PredictionType) -> Option<(String, f64)> {
         let mut best_model = None;
         let mut best_accuracy = 0.0;
 
@@ -538,19 +530,9 @@ mod tests {
     fn test_model_performance_tracking() {
         let mut orchestrator = EnsembleOrchestrator::new(VotingStrategy::UnweightedMajority);
 
-        orchestrator.record_performance(
-            "model_a",
-            PredictionType::QualityScore,
-            0.85,
-            0.82,
-        );
+        orchestrator.record_performance("model_a", PredictionType::QualityScore, 0.85, 0.82);
 
-        orchestrator.record_performance(
-            "model_a",
-            PredictionType::QualityScore,
-            0.80,
-            0.78,
-        );
+        orchestrator.record_performance("model_a", PredictionType::QualityScore, 0.80, 0.78);
 
         let perf = orchestrator.get_model_performance("model_a", &PredictionType::QualityScore);
         assert!(perf.is_some());

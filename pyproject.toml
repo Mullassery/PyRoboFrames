@@ -75,20 +75,25 @@ mlx = ["mlx==0.20"]
 # pandas is required (not just optional-import) by tests/test_storage.py's LeRobot
 # hub download path (`hub.py: _download_lerobot_partial` calls `Table.to_pandas()`).
 # scipy/scikit-learn power the optional GPU-acceleration and 3D occupancy morphology
-# paths (gpu_acceleration.py, occupancy_3d.py); pinned below numpy 1.26 requirement
-# thresholds so they stay importable under the numpy constraint below.
+# paths (gpu_acceleration.py, occupancy_3d.py).
+#
+# Previously capped below the numpy 1.26 threshold (numpy<1.27, pandas<2.2,
+# scipy<1.13, scikit-learn<1.5) on the assumption the compiled extension needed
+# numpy<1.26. That assumption was never actually true for this crate's `numpy`
+# (Rust) 0.22 binding, and the runtime `numpy>=1.24` dependency above has had no
+# upper bound since 2804b06. Verified: full test suite (302 passed, 0 failed) with
+# numpy 2.4.6 + pyarrow 25 + scipy 1.17 + scikit-learn 1.9 + pandas 3.0.5, so the
+# caps are gone. Floor stays at numpy>=1.24 only because 1.24.x lacks a cp312 wheel
+# (predates Python 3.12) and would otherwise force a source build that fails
+# outright (no working setuptools.build_meta) on 3.12+ — pip naturally resolves to
+# a newer numpy there instead.
 dev = [
     "pytest==8",
-    # numpy 1.24.x never published a cp312 wheel (it predates Python 3.12),
-    # so `numpy==1.24` made `pip install -e ".[dev]"` fall back to a source
-    # build that fails outright (no working setuptools.build_meta) on
-    # Python 3.12+. This range keeps 1.24.x on 3.10/3.11 while letting pip
-    # resolve to 1.26.x (the first release with 3.12 wheels) there.
-    "numpy>=1.24,<1.27",
+    "numpy>=1.24",
     "maturin==1.7",
-    "pandas<2.2",
-    "scipy<1.13",
-    "scikit-learn<1.5",
+    "pandas",
+    "scipy",
+    "scikit-learn",
     # hub.py's LeRobot-hub download path lazily imports huggingface_hub as a
     # genuinely optional runtime dependency (see hub.py) - but
     # tests/test_storage.py exercises that path, so it's needed here for a
@@ -100,4 +105,13 @@ dev = [
 manifest-path = "crates/pyroboframes-py/Cargo.toml"
 module-name = "pyroboframes._core"
 python-source = "python"
-features = ["pyo3/extension-module", "ffmpeg"]
+# `videotoolbox` (the real, in-process VTDecompressionSession hardware-decode path — see
+# crates/pyroboframes-core/src/videotoolbox_native.rs) was missing here, so every wheel ever
+# published to PyPI silently fell back to the `ffmpeg` CLI-subprocess decoder on macOS despite
+# the videotoolbox path being real, tested code (`cargo test --features videotoolbox`) — verify
+# with `otool -L` on the built .so: no CoreMedia/CoreVideo/VideoToolbox frameworks were linked
+# before this. Safe to always include: the underlying `videotoolbox`/`apple-cf` crates are
+# declared under Cargo.toml's `[target.'cfg(target_os = "macos")'.dependencies]`, so this is a
+# no-op on non-macOS source builds.
+features = ["pyo3/extension-module", "ffmpeg", "videotoolbox"]
+include = ["LICENSE"]

@@ -8,23 +8,23 @@ use std::collections::HashMap;
 pub struct FrameAnomalyScore {
     pub frame_id: usize,
     pub anomaly_type: AnomalyType,
-    pub severity: f64,      // 0-1: anomaly severity
-    pub confidence: f64,    // 0-1: detection confidence
+    pub severity: f64,   // 0-1: anomaly severity
+    pub confidence: f64, // 0-1: detection confidence
     pub metadata: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum AnomalyType {
-    CorruptedData,          // Data corruption detected
-    MissingFrames,          // Missing frame in sequence
-    SensorMisalignment,     // Multi-sensor sync issue
-    TemporalJitter,         // Timing inconsistency
-    StatisticalOutlier,     // Pixel statistics unusual
-    LowContrast,            // Image too dark/light
-    BlurredContent,         // Motion blur or defocus
-    ColorAberration,        // Color channel misalignment
-    SuddenShift,            // Abrupt content change
-    Unknown,                // Unknown anomaly
+    CorruptedData,      // Data corruption detected
+    MissingFrames,      // Missing frame in sequence
+    SensorMisalignment, // Multi-sensor sync issue
+    TemporalJitter,     // Timing inconsistency
+    StatisticalOutlier, // Pixel statistics unusual
+    LowContrast,        // Image too dark/light
+    BlurredContent,     // Motion blur or defocus
+    ColorAberration,    // Color channel misalignment
+    SuddenShift,        // Abrupt content change
+    Unknown,            // Unknown anomaly
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -50,12 +50,12 @@ pub struct ColorBalance {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnomalyThresholds {
-    pub pixel_value_stddev_min: f64,     // Min std dev for valid content
-    pub edge_density_threshold: f64,     // Min edge density (blur detection)
-    pub histogram_entropy_min: f64,      // Min entropy (contrast)
-    pub color_channel_stddev_max: f64,   // Max stddev for channel match
+    pub pixel_value_stddev_min: f64,   // Min std dev for valid content
+    pub edge_density_threshold: f64,   // Min edge density (blur detection)
+    pub histogram_entropy_min: f64,    // Min entropy (contrast)
+    pub color_channel_stddev_max: f64, // Max stddev for channel match
     pub temporal_jitter_threshold_ms: f64, // Max allowed timing variance
-    pub statistical_z_threshold: f64,    // Z-score threshold for outliers
+    pub statistical_z_threshold: f64,  // Z-score threshold for outliers
 }
 
 impl Default for AnomalyThresholds {
@@ -115,8 +115,7 @@ impl AnomalyDetector {
             let last_timestamp = *self.temporal_history.last().unwrap();
             let expected_interval = if self.temporal_history.len() >= 2 {
                 (self.temporal_history[self.temporal_history.len() - 1]
-                    - self.temporal_history[self.temporal_history.len() - 2])
-                    as f64
+                    - self.temporal_history[self.temporal_history.len() - 2]) as f64
             } else {
                 30.0 // Assume 30Hz by default
             };
@@ -201,8 +200,8 @@ impl AnomalyDetector {
 
         // Check for statistical outliers
         if let Some(baseline) = &self.baseline_stats {
-            let z_score =
-                (stats.mean_pixel_value - baseline.mean_pixel_value).abs() / baseline.std_pixel_value;
+            let z_score = (stats.mean_pixel_value - baseline.mean_pixel_value).abs()
+                / baseline.std_pixel_value;
 
             if z_score > self.thresholds.statistical_z_threshold {
                 let score = FrameAnomalyScore {
@@ -433,7 +432,10 @@ mod tests {
         let anomaly = detector.detect_anomalies(0, &outlier, 0);
 
         assert!(anomaly.is_some());
-        assert_eq!(anomaly.unwrap().anomaly_type, AnomalyType::StatisticalOutlier);
+        assert_eq!(
+            anomaly.unwrap().anomaly_type,
+            AnomalyType::StatisticalOutlier
+        );
     }
 
     #[test]

@@ -193,6 +193,70 @@ def test_frame_loader_returns_image_batches(tmp_path):
     assert b0["observation.state"].shape == (4, 3)
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_frame_loader_batch_frames_match_individually_decoded_frames(tmp_path):
+    """Each slot in a batched `[batch, H, W, 3]` array must hold *that* frame's own pixels,
+    not another frame's (or a stale/zeroed slot) — regression test for the batch-array
+    assembly path, which writes each decoded frame directly into its slot in one shared
+    buffer instead of building it from independent per-frame copies."""
+    make_dataset(str(tmp_path), with_video=True)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+
+    batch_size = 4
+    batched = next(iter(ds.loader(batch_size=batch_size, shuffle=False, cameras=[CAM])))[CAM]
+    assert batched.shape == (batch_size, VID_H, VID_W, 3)
+
+    # ffmpeg's `testsrc` pattern scrolls, so consecutive frames differ — decoding one frame
+    # at a time (batch_size=1) must reproduce each slot of the batched array exactly.
+    singles = []
+    for i in range(batch_size):
+        single_loader = ds.loader(batch_size=1, shuffle=False, cameras=[CAM])
+        it = iter(single_loader)
+        for _ in range(i + 1):
+            frame = next(it)[CAM][0]
+        singles.append(frame)
+
+    for i in range(batch_size):
+        np.testing.assert_array_equal(
+            batched[i], singles[i], err_msg=f"batch slot {i} doesn't match its own frame"
+        )
+    # Frames actually differ from each other (catches an offset bug that copies one frame
+    # into every slot, which would otherwise pass an all-slots-equal-to-single-frame check).
+    assert not np.array_equal(batched[0], batched[1])
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_windowed_frame_loader_batch_slots_match_individual_decode(tmp_path):
+    """Same regression as the non-windowed check above, but for the `[batch, steps, H, W, 3]`
+    windowed-camera assembly path, which has its own `(idx * steps + step)` offset math."""
+    make_dataset(str(tmp_path), with_video=True)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+
+    batch_size = 3
+    loader = ds.loader(
+        batch_size=batch_size,
+        shuffle=False,
+        cameras=[CAM],
+        delta_timestamps={CAM: [-1 / 30, 0.0]},
+        tolerance_s=1e-3,
+    )
+    batched = next(iter(loader))[CAM]
+    assert batched.shape == (batch_size, 2, VID_H, VID_W, 3)
+
+    # Un-windowed loader gives the "current" (delta 0.0) frame directly, at step index -1.
+    single_loader = ds.loader(batch_size=batch_size, shuffle=False, cameras=[CAM])
+    current_frames = next(iter(single_loader))[CAM]
+    for i in range(batch_size):
+        np.testing.assert_array_equal(
+            batched[i, -1],
+            current_frames[i],
+            err_msg=f"batch item {i}'s current-step slot doesn't match its own frame",
+        )
+    # Steps within an item aren't all identical (history step differs from current, except
+    # right at episode start where the delta clamps) — item 1 isn't at an episode boundary.
+    assert not np.array_equal(batched[1, 0], batched[1, 1])
+
+
 def test_output_torch(tmp_path):
     torch = pytest.importorskip("torch")
     make_dataset(str(tmp_path))

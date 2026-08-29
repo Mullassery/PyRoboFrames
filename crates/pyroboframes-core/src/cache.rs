@@ -1,9 +1,9 @@
 //! Performance-focused caching layer
 //! Phase 2.2: Multi-tier caching, frame prefetching, memory-aware eviction
 
+use parking_lot::RwLock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 #[derive(Clone, Debug)]
 pub struct CacheStats {
@@ -169,7 +169,8 @@ impl Prefetcher {
 
     pub fn get_prefetch_range(&self, current_frame: usize) -> (usize, usize) {
         let start = current_frame.saturating_sub(self.window_size);
-        let end = (current_frame + self.prefetch_distance).min(current_frame + self.window_size * 2);
+        let end =
+            (current_frame + self.prefetch_distance).min(current_frame + self.window_size * 2);
         (start, end)
     }
 

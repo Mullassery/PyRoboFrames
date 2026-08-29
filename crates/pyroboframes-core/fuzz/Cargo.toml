@@ -1,0 +1,58 @@
+[package]
+name = "pyroboframes-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tempfile = "3"
+
+[dependencies.pyroboframes-core]
+path = ".."
+
+# Not part of the parent Cargo workspace: this cuts cargo's upward workspace
+# search short so `crates/pyroboframes-core/fuzz` doesn't get swept into the
+# repo-root workspace (which doesn't list it as a member).
+[workspace]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "mcap_convert"
+path = "fuzz_targets/mcap_convert.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rosbag_convert"
+path = "fuzz_targets/rosbag_convert.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "data_shard_parquet"
+path = "fuzz_targets/data_shard_parquet.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "episodes_parquet"
+path = "fuzz_targets/episodes_parquet.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ros2_cdr_decode"
+path = "fuzz_targets/ros2_cdr_decode.rs"
+test = false
+doc = false
+bench = false

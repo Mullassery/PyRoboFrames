@@ -9,8 +9,8 @@ pub struct Node {
     pub node_id: String,
     pub region: String,
     pub latency_ms: u32,
-    pub availability: f64,  // 0-1
-    pub capacity: u32,      // models it can run
+    pub availability: f64, // 0-1
+    pub capacity: u32,     // models it can run
     pub active: bool,
 }
 
@@ -56,10 +56,7 @@ impl DistributedCoordinator {
     }
 
     pub fn get_active_nodes(&self) -> Vec<&Node> {
-        self.nodes
-            .values()
-            .filter(|n| n.active)
-            .collect()
+        self.nodes.values().filter(|n| n.active).collect()
     }
 
     pub fn get_node_by_region(&self, region: &str) -> Vec<&Node> {
@@ -118,13 +115,13 @@ impl DistributedCoordinator {
         // (A raw `availability / (latency_ms + 1.0)` ratio was tried before -
         // it let latency dominate almost entirely, since 1/latency swings
         // wildly while availability only varies within [0, 1].)
-        let leader = active_nodes
-            .into_iter()
-            .max_by(|a, b| {
-                let score_a = a.availability - (a.latency_ms as f64 / 1000.0);
-                let score_b = b.availability - (b.latency_ms as f64 / 1000.0);
-                score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
-            });
+        let leader = active_nodes.into_iter().max_by(|a, b| {
+            let score_a = a.availability - (a.latency_ms as f64 / 1000.0);
+            let score_b = b.availability - (b.latency_ms as f64 / 1000.0);
+            score_a
+                .partial_cmp(&score_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         leader.map(|n| n.node_id.clone())
     }
@@ -459,19 +456,13 @@ mod tests {
         // Add agreeing votes
         coordinator.aggregate_distributed_votes(
             "quality",
-            vec![
-                ("node_1".to_string(), 0.85),
-                ("node_2".to_string(), 0.86),
-            ],
+            vec![("node_1".to_string(), 0.85), ("node_2".to_string(), 0.86)],
         );
 
         // Add disagreeing votes
         coordinator.aggregate_distributed_votes(
             "anomaly",
-            vec![
-                ("node_1".to_string(), 0.95),
-                ("node_2".to_string(), 0.10),
-            ],
+            vec![("node_1".to_string(), 0.95), ("node_2".to_string(), 0.10)],
         );
 
         let arbitration_cases = coordinator.get_arbitration_cases();

@@ -19,9 +19,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
+
+from .security import validate_dataset_path
 
 
 @dataclass
@@ -56,6 +59,8 @@ class NetCDFDataset:
         path: Path to the ``.nc`` / ``.netcdf`` file.
         time_dim: Name of the time dimension (default: ``"time"``).
         episode_breaks: Array of frame indices marking episode starts (0 is always included).
+        base_dir: If given, restrict ``path`` to this directory (rejects ``..``/symlink
+            escapes) — pass this whenever ``path`` comes from an untrusted source.
     """
 
     def __init__(
@@ -63,6 +68,7 @@ class NetCDFDataset:
         path: str,
         time_dim: str = "time",
         episode_breaks: Optional[np.ndarray] = None,
+        base_dir: Optional[str] = None,
     ) -> None:
         try:
             import xarray  # noqa: F401
@@ -70,6 +76,8 @@ class NetCDFDataset:
             raise ImportError(
                 "xarray is required to read NetCDF files: pip install xarray netCDF4"
             ) from exc
+        if base_dir is not None:
+            path = str(validate_dataset_path(path, base_dir=Path(base_dir)))
         self.path = path
         self.time_dim = time_dim
         self.episode_breaks = episode_breaks
@@ -80,6 +88,7 @@ class NetCDFDataset:
         path: str,
         time_dim: str = "time",
         episode_breaks: Optional[np.ndarray] = None,
+        base_dir: Optional[str] = None,
     ) -> "NetCDFDataset":
         """Open a NetCDF dataset.
 
@@ -87,10 +96,12 @@ class NetCDFDataset:
             path: Path to the file.
             time_dim: Name of the time dimension.
             episode_breaks: Frame indices where new episodes start.
+            base_dir: If given, restrict ``path`` to this directory — pass this whenever
+                ``path`` comes from an untrusted source.
         """
         if not os.path.exists(path):
             raise FileNotFoundError(f"NetCDF file not found: {path!r}")
-        return cls(path, time_dim=time_dim, episode_breaks=episode_breaks)
+        return cls(path, time_dim=time_dim, episode_breaks=episode_breaks, base_dir=base_dir)
 
     def inspect(self) -> dict[str, Any]:
         """Return variable names, shapes, dtypes, and dimension info."""
@@ -161,9 +172,13 @@ def _write_lerobot_layout(
     out_dir: str,
     time_dim: str,
     episode_breaks: Optional[np.ndarray],
+    base_dir: Optional[str] = None,
 ) -> ConversionReport:
     """Convert a NetCDF file to LeRobot v3.0 Parquet layout."""
     import xarray as xr
+
+    if base_dir is not None:
+        nc_path = str(validate_dataset_path(nc_path, base_dir=Path(base_dir)))
 
     report = ConversionReport()
     ds = xr.open_dataset(nc_path)
@@ -213,6 +228,7 @@ def convert_netcdf(
     *,
     time_dim: str = "time",
     episode_breaks: Optional[np.ndarray] = None,
+    base_dir: Optional[str] = None,
 ) -> ConversionReport:
     """Convert a NetCDF robot dataset to LeRobot v3.0 Parquet layout.
 
@@ -222,8 +238,10 @@ def convert_netcdf(
         time_dim: Name of the time dimension (default: ``"time"``).
         episode_breaks: Frame indices where new episodes begin. If None, auto-detected
             from a ``done``/``terminal`` variable or treated as a single episode.
+        base_dir: If given, restrict ``path`` to this directory — pass this whenever
+            ``path`` comes from an untrusted source.
 
     Returns:
         :class:`ConversionReport` summarising the conversion.
     """
-    return _write_lerobot_layout(path, out_dir, time_dim, episode_breaks)
+    return _write_lerobot_layout(path, out_dir, time_dim, episode_breaks, base_dir=base_dir)

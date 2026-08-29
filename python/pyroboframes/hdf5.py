@@ -23,9 +23,12 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
+
+from .security import validate_dataset_path
 
 
 @dataclass
@@ -59,30 +62,46 @@ class HDF5Dataset:
     Args:
         path: Path to the ``.hdf5`` / ``.h5`` file.
         episode_key: Group name prefix for episodes (default: auto-detect).
+        base_dir: If given, restrict ``path`` to this directory (rejects ``..``/symlink
+            escapes) — pass this whenever ``path`` comes from an untrusted source.
     """
 
-    def __init__(self, path: str, episode_key: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        path: str,
+        episode_key: Optional[str] = None,
+        base_dir: Optional[str] = None,
+    ) -> None:
         try:
             import h5py  # noqa: F401
         except ImportError as exc:
             raise ImportError(
                 "h5py is required to read HDF5 files: pip install h5py"
             ) from exc
+        if base_dir is not None:
+            path = str(validate_dataset_path(path, base_dir=Path(base_dir)))
         self.path = path
         self._episode_key = episode_key
         self._episode_groups: Optional[list[str]] = None
 
     @classmethod
-    def from_path(cls, path: str, episode_key: Optional[str] = None) -> "HDF5Dataset":
+    def from_path(
+        cls,
+        path: str,
+        episode_key: Optional[str] = None,
+        base_dir: Optional[str] = None,
+    ) -> "HDF5Dataset":
         """Open an HDF5 dataset.
 
         Args:
             path: Path to the ``.hdf5`` / ``.h5`` file.
             episode_key: Group name prefix for episodes. Auto-detected if None.
+            base_dir: If given, restrict ``path`` to this directory — pass this whenever
+                ``path`` comes from an untrusted source.
         """
         if not os.path.exists(path):
             raise FileNotFoundError(f"HDF5 file not found: {path!r}")
-        return cls(path, episode_key=episode_key)
+        return cls(path, episode_key=episode_key, base_dir=base_dir)
 
     def inspect(self) -> dict[str, Any]:
         """Return a tree of groups, datasets, shapes, and dtypes."""
@@ -177,6 +196,7 @@ def _write_lerobot_layout(
     hdf5_path: str,
     out_dir: str,
     episode_key: Optional[str],
+    base_dir: Optional[str] = None,
 ) -> ConversionReport:
     """Convert an HDF5 file to LeRobot v3.0 Parquet layout."""
     import h5py
@@ -184,7 +204,7 @@ def _write_lerobot_layout(
     import pyarrow.parquet as pq
 
     report = ConversionReport()
-    ds = HDF5Dataset(hdf5_path, episode_key=episode_key)
+    ds = HDF5Dataset(hdf5_path, episode_key=episode_key, base_dir=base_dir)
     os.makedirs(os.path.join(out_dir, "data", "chunk-000"), exist_ok=True)
     os.makedirs(os.path.join(out_dir, "meta", "episodes", "chunk-000"), exist_ok=True)
 
@@ -250,6 +270,7 @@ def convert_hdf5(
     episode_key: Optional[str] = None,
     obs_key: str = "obs",
     action_key: str = "actions",
+    base_dir: Optional[str] = None,
 ) -> ConversionReport:
     """Convert an HDF5 robot learning dataset to LeRobot v3.0 Parquet layout.
 
@@ -259,8 +280,10 @@ def convert_hdf5(
         episode_key: Group name prefix for episodes (auto-detected if None).
         obs_key: Group name for observations within each episode (informational).
         action_key: Dataset name for actions within each episode (informational).
+        base_dir: If given, restrict ``path`` to this directory — pass this whenever
+            ``path`` comes from an untrusted source.
 
     Returns:
         :class:`ConversionReport` summarising what was converted.
     """
-    return _write_lerobot_layout(path, out_dir, episode_key)
+    return _write_lerobot_layout(path, out_dir, episode_key, base_dir=base_dir)

@@ -489,7 +489,11 @@ fn test_data_cleanup() {
 
     // Add old and new data
     for i in 0..20 {
-        let timestamp = if i < 10 { 100 + i as u64 } else { 2000 + i as u64 };
+        let timestamp = if i < 10 {
+            100 + i as u64
+        } else {
+            2000 + i as u64
+        };
 
         loop_instance.record_decision_outcome(DecisionOutcome {
             decision_id: format!("d{}", i),

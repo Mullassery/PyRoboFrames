@@ -88,7 +88,10 @@ fn test_decision_engine_cache_optimization() {
 
     // High hit rate, plenty of memory
     let good_cache = engine.make_cache_decision(0.85, 5000, 10);
-    assert_eq!(good_cache.recommendation, RecommendationType::CacheAggressively);
+    assert_eq!(
+        good_cache.recommendation,
+        RecommendationType::CacheAggressively
+    );
     assert!(good_cache.expected_improvement > 0.1);
 
     // Low hit rate or many anomalies
@@ -102,7 +105,10 @@ fn test_decision_engine_prefetch_analysis() {
 
     // Strong sequential access patterns
     let sequential = engine.make_prefetch_decision(vec![0.9, 0.85, 0.88, 0.92], 0.4);
-    assert_eq!(sequential.recommendation, RecommendationType::EnablePrefetch);
+    assert_eq!(
+        sequential.recommendation,
+        RecommendationType::EnablePrefetch
+    );
     assert!(sequential.expected_improvement > 0.1);
 
     // Weak patterns with high memory pressure
@@ -118,16 +124,25 @@ fn test_decision_engine_quality_assessment() {
     // Poor quality - need reprocessing
     let reprocess = engine.make_quality_decision(0.45, 0.25, 0.15);
     assert_eq!(reprocess.priority, DecisionPriority::Critical);
-    assert_eq!(reprocess.recommendation, RecommendationType::TriggerReprocessing);
+    assert_eq!(
+        reprocess.recommendation,
+        RecommendationType::TriggerReprocessing
+    );
 
     // Medium quality with anomalies
     let skip_anomalies = engine.make_quality_decision(0.72, 0.18, 0.03);
-    assert_eq!(skip_anomalies.recommendation, RecommendationType::SkipAnomalousFrames);
+    assert_eq!(
+        skip_anomalies.recommendation,
+        RecommendationType::SkipAnomalousFrames
+    );
     assert_eq!(skip_anomalies.priority, DecisionPriority::High);
 
     // Good quality
     let good_quality = engine.make_quality_decision(0.88, 0.05, 0.01);
-    assert_eq!(good_quality.recommendation, RecommendationType::RequestManualReview);
+    assert_eq!(
+        good_quality.recommendation,
+        RecommendationType::RequestManualReview
+    );
 }
 
 #[test]
@@ -181,9 +196,15 @@ fn test_critical_decisions_extraction() {
 fn test_cumulative_improvement_tracking() {
     let mut engine = DecisionEngine::new();
 
-    let imp1 = engine.make_batch_size_decision(64, 32, 0.95, 0.95).expected_improvement;
-    let imp2 = engine.make_cache_decision(0.9, 4000, 5).expected_improvement;
-    let imp3 = engine.make_prefetch_decision(vec![0.8, 0.85], 0.5).expected_improvement;
+    let imp1 = engine
+        .make_batch_size_decision(64, 32, 0.95, 0.95)
+        .expected_improvement;
+    let imp2 = engine
+        .make_cache_decision(0.9, 4000, 5)
+        .expected_improvement;
+    let imp3 = engine
+        .make_prefetch_decision(vec![0.8, 0.85], 0.5)
+        .expected_improvement;
 
     let total = engine.get_total_expected_improvement();
     assert_eq!(total, imp1 + imp2 + imp3);
@@ -218,12 +239,7 @@ fn test_complex_workflow_full_intelligence_pipeline() {
 
     // Based on predictions, make batch optimization decision
     if current_pred.predicted_latency_ms > 15.0 {
-        let batch_decision = engine.make_batch_size_decision(
-            64,
-            48,
-            current_pred.confidence,
-            0.65,
-        );
+        let batch_decision = engine.make_batch_size_decision(64, 48, current_pred.confidence, 0.65);
         assert_eq!(batch_decision.priority, DecisionPriority::High);
     }
 
@@ -234,13 +250,20 @@ fn test_complex_workflow_full_intelligence_pipeline() {
     // Make prefetch decision based on patterns
     let patterns = vec![0.78, 0.82, 0.81, 0.79, 0.85];
     let prefetch_decision = engine.make_prefetch_decision(patterns, 0.45);
-    assert_eq!(prefetch_decision.recommendation, RecommendationType::EnablePrefetch);
+    assert_eq!(
+        prefetch_decision.recommendation,
+        RecommendationType::EnablePrefetch
+    );
 
     // 4. Rank and execute critical decisions
     let top_ids: Vec<String> = {
         let ranked = engine.rank_decisions_by_priority();
         assert!(!ranked.is_empty());
-        ranked.iter().take(1).map(|d| d.decision_id.clone()).collect()
+        ranked
+            .iter()
+            .take(1)
+            .map(|d| d.decision_id.clone())
+            .collect()
     };
 
     for decision_id in &top_ids {
@@ -287,12 +310,8 @@ fn test_adaptive_decision_making_over_time() {
             let pred = model.predict(64, memory, cpu, gpu);
 
             if cpu > 80.0 || gpu > 85.0 {
-                let decision = engine.make_batch_size_decision(
-                    64,
-                    48,
-                    pred.confidence,
-                    (cpu + gpu) / 200.0,
-                );
+                let decision =
+                    engine.make_batch_size_decision(64, 48, pred.confidence, (cpu + gpu) / 200.0);
                 assert!(decision.priority != DecisionPriority::Low);
             }
         }

@@ -39,6 +39,22 @@ def test_hdf5_dataset_not_found():
         HDF5Dataset.from_path("/nonexistent/data.h5")
 
 
+def test_hdf5_dataset_from_path_base_dir_allows_contained(tmp_path):
+    path = str(tmp_path / "data.h5")
+    _write_hdf5(path)
+    ds = HDF5Dataset.from_path(path, base_dir=str(tmp_path))
+    assert ds.path == str((tmp_path / "data.h5").resolve())
+
+
+def test_hdf5_dataset_from_path_base_dir_rejects_escape(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+    outside = tmp_path / "data.h5"
+    _write_hdf5(str(outside))
+    with pytest.raises(ValueError, match="must be within"):
+        HDF5Dataset.from_path(str(outside), base_dir=str(sandbox))
+
+
 def test_hdf5_inspect_has_episodes(tmp_path):
     path = str(tmp_path / "data.h5")
     _write_hdf5(path, n_episodes=3)

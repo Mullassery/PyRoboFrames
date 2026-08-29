@@ -1,15 +1,15 @@
 //! Advanced error handling and resilience
 //! Phase 2.3: Retry logic, graceful degradation, fault detection
 
-use std::time::Duration;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ErrorSeverity {
-    Fatal,       // Stop processing
-    Critical,    // Retry with backoff
-    Warning,     // Log and continue
-    Info,        // Log only
+    Fatal,    // Stop processing
+    Critical, // Retry with backoff
+    Warning,  // Log and continue
+    Info,     // Log only
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -54,7 +54,7 @@ impl RetryPolicy {
     pub fn calculate_backoff(&self, attempt: u32) -> Duration {
         let base = (self.config.initial_backoff_ms as f64
             * self.config.backoff_multiplier.powi(attempt as i32))
-            .min(self.config.max_backoff_ms as f64);
+        .min(self.config.max_backoff_ms as f64);
 
         // Add jitter
         let jitter = base * self.config.jitter_factor;
@@ -118,9 +118,9 @@ pub struct CircuitBreaker {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CircuitState {
-    Closed,      // Normal operation
-    Open,        // Fail fast
-    HalfOpen,    // Test if recovered
+    Closed,   // Normal operation
+    Open,     // Fail fast
+    HalfOpen, // Test if recovered
 }
 
 impl CircuitBreaker {
@@ -140,18 +140,16 @@ impl CircuitBreaker {
     {
         match self.state {
             CircuitState::Open => Err("Circuit breaker is open".to_string()),
-            CircuitState::Closed | CircuitState::HalfOpen => {
-                match f() {
-                    Ok(result) => {
-                        self.on_success();
-                        Ok(result)
-                    }
-                    Err(e) => {
-                        self.on_failure();
-                        Err(e)
-                    }
+            CircuitState::Closed | CircuitState::HalfOpen => match f() {
+                Ok(result) => {
+                    self.on_success();
+                    Ok(result)
                 }
-            }
+                Err(e) => {
+                    self.on_failure();
+                    Err(e)
+                }
+            },
         }
     }
 

@@ -21,11 +21,13 @@ def validate_dataset_path(
     Raises:
         ValueError: If path is invalid or escapes base_dir
     """
-    path = Path(path).resolve()
-
-    # Prevent directory traversal
-    if ".." in str(path):
+    # Check for ".." components before resolving — `Path.resolve()` collapses them away,
+    # so checking the resolved path (as the previous version of this function did) never
+    # actually rejects anything.
+    if ".." in Path(path).parts:
         raise ValueError("Directory traversal (..) not allowed")
+
+    path = Path(path).resolve()
 
     # If base_dir specified, ensure path is within it
     if base_dir:

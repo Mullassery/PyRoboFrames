@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 pub struct PerformancePrediction {
     pub predicted_throughput_fps: f64,
     pub predicted_latency_ms: f64,
-    pub confidence: f64,              // 0-1: prediction confidence
+    pub confidence: f64, // 0-1: prediction confidence
     pub model_id: String,
 }
 
@@ -26,9 +26,9 @@ pub struct TrainingDatapoint {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ModelEvaluation {
     pub model_id: String,
-    pub mae_throughput: f64,        // Mean Absolute Error
+    pub mae_throughput: f64, // Mean Absolute Error
     pub mae_latency: f64,
-    pub rmse_throughput: f64,       // Root Mean Squared Error
+    pub rmse_throughput: f64, // Root Mean Squared Error
     pub rmse_latency: f64,
     pub num_samples: usize,
     pub accuracy_percentage: f64,
@@ -303,7 +303,8 @@ impl PerformanceModel {
                 datapoint.gpu_utilization_percent,
             );
 
-            let throughput_error = (pred.predicted_throughput_fps - datapoint.actual_throughput_fps).abs();
+            let throughput_error =
+                (pred.predicted_throughput_fps - datapoint.actual_throughput_fps).abs();
             let latency_error = (pred.predicted_latency_ms - datapoint.actual_latency_ms).abs();
 
             mae_throughput += throughput_error;
@@ -458,7 +459,10 @@ mod tests {
         let pred1 = model.predict(32, 4000, 50.0, 60.0);
         let pred2 = model.predict(32, 4000, 50.0, 60.0);
 
-        assert_eq!(pred1.predicted_throughput_fps, pred2.predicted_throughput_fps);
+        assert_eq!(
+            pred1.predicted_throughput_fps,
+            pred2.predicted_throughput_fps
+        );
         assert_eq!(pred1.predicted_latency_ms, pred2.predicted_latency_ms);
     }
 
@@ -470,7 +474,9 @@ mod tests {
         let pred_large_batch = model.predict(128, 4000, 50.0, 60.0);
 
         // Larger batch should generally increase throughput
-        assert!(pred_large_batch.predicted_throughput_fps > pred_small_batch.predicted_throughput_fps);
+        assert!(
+            pred_large_batch.predicted_throughput_fps > pred_small_batch.predicted_throughput_fps
+        );
     }
 
     #[test]

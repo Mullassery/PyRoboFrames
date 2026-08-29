@@ -52,12 +52,12 @@ pub struct BatchAdjustment {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ResourceConstraint {
-    MemoryPressure,     // Memory usage too high
-    GPUMemoryFull,      // GPU VRAM exhausted
-    CPUBound,           // CPU at high utilization
-    GPUBound,           // GPU at high utilization
-    DiskIOBound,        // Disk I/O bottleneck
-    NoConstraint,       // All resources available
+    MemoryPressure, // Memory usage too high
+    GPUMemoryFull,  // GPU VRAM exhausted
+    CPUBound,       // CPU at high utilization
+    GPUBound,       // GPU at high utilization
+    DiskIOBound,    // Disk I/O bottleneck
+    NoConstraint,   // All resources available
 }
 
 impl AdaptiveBatchSizer {
@@ -90,18 +90,10 @@ impl AdaptiveBatchSizer {
             ResourceConstraint::MemoryPressure => {
                 self.reduce_batch_size(0.9, "Memory pressure detected")
             }
-            ResourceConstraint::GPUMemoryFull => {
-                self.reduce_batch_size(0.8, "GPU memory pressure")
-            }
-            ResourceConstraint::CPUBound => {
-                self.optimize_for_cpu(performance)
-            }
-            ResourceConstraint::GPUBound => {
-                self.optimize_for_gpu(performance)
-            }
-            ResourceConstraint::DiskIOBound => {
-                self.reduce_batch_size(0.85, "Disk I/O bottleneck")
-            }
+            ResourceConstraint::GPUMemoryFull => self.reduce_batch_size(0.8, "GPU memory pressure"),
+            ResourceConstraint::CPUBound => self.optimize_for_cpu(performance),
+            ResourceConstraint::GPUBound => self.optimize_for_gpu(performance),
+            ResourceConstraint::DiskIOBound => self.reduce_batch_size(0.85, "Disk I/O bottleneck"),
             ResourceConstraint::NoConstraint => {
                 self.increase_batch_size(1.1, "Resources available")
             }
@@ -145,8 +137,8 @@ impl AdaptiveBatchSizer {
     }
 
     fn reduce_batch_size(&self, factor: f64, reason: &str) -> BatchSizeRecommendation {
-        let new_size = ((self.current_batch_size as f64 * factor).ceil() as u32)
-            .max(self.min_batch_size);
+        let new_size =
+            ((self.current_batch_size as f64 * factor).ceil() as u32).max(self.min_batch_size);
 
         BatchSizeRecommendation {
             recommended_size: new_size,
@@ -158,8 +150,8 @@ impl AdaptiveBatchSizer {
     }
 
     fn increase_batch_size(&self, factor: f64, reason: &str) -> BatchSizeRecommendation {
-        let new_size = ((self.current_batch_size as f64 * factor).floor() as u32)
-            .min(self.max_batch_size);
+        let new_size =
+            ((self.current_batch_size as f64 * factor).floor() as u32).min(self.max_batch_size);
 
         BatchSizeRecommendation {
             recommended_size: new_size,
