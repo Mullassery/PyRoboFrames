@@ -7,11 +7,11 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DatasetScore {
     pub dataset_name: String,
-    pub relevance: f64,        // 0-1: how relevant to current task
-    pub quality: f64,          // 0-1: data quality score
-    pub availability: f64,     // 0-1: how quickly accessible
-    pub cost_efficiency: f64,  // 0-1: cost per unit data
-    pub overall_score: f64,    // 0-1: weighted composite
+    pub relevance: f64,       // 0-1: how relevant to current task
+    pub quality: f64,         // 0-1: data quality score
+    pub availability: f64,    // 0-1: how quickly accessible
+    pub cost_efficiency: f64, // 0-1: cost per unit data
+    pub overall_score: f64,   // 0-1: weighted composite
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -25,10 +25,10 @@ pub struct CachePrediction {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CachePriority {
-    Critical,  // Will definitely be accessed soon
-    High,      // Likely to be accessed
-    Medium,    // Moderate access probability
-    Low,       // Unlikely to be accessed
+    Critical, // Will definitely be accessed soon
+    High,     // Likely to be accessed
+    Medium,   // Moderate access probability
+    Low,      // Unlikely to be accessed
 }
 
 impl CachePriority {
@@ -51,14 +51,14 @@ pub struct AccessPattern {
     pub random_accesses: u32,
     pub avg_batch_size: u32,
     pub access_frequency: f64,  // accesses per second
-    pub temporal_locality: f64,  // 0-1: likelihood of repeated access
+    pub temporal_locality: f64, // 0-1: likelihood of repeated access
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QualityMetrics {
-    pub completeness: f64,      // 0-1: fraction of valid frames
+    pub completeness: f64,         // 0-1: fraction of valid frames
     pub temporal_consistency: f64, // 0-1: time alignment score
-    pub sensor_alignment: f64,   // 0-1: multi-sensor sync score
+    pub sensor_alignment: f64,     // 0-1: multi-sensor sync score
     pub missing_frames: usize,
     pub corrupted_frames: usize,
 }
@@ -83,21 +83,21 @@ impl DatasetSelector {
     }
 
     pub fn record_access_pattern(&mut self, dataset_name: &str, pattern: AccessPattern) {
-        self.access_patterns.insert(dataset_name.to_string(), pattern);
+        self.access_patterns
+            .insert(dataset_name.to_string(), pattern);
     }
 
     pub fn register_quality_metrics(&mut self, dataset_name: &str, metrics: QualityMetrics) {
-        self.quality_scores.insert(dataset_name.to_string(), metrics);
+        self.quality_scores
+            .insert(dataset_name.to_string(), metrics);
     }
 
     pub fn select_best_dataset(&self) -> Option<&DatasetScore> {
-        self.datasets
-            .values()
-            .max_by(|a, b| {
-                a.overall_score
-                    .partial_cmp(&b.overall_score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        self.datasets.values().max_by(|a, b| {
+            a.overall_score
+                .partial_cmp(&b.overall_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     pub fn rank_datasets(&self) -> Vec<&DatasetScore> {
@@ -161,7 +161,8 @@ impl PredictiveCache {
             return;
         }
 
-        let recent_window: Vec<usize> = self.access_history
+        let recent_window: Vec<usize> = self
+            .access_history
             .iter()
             .rev()
             .take(self.window_size)
@@ -208,7 +209,8 @@ impl PredictiveCache {
 
     pub fn should_prefetch(&self, frame_id: usize) -> bool {
         if let Some(pred) = self.get_prediction(frame_id) {
-            pred.priority.severity_rank() >= CachePriority::High.severity_rank() && pred.confidence > 0.6
+            pred.priority.severity_rank() >= CachePriority::High.severity_rank()
+                && pred.confidence > 0.6
         } else {
             false
         }

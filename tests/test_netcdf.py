@@ -47,6 +47,22 @@ def test_netcdf_not_found():
         NetCDFDataset.from_path("/no/such/file.nc")
 
 
+def test_netcdf_from_path_base_dir_allows_contained(tmp_path):
+    path = str(tmp_path / "data.nc")
+    _write_netcdf(path)
+    ds = NetCDFDataset.from_path(path, base_dir=str(tmp_path))
+    assert ds.path == str((tmp_path / "data.nc").resolve())
+
+
+def test_netcdf_from_path_base_dir_rejects_escape(tmp_path):
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+    outside = tmp_path / "data.nc"
+    _write_netcdf(str(outside))
+    with pytest.raises(ValueError, match="must be within"):
+        NetCDFDataset.from_path(str(outside), base_dir=str(sandbox))
+
+
 def test_netcdf_inspect_has_variables(tmp_path):
     path = str(tmp_path / "data.nc")
     _write_netcdf(path, n_timesteps=20)

@@ -3,7 +3,9 @@
 
 use pyroboframes_core::cache::L1Cache;
 use pyroboframes_core::mcp::MCPTools;
-use pyroboframes_core::resilience::{CircuitBreaker, CircuitState, FaultDetector, RetryPolicy, RetryConfig};
+use pyroboframes_core::resilience::{
+    CircuitBreaker, CircuitState, FaultDetector, RetryConfig, RetryPolicy,
+};
 
 // ============================================================================
 // 1. Dataset Interoperability Tests
@@ -62,7 +64,8 @@ fn test_cache_with_mcp_tool_queries() {
         "name": "lerobot/pusht",
         "episodes": 100,
         "frames": 50000,
-    })).unwrap();
+    }))
+    .unwrap();
 
     cache.put(0, metadata.clone());
     let retrieved = cache.get(0);
@@ -228,16 +231,14 @@ fn test_resilient_dataset_loading_workflow() {
     // Resilient loading with all three patterns
     let mut attempt = 0;
     loop {
-        match breaker.call(|| {
-            match load_dataset_mock(&mut attempt) {
-                Ok(data) => {
-                    detector.record_success();
-                    Ok(data)
-                }
-                Err(e) => {
-                    detector.record_failure();
-                    Err(e)
-                }
+        match breaker.call(|| match load_dataset_mock(&mut attempt) {
+            Ok(data) => {
+                detector.record_success();
+                Ok(data)
+            }
+            Err(e) => {
+                detector.record_failure();
+                Err(e)
             }
         }) {
             Ok(data) => {
@@ -353,7 +354,7 @@ fn test_cache_scalability() {
     let stats = cache.stats();
     // Cache should stay within capacity limit
     assert!(stats.memory_bytes <= 100 * 1024 * 1024 + 10000); // Allow one entry buffer
-    // Cache should have processed many entries (some evicted, some kept)
+                                                              // Cache should have processed many entries (some evicted, some kept)
     assert!(cache.get(0).is_none() || cache.get(999).is_some()); // Either evicted old or kept new
 }
 

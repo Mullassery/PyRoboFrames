@@ -44,9 +44,9 @@ pub struct ReplicationConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ConsistencyLevel {
-    Eventual,  // Eventually consistent
-    Strong,    // Strong consistency with sync
-    Causal,    // Causal consistency
+    Eventual, // Eventually consistent
+    Strong,   // Strong consistency with sync
+    Causal,   // Causal consistency
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -200,29 +200,23 @@ impl MultiRegionManager {
     }
 
     pub fn get_closest_region(&self) -> Option<&RegionInfo> {
-        self.regions
-            .values()
-            .min_by_key(|r| r.latency_ms)
+        self.regions.values().min_by_key(|r| r.latency_ms)
     }
 
     pub fn get_most_available_region(&self) -> Option<&RegionInfo> {
-        self.regions
-            .values()
-            .max_by(|a, b| {
-                a.availability
-                    .partial_cmp(&b.availability)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        self.regions.values().max_by(|a, b| {
+            a.availability
+                .partial_cmp(&b.availability)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     pub fn get_cheapest_region(&self) -> Option<&RegionInfo> {
-        self.regions
-            .values()
-            .min_by(|a, b| {
-                a.cost_per_gb
-                    .partial_cmp(&b.cost_per_gb)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        self.regions.values().min_by(|a, b| {
+            a.cost_per_gb
+                .partial_cmp(&b.cost_per_gb)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     pub fn list_regions(&self) -> Vec<&RegionInfo> {
@@ -230,7 +224,11 @@ impl MultiRegionManager {
     }
 
     pub fn calculate_replication_cost(&self) -> f64 {
-        let num_replicas = self.config.replica_regions.len().min(self.config.replication_factor);
+        let num_replicas = self
+            .config
+            .replica_regions
+            .len()
+            .min(self.config.replication_factor);
         self.regions
             .values()
             .take(num_replicas + 1)

@@ -294,28 +294,19 @@ fn test_arbitration_case_detection() {
     // Agreeing votes (no arbitration needed)
     coordinator.aggregate_distributed_votes(
         "quality",
-        vec![
-            ("node_1".to_string(), 0.85),
-            ("node_2".to_string(), 0.86),
-        ],
+        vec![("node_1".to_string(), 0.85), ("node_2".to_string(), 0.86)],
     );
 
     // Disagreeing votes (arbitration needed)
     coordinator.aggregate_distributed_votes(
         "anomaly",
-        vec![
-            ("node_1".to_string(), 0.95),
-            ("node_2".to_string(), 0.10),
-        ],
+        vec![("node_1".to_string(), 0.95), ("node_2".to_string(), 0.10)],
     );
 
     // Moderately disagreeing votes
     coordinator.aggregate_distributed_votes(
         "performance",
-        vec![
-            ("node_1".to_string(), 0.80),
-            ("node_2".to_string(), 0.50),
-        ],
+        vec![("node_1".to_string(), 0.80), ("node_2".to_string(), 0.50)],
     );
 
     let arbitration_cases = coordinator.get_arbitration_cases();
@@ -452,20 +443,19 @@ fn test_distributed_model_coordination() {
     }
 
     // Get best performing node
-    let best_node = coordinator
-        .get_active_nodes()
-        .into_iter()
-        .max_by(|a, b| {
-            let a_perf = coordinator
-                .get_node_metrics(&a.node_id)
-                .map(|m| m.success_rate)
-                .unwrap_or(0.0);
-            let b_perf = coordinator
-                .get_node_metrics(&b.node_id)
-                .map(|m| m.success_rate)
-                .unwrap_or(0.0);
-            a_perf.partial_cmp(&b_perf).unwrap_or(std::cmp::Ordering::Equal)
-        });
+    let best_node = coordinator.get_active_nodes().into_iter().max_by(|a, b| {
+        let a_perf = coordinator
+            .get_node_metrics(&a.node_id)
+            .map(|m| m.success_rate)
+            .unwrap_or(0.0);
+        let b_perf = coordinator
+            .get_node_metrics(&b.node_id)
+            .map(|m| m.success_rate)
+            .unwrap_or(0.0);
+        a_perf
+            .partial_cmp(&b_perf)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     assert!(best_node.is_some());
 }

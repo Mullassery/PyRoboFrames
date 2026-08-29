@@ -9,18 +9,23 @@ use pyroboframes_core::ensemble::{
 fn test_ensemble_creation_and_model_registration() {
     let mut orchestrator = EnsembleOrchestrator::new(VotingStrategy::UnweightedMajority);
 
-    orchestrator.register_model("quality_model_v1", "quality_predictor", vec![
-        PredictionType::QualityScore,
-    ]);
+    orchestrator.register_model(
+        "quality_model_v1",
+        "quality_predictor",
+        vec![PredictionType::QualityScore],
+    );
 
-    orchestrator.register_model("anomaly_model_v1", "anomaly_detector", vec![
-        PredictionType::AnomalyProbability,
-    ]);
+    orchestrator.register_model(
+        "anomaly_model_v1",
+        "anomaly_detector",
+        vec![PredictionType::AnomalyProbability],
+    );
 
-    orchestrator.register_model("performance_model_v1", "perf_predictor", vec![
-        PredictionType::ThroughputFPS,
-        PredictionType::LatencyMS,
-    ]);
+    orchestrator.register_model(
+        "performance_model_v1",
+        "perf_predictor",
+        vec![PredictionType::ThroughputFPS, PredictionType::LatencyMS],
+    );
 
     let stats = orchestrator.get_ensemble_stats();
     assert_eq!(stats.total_models, 3);
@@ -185,10 +190,14 @@ fn test_bayesian_ensemble_voting() {
 fn test_multi_type_predictions() {
     let mut orchestrator = EnsembleOrchestrator::new(VotingStrategy::UnweightedMajority);
 
-    orchestrator.register_model("model_a", "multi", vec![
-        PredictionType::QualityScore,
-        PredictionType::AnomalyProbability,
-    ]);
+    orchestrator.register_model(
+        "model_a",
+        "multi",
+        vec![
+            PredictionType::QualityScore,
+            PredictionType::AnomalyProbability,
+        ],
+    );
 
     // Quality prediction
     orchestrator.submit_prediction(ModelPrediction {
@@ -357,7 +366,11 @@ fn test_full_ensemble_workflow() {
     // Register multiple quality prediction models
     orchestrator.register_model("quality_linear", "lr", vec![PredictionType::QualityScore]);
     orchestrator.register_model("quality_nn", "neural", vec![PredictionType::QualityScore]);
-    orchestrator.register_model("quality_ensemble", "ensemble", vec![PredictionType::QualityScore]);
+    orchestrator.register_model(
+        "quality_ensemble",
+        "ensemble",
+        vec![PredictionType::QualityScore],
+    );
 
     // Get predictions from models
     orchestrator.submit_prediction(ModelPrediction {
@@ -410,9 +423,21 @@ fn test_full_ensemble_workflow() {
 fn test_anomaly_detection_ensemble() {
     let mut orchestrator = EnsembleOrchestrator::new(VotingStrategy::ConfidenceWeighted);
 
-    orchestrator.register_model("detector_1", "ad1", vec![PredictionType::AnomalyProbability]);
-    orchestrator.register_model("detector_2", "ad2", vec![PredictionType::AnomalyProbability]);
-    orchestrator.register_model("detector_3", "ad3", vec![PredictionType::AnomalyProbability]);
+    orchestrator.register_model(
+        "detector_1",
+        "ad1",
+        vec![PredictionType::AnomalyProbability],
+    );
+    orchestrator.register_model(
+        "detector_2",
+        "ad2",
+        vec![PredictionType::AnomalyProbability],
+    );
+    orchestrator.register_model(
+        "detector_3",
+        "ad3",
+        vec![PredictionType::AnomalyProbability],
+    );
 
     // Different detectors voting on anomaly probability
     orchestrator.submit_prediction(ModelPrediction {

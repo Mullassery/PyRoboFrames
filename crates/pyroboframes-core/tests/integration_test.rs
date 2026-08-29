@@ -116,7 +116,7 @@ fn test_mcp_tools_performance() {
 
     let elapsed = start.elapsed();
     let avg_latency = elapsed.as_micros() / 100;
-    
+
     // Assert reasonable latency (<1ms average)
     assert!(avg_latency < 1000, "High latency: {} µs", avg_latency);
 }
@@ -131,7 +131,7 @@ fn test_mcp_tools_memory() {
 #[test]
 fn test_cross_format_compatibility() {
     let formats = MCPTools::list_supported_formats();
-    
+
     // Each format should be queryable
     for format in formats {
         let result = MCPTools::get_dataset_info(&format);

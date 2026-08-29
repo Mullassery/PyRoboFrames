@@ -43,6 +43,41 @@ jobs:
       - name: Test Rust
         run: cargo test --release --features ffmpeg
 
+  fuzz-build:
+    name: Fuzz Targets (build + smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/pyroboframes-core/fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Build fuzz targets
+        # This is a compile check, not a fuzzing campaign - it confirms the
+        # targets keep building against the real pyroboframes-core APIs as
+        # the crate evolves. Actual fuzzing runs happen locally / out-of-band.
+        working-directory: crates/pyroboframes-core/fuzz
+        run: cargo +nightly fuzz build
+
+      - name: Smoke-test each fuzz target
+        # A few seconds per target on the empty corpus - enough to catch an
+        # immediate crash/panic on trivial inputs without turning CI into a
+        # fuzzing campaign.
+        working-directory: crates/pyroboframes-core/fuzz
+        run: |
+          set -euo pipefail
+          for target in mcap_convert rosbag_convert data_shard_parquet episodes_parquet ros2_cdr_decode; do
+            echo "::group::fuzz smoke test: $target"
+            cargo +nightly fuzz run "$target" -- -max_total_time=10 -close_fd_mask=3
+            echo "::endgroup::"
+          done
+
   python-tests:
     name: Python Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

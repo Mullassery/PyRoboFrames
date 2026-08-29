@@ -2,6 +2,50 @@
 
 All notable changes to PyRoboFrames are documented in this file.
 
+## [2.5.0] — 2026-08-30
+
+### Added
+- **Fuzz testing.** No fuzz infrastructure existed at all before this — adds
+  `cargo-fuzz` scaffolding (`crates/pyroboframes-core/fuzz/`) with 5 real
+  targets exercising the parsers that handle untrusted/external input: MCAP,
+  rosbag, Parquet data-shard, Parquet episodes, and ROS2 CDR decode. A new CI
+  job builds and smoke-tests each target on every push.
+
+### Performance
+- **`Loader`'s camera-frame batch assembly now copies each frame's pixels once instead
+  of twice.** Previously each decoded frame was copied into a throwaway per-frame `Vec`
+  (`Frame::to_rgb24_bytes()`) and then copied *again* into the shared batch array via
+  `extend_from_slice`. Added `Frame::write_rgb24_into()` (`crates/pyroboframes-core/src/decode.rs`)
+  to write a decoded frame's pixels directly into its slot in a pre-sized batch buffer,
+  and updated both the non-windowed (`[batch, H, W, 3]`) and windowed
+  (`[batch, steps, H, W, 3]`) assembly paths in `crates/pyroboframes-py/src/lib.rs` to use
+  it. This does not make batching fully zero-copy (numpy still needs one contiguous
+  array, decoded frames still each live in their own buffer) — see `ROADMAP_HONEST.md`.
+
+### Changed
+- **`dev` extra's `numpy<1.27`/`pandas<2.2`/`scipy<1.13`/`scikit-learn<1.5` caps
+  removed.** These existed to keep the `dev` extra compatible with an assumed
+  `numpy==1.24` hard pin — but that pin was already relaxed to a floor
+  (`numpy>=1.24`, no ceiling) in `2804b06`, and `ROADMAP_HONEST.md`/`SECURITY.md`
+  documented the caps as a live gap without anyone re-verifying whether they were
+  still needed. They weren't: verified numpy 2.4.6 + pyarrow 25.0.1 + scipy 1.17.1 +
+  scikit-learn 1.9.0 + pandas 3.0.5 together — full test suite green (302 passed, 0
+  failed) both against a manually-assembled modern environment and a clean
+  `pip install -e ".[dev]"`. Docs corrected to match.
+
+### Fixed
+- **`pyroboframes.security.validate_dataset_path()` never actually rejected traversal.**
+  It resolved the path (which collapses `..` components away) *before* checking for
+  `..`, so the check could never trigger. Now checks path components pre-resolve.
+- **Path-containment (`base_dir`) is now wired into loader entry points**, not just
+  available as a helper callers had to remember to invoke themselves:
+  `RoboFrameDataset.from_path`, `convert_mcap`, `convert_ros2_bag` (Rust,
+  `crates/pyroboframes-py/src/lib.rs`), `HDF5Dataset`/`HDF5Dataset.from_path`/
+  `convert_hdf5`, and `NetCDFDataset`/`NetCDFDataset.from_path`/`convert_netcdf` all
+  accept an optional `base_dir` that rejects paths (including symlink escapes, via
+  canonicalization) outside it. Opt-in — omitting `base_dir` preserves prior
+  unrestricted behavior. See `SECURITY.md`.
+
 ## [2.4.0] — 2026-08-16
 
 Engineering/correctness pass: real bug fixes across the public Python API, dead-code

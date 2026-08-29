@@ -7,11 +7,11 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QualityScore {
     pub dataset_name: String,
-    pub overall_score: f64,             // 0-1: composite quality
-    pub completeness_score: f64,        // 0-1: data completeness
-    pub consistency_score: f64,         // 0-1: temporal/spatial consistency
-    pub validity_score: f64,            // 0-1: frames without anomalies
-    pub timeliness_score: f64,          // 0-1: temporal alignment
+    pub overall_score: f64,      // 0-1: composite quality
+    pub completeness_score: f64, // 0-1: data completeness
+    pub consistency_score: f64,  // 0-1: temporal/spatial consistency
+    pub validity_score: f64,     // 0-1: frames without anomalies
+    pub timeliness_score: f64,   // 0-1: temporal alignment
     pub assessed_at: u64,
 }
 
@@ -21,35 +21,35 @@ pub struct QualityRecommendation {
     pub severity: QualitySeverity,
     pub category: RecommendationCategory,
     pub description: String,
-    pub estimated_improvement: f64,     // 0-1: expected quality improvement
+    pub estimated_improvement: f64, // 0-1: expected quality improvement
     pub effort_level: EffortLevel,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum QualitySeverity {
-    Critical,   // Must fix for production
-    High,       // Strongly recommended
-    Medium,     // Recommended
-    Low,        // Nice to have
+    Critical, // Must fix for production
+    High,     // Strongly recommended
+    Medium,   // Recommended
+    Low,      // Nice to have
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RecommendationCategory {
-    MissingData,            // Gaps in dataset
-    AnomalousFrames,        // Corrupted/invalid data
-    TemporalAlignment,      // Timing issues
-    SensorSynchronization,  // Multi-sensor sync
-    DataQuality,            // General quality issues
+    MissingData,             // Gaps in dataset
+    AnomalousFrames,         // Corrupted/invalid data
+    TemporalAlignment,       // Timing issues
+    SensorSynchronization,   // Multi-sensor sync
+    DataQuality,             // General quality issues
     PerformanceOptimization, // Speed/efficiency
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum EffortLevel {
-    Trivial,    // < 5 minutes
-    Low,        // 5-30 minutes
-    Medium,     // 30 mins - 2 hours
-    High,       // 2-8 hours
-    Critical,   // > 8 hours
+    Trivial,  // < 5 minutes
+    Low,      // 5-30 minutes
+    Medium,   // 30 mins - 2 hours
+    High,     // 2-8 hours
+    Critical, // > 8 hours
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,7 +61,7 @@ pub struct DatasetQualityReport {
     pub critical_issues: Vec<QualityRecommendation>,
     pub high_priority_issues: Vec<QualityRecommendation>,
     pub low_priority_issues: Vec<QualityRecommendation>,
-    pub pass_rate: f64,  // 0-1: frames that pass quality checks
+    pub pass_rate: f64, // 0-1: frames that pass quality checks
 }
 
 pub struct QualityAssessor {
@@ -180,7 +180,8 @@ impl QualityAssessor {
                 recommendation_id: format!("{}-temporal", dataset_name),
                 severity: QualitySeverity::High,
                 category: RecommendationCategory::TemporalAlignment,
-                description: "Temporal alignment score is low. Check frame timestamps and sync.".to_string(),
+                description: "Temporal alignment score is low. Check frame timestamps and sync."
+                    .to_string(),
                 estimated_improvement: 0.1,
                 effort_level: EffortLevel::Medium,
             });
@@ -192,7 +193,9 @@ impl QualityAssessor {
                 recommendation_id: format!("{}-consistency", dataset_name),
                 severity: QualitySeverity::Medium,
                 category: RecommendationCategory::DataQuality,
-                description: "Temporal/spatial consistency issues detected. Review sensor calibration.".to_string(),
+                description:
+                    "Temporal/spatial consistency issues detected. Review sensor calibration."
+                        .to_string(),
                 estimated_improvement: 0.08,
                 effort_level: EffortLevel::Medium,
             });
@@ -399,8 +402,7 @@ mod tests {
         // generate_recommendations' threshold for a Critical issue - 5
         // missing frames out of 1000 doesn't cross any severity threshold,
         // so no recommendation (and thus no issue) would ever be generated.
-        let report =
-            assessor.create_quality_report("test_ds", 1000, 20, 150, 0.92, 0.95);
+        let report = assessor.create_quality_report("test_ds", 1000, 20, 150, 0.92, 0.95);
 
         assert_eq!(report.anomaly_count, 20);
         assert_eq!(report.missing_frame_count, 150);

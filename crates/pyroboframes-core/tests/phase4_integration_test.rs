@@ -2,7 +2,7 @@
 //! Tests intelligent dataset selection, adaptive batching, anomaly detection, quality assessment
 
 use pyroboframes_core::adaptive::{AdaptiveBatchSizer, PerformanceMetrics, ResourceMetrics};
-use pyroboframes_core::anomaly::{AnomalyDetector, AnomalyType, FrameStatistics, ColorBalance};
+use pyroboframes_core::anomaly::{AnomalyDetector, AnomalyType, ColorBalance, FrameStatistics};
 use pyroboframes_core::intelligence::{
     AccessPattern, DatasetScore, DatasetSelector, PredictiveCache, QualityMetrics,
 };
@@ -229,11 +229,11 @@ fn test_quality_assessment_with_recommendations() {
     //   timeliness_score < 0.8) is the only threshold this test can cross.
     let report = assessor.create_quality_report(
         "test_dataset",
-        5000,   // total frames
-        150,    // anomalous frames
-        100,    // missing frames
-        0.88,   // temporal consistency
-        0.7,    // sensor sync score
+        5000, // total frames
+        150,  // anomalous frames
+        100,  // missing frames
+        0.88, // temporal consistency
+        0.7,  // sensor sync score
     );
 
     // Verify quality metrics
@@ -323,13 +323,17 @@ fn test_integrated_quality_and_anomaly_detection() {
     // matter how anomalous every single one of them is.
     let mut anomaly_count = 0;
     for i in 0..150 {
-        if detector.detect_anomalies(i, &stats, i as u64 * 33).is_some() {
+        if detector
+            .detect_anomalies(i, &stats, i as u64 * 33)
+            .is_some()
+        {
             anomaly_count += 1;
         }
     }
 
     // Generate quality report
-    let report = assessor.create_quality_report("integrated_test", 150, anomaly_count, 0, 0.9, 0.95);
+    let report =
+        assessor.create_quality_report("integrated_test", 150, anomaly_count, 0, 0.9, 0.95);
 
     // Should have recommendations due to anomalies
     assert!(report.anomaly_count > 0);
@@ -384,14 +388,7 @@ fn test_batching_and_quality_optimization_workflow() {
 
     // Run quality assessment
     let mut assessor = QualityAssessor::new();
-    let report = assessor.create_quality_report(
-        "optimal_dataset",
-        10000,
-        80,
-        20,
-        0.94,
-        0.96,
-    );
+    let report = assessor.create_quality_report("optimal_dataset", 10000, 80, 20, 0.94, 0.96);
 
     // Verify positive quality assessment
     assert!(report.quality_score.overall_score > 0.88);
@@ -496,7 +493,10 @@ fn test_complex_scenario_full_pipeline() {
             baseline.clone()
         };
 
-        if detector.detect_anomalies(i, &stats, i as u64 * 33).is_some() {
+        if detector
+            .detect_anomalies(i, &stats, i as u64 * 33)
+            .is_some()
+        {
             anomalies_found += 1;
         }
     }

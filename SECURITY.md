@@ -43,19 +43,23 @@ data, not yet hardened against adversarial input.
   against adversarially malformed input. Don't point this at untrusted user uploads
   without your own sandboxing.
 - **Path handling:** `pyroboframes.security.validate_dataset_path()` rejects `..`
-  components and can restrict a path to a base directory, but it is opt-in — most loader
-  entry points (`RoboFrameDataset.from_path`, `convert_hdf5`, etc.) do **not** call it
-  automatically. Call it yourself if the path comes from an untrusted source.
+  components and can restrict a path to a base directory. `RoboFrameDataset.from_path`,
+  `convert_mcap`, `convert_ros2_bag`, `HDF5Dataset`/`HDF5Dataset.from_path`/`convert_hdf5`,
+  and `NetCDFDataset`/`NetCDFDataset.from_path`/`convert_netcdf` all now accept a
+  `base_dir` keyword that enforces this containment check on their behalf — pass it
+  whenever the path comes from an untrusted source. It remains opt-in (omitting
+  `base_dir` preserves today's unrestricted behavior) so existing callers aren't broken
+  by paths that legitimately live outside any sandbox.
 - **Cloud storage credentials:** `RemoteDataset.from_s3()` / `.from_gcs()` pass through
   to `fsspec`'s credential resolution (cloud provider profile / IAM role / storage
   token). Prefer short-lived IAM-style roles over long-lived keys — see
   `DEPLOYMENT_SECURITY.md`.
-- **Dependency pins:** `numpy==1.24` and `pyarrow==14` are hard-pinned (required by the
-  compiled extension's ABI and by the LeRobot Parquet path). This is good for supply-chain
-  reproducibility but means recent versions of optional companion libraries (`scipy>=1.13`,
-  `scikit-learn>=1.5`, `pandas>=2.2`) will fail to import — pin them below those
-  thresholds if you install the `dev` extra or use the optional GPU-acceleration /
-  occupancy-grid modules. Tracked as a real gap, not silently papered over.
+- **Dependency floors, not hard pins:** `numpy>=1.24` and `pyarrow>=14` (no upper bound)
+  — earlier releases hard-pinned `numpy==1.24`/`pyarrow==14`; relaxed to a floor in
+  `2804b06` and verified here against numpy 2.4.6 + pyarrow 25.0.1 + modern
+  scipy/scikit-learn/pandas (full test suite green). `pip install`'s resolver picks a
+  mutually-compatible pair on its own; the only failure mode is manually pinning an old
+  `pyarrow` (pre-numpy-2 ABI) against a `numpy>=2` install yourself.
 - **Only macOS (Apple Silicon) wheels are currently published to PyPI.** Linux/Windows
   users install from the source distribution, which requires a Rust toolchain and
   `ffmpeg` at build time (see `.github/INSTALL.md`).

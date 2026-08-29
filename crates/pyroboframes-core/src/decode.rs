@@ -115,23 +115,40 @@ impl Frame {
     /// exists for call sites (e.g. batch-array construction) that need one
     /// uniform tightly-packed layout no matter the source.
     pub fn to_rgb24_bytes(&self) -> Vec<u8> {
+        let row_bytes = self.width as usize * 3;
+        let mut out = vec![0u8; row_bytes * self.height as usize];
+        self.write_rgb24_into(&mut out);
+        out
+    }
+
+    /// Write tightly-packed RGB24 bytes (`width * height * 3`) directly into `dst`, which must
+    /// be exactly that length. Same normalization as [`to_rgb24_bytes`](Self::to_rgb24_bytes)
+    /// (`Owned` copied as-is, `IOSurface` locked and stripped of row-stride padding), but without
+    /// an intermediate per-frame allocation — lets a batch assembler copy straight from the
+    /// decoded frame into its slot in the combined batch array instead of copying once into a
+    /// throwaway `Vec` and again into the batch array.
+    pub fn write_rgb24_into(&self, dst: &mut [u8]) {
+        let row_bytes = self.width as usize * 3;
+        debug_assert_eq!(dst.len(), row_bytes * self.height as usize);
         match &self.pixels {
-            FrameBuffer::Owned { data, .. } => data.as_ref().clone(),
+            FrameBuffer::Owned { data, .. } => {
+                let n = dst.len().min(data.len());
+                dst[..n].copy_from_slice(&data[..n]);
+            }
             #[cfg(all(target_os = "macos", feature = "videotoolbox"))]
             FrameBuffer::IOSurface { pixel_buffer } => {
-                let row_bytes = self.width as usize * 3;
-                let mut out = Vec::with_capacity(row_bytes * self.height as usize);
                 if let Ok(guard) = pixel_buffer.lock_read_only() {
                     let stride = guard.bytes_per_row();
                     let slice = guard.as_slice();
                     for row in 0..self.height as usize {
-                        let start = row * stride;
-                        if start + row_bytes <= slice.len() {
-                            out.extend_from_slice(&slice[start..start + row_bytes]);
+                        let src_start = row * stride;
+                        let dst_start = row * row_bytes;
+                        if src_start + row_bytes <= slice.len() {
+                            dst[dst_start..dst_start + row_bytes]
+                                .copy_from_slice(&slice[src_start..src_start + row_bytes]);
                         }
                     }
                 }
-                out
             }
         }
     }
@@ -627,6 +644,53 @@ mod tests {
         assert_eq!(frames.len(), 3);
         assert_eq!(dec.calls, 3);
         assert_eq!(frames[2].timestamp, 2.0);
+    }
+
+    #[test]
+    fn write_rgb24_into_matches_to_rgb24_bytes() {
+        let frame = Frame {
+            width: 2,
+            height: 2,
+            camera: "c".to_string(),
+            timestamp: 0.0,
+            pixels: FrameBuffer::Owned {
+                data: Arc::new((0u8..12).collect()),
+                channels: 3,
+            },
+        };
+        let mut dst = vec![0xFFu8; 12];
+        frame.write_rgb24_into(&mut dst);
+        assert_eq!(dst, frame.to_rgb24_bytes());
+        assert_eq!(dst, (0u8..12).collect::<Vec<u8>>());
+    }
+
+    #[test]
+    fn write_rgb24_into_writes_only_its_own_slice_of_a_larger_buffer() {
+        // Simulates a batch assembler writing several frames into one shared buffer: writing
+        // frame 1 into its slot must not touch frame 0's or frame 2's bytes.
+        let frame_len = 2 * 2 * 3; // width=2, height=2, RGB24
+        let make_frame = |fill: u8| Frame {
+            width: 2,
+            height: 2,
+            camera: "c".to_string(),
+            timestamp: 0.0,
+            pixels: FrameBuffer::Owned {
+                data: Arc::new(vec![fill; frame_len]),
+                channels: 3,
+            },
+        };
+
+        let mut batch = vec![0u8; frame_len * 3];
+        for (idx, frame) in [make_frame(1), make_frame(2), make_frame(3)]
+            .iter()
+            .enumerate()
+        {
+            frame.write_rgb24_into(&mut batch[idx * frame_len..(idx + 1) * frame_len]);
+        }
+
+        assert!(batch[0..frame_len].iter().all(|&b| b == 1));
+        assert!(batch[frame_len..2 * frame_len].iter().all(|&b| b == 2));
+        assert!(batch[2 * frame_len..3 * frame_len].iter().all(|&b| b == 3));
     }
 
     #[test]

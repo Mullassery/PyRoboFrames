@@ -11,7 +11,7 @@
 #![allow(clippy::useless_conversion)]
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use numpy::ndarray::{Array1, Array2, Array3, Array4, ArrayD, IxDyn};
@@ -22,7 +22,7 @@ use pyo3::types::PyDict;
 
 use pyroboframes_core::calibration::{CameraCalibration, CameraIntrinsics};
 use pyroboframes_core::dataset::Dataset;
-use pyroboframes_core::decode::{Decoder, FrameCache};
+use pyroboframes_core::decode::{Decoder, Frame, FrameCache};
 use pyroboframes_core::depth::PointCloud;
 use pyroboframes_core::loader::{Sample, TabularLoader, WindowedSample};
 use pyroboframes_core::pipeline::{AssemblerConfig, Prefetcher, RustBatch};
@@ -69,6 +69,30 @@ fn new_frame_decoder() -> PyResult<Box<dyn Decoder + Send>> {
 
 fn core_err(e: pyroboframes_core::Error) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
+}
+
+/// Resolve `path` to a canonical, symlink-free form and, if `base_dir` is given, reject it if
+/// it falls outside `base_dir` — mirrors `pyroboframes.security.validate_dataset_path()` for the
+/// Rust-native entry points (`RoboFrameDataset.from_path`, `convert_mcap`, `convert_ros2_bag`),
+/// which can't call back into that Python helper. `base_dir` is opt-in: omitting it preserves
+/// today's unrestricted behavior for trusted-caller use.
+fn validate_path_containment(path: &Path, base_dir: Option<&Path>) -> PyResult<PathBuf> {
+    let canonical = path.canonicalize().map_err(|e| {
+        PyValueError::new_err(format!("Cannot resolve path {}: {e}", path.display()))
+    })?;
+    if let Some(base) = base_dir {
+        let base_canonical = base.canonicalize().map_err(|e| {
+            PyValueError::new_err(format!("Cannot resolve base_dir {}: {e}", base.display()))
+        })?;
+        if !canonical.starts_with(&base_canonical) {
+            return Err(PyValueError::new_err(format!(
+                "Path {} escapes base_dir {}",
+                canonical.display(),
+                base_canonical.display()
+            )));
+        }
+    }
+    Ok(canonical)
 }
 
 /// Result of [`RoboFrameDataset.validate`]: integrity `errors` and non-fatal `warnings`.
@@ -119,8 +143,13 @@ struct RoboFrameDataset {
 #[pymethods]
 impl RoboFrameDataset {
     /// Open a dataset from a local path (the directory holding `meta/`, `data/`, `videos/`).
+    ///
+    /// `base_dir`, if given, restricts `path` to that directory (rejects symlink/`..` escapes) —
+    /// pass it whenever `path` comes from an untrusted source.
     #[staticmethod]
-    fn from_path(path: PathBuf) -> PyResult<Self> {
+    #[pyo3(signature = (path, base_dir=None))]
+    fn from_path(path: PathBuf, base_dir: Option<PathBuf>) -> PyResult<Self> {
+        let path = validate_path_containment(&path, base_dir.as_deref())?;
         match Dataset::open(&path) {
             Ok(dataset) => Ok(Self {
                 dataset: Arc::new(dataset),
@@ -497,26 +526,39 @@ impl Loader {
             match self.window.clone() {
                 None => {
                     let decoder = self.frame_decoder.as_deref_mut().expect("decoder set");
-                    // camera -> (width, height, concatenated RGB bytes)
-                    let mut acc: BTreeMap<String, (u32, u32, Vec<u8>)> = BTreeMap::new();
+                    // camera -> decoded frames in batch order. `Frame` clones are cheap (the
+                    // pixel buffer is `Arc`-backed), so collecting them all before writing out
+                    // costs no extra pixel copies over the previous single-pass version.
+                    let mut by_camera: BTreeMap<String, Vec<Frame>> = BTreeMap::new();
                     for &i in &indices {
                         let frames = self
                             .inner
                             .frames_for(i, &cameras, decoder, &mut self.frame_cache)
                             .map_err(core_err)?;
                         for (cam, frame) in frames {
-                            let entry =
-                                acc.entry(cam)
-                                    .or_insert((frame.width, frame.height, Vec::new()));
-                            if entry.0 != frame.width || entry.1 != frame.height {
+                            by_camera.entry(cam).or_default().push(frame);
+                        }
+                    }
+                    // Write each frame straight into its slot in the batch array: one pixel copy
+                    // per frame (decoded buffer -> batch array) instead of two (decoded buffer ->
+                    // throwaway per-frame Vec -> batch array).
+                    for (cam, frames) in by_camera {
+                        let (w, h) = frames
+                            .first()
+                            .map(|f| (f.width, f.height))
+                            .unwrap_or((0, 0));
+                        let frame_len = w as usize * h as usize * 3;
+                        let mut data = vec![0u8; frame_len * frames.len()];
+                        for (idx, frame) in frames.iter().enumerate() {
+                            if frame.width != w || frame.height != h {
                                 return Err(PyValueError::new_err(
                                     "frames in a batch have inconsistent dimensions",
                                 ));
                             }
-                            entry.2.extend_from_slice(&frame.to_rgb24_bytes());
+                            frame.write_rgb24_into(
+                                &mut data[idx * frame_len..(idx + 1) * frame_len],
+                            );
                         }
-                    }
-                    for (cam, (w, h, data)) in acc {
                         let arr = Array4::from_shape_vec((n, h as usize, w as usize, 3), data)
                             .map_err(|e| PyValueError::new_err(e.to_string()))?;
                         dict.set_item(cam, arr.into_pyarray_bound(py))?;
@@ -524,31 +566,45 @@ impl Loader {
                 }
                 Some(spec) => {
                     let decoder = self.frame_decoder.as_deref_mut().expect("decoder set");
-                    // camera -> (steps, width, height, concatenated RGB bytes)
-                    let mut acc: BTreeMap<String, (usize, u32, u32, Vec<u8>)> = BTreeMap::new();
+                    // camera -> per-batch-item Vec<Frame> (one per temporal step). Cheap to
+                    // collect: `Frame` clones only bump an `Arc` refcount.
+                    let mut by_camera: BTreeMap<String, Vec<Vec<Frame>>> = BTreeMap::new();
                     for &i in &indices {
                         let cam_frames = self
                             .inner
                             .windowed_frames_for(i, &cameras, &spec, decoder, &mut self.frame_cache)
                             .map_err(core_err)?;
                         for (cam, frames) in cam_frames {
-                            let steps = frames.len();
-                            let (w, h) = frames
-                                .first()
-                                .map(|f| (f.width, f.height))
-                                .unwrap_or((0, 0));
-                            let entry = acc.entry(cam).or_insert((steps, w, h, Vec::new()));
-                            if entry.0 != steps || entry.1 != w || entry.2 != h {
+                            by_camera.entry(cam).or_default().push(frames);
+                        }
+                    }
+                    // Write each frame straight into its slot in the batch array: one pixel copy
+                    // per frame instead of two (see the non-windowed branch above).
+                    for (cam, items) in by_camera {
+                        let steps = items.first().map(Vec::len).unwrap_or(0);
+                        let (w, h) = items
+                            .first()
+                            .and_then(|s| s.first())
+                            .map(|f| (f.width, f.height))
+                            .unwrap_or((0, 0));
+                        let frame_len = w as usize * h as usize * 3;
+                        let mut data = vec![0u8; frame_len * steps * items.len()];
+                        for (idx, frames) in items.iter().enumerate() {
+                            if frames.len() != steps {
                                 return Err(PyValueError::new_err(
                                     "windowed frames have inconsistent steps or dimensions",
                                 ));
                             }
-                            for f in &frames {
-                                entry.3.extend_from_slice(&f.to_rgb24_bytes());
+                            for (step, frame) in frames.iter().enumerate() {
+                                if frame.width != w || frame.height != h {
+                                    return Err(PyValueError::new_err(
+                                        "windowed frames have inconsistent steps or dimensions",
+                                    ));
+                                }
+                                let offset = (idx * steps + step) * frame_len;
+                                frame.write_rgb24_into(&mut data[offset..offset + frame_len]);
                             }
                         }
-                    }
-                    for (cam, (steps, w, h, data)) in acc {
                         let shape = IxDyn(&[n, steps, h as usize, w as usize, 3]);
                         let arr = ArrayD::from_shape_vec(shape, data)
                             .map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -786,8 +842,18 @@ fn conversion_report_to_dict(
 /// absent). Returns `{"topics": [{topic, messages, columns, path}], "skipped": [topic, …]}`.
 /// Decodes `json` and `protobuf` (via the embedded descriptor set) and `cdr`/`ros2msg` topics;
 /// any other encoding is listed in `skipped`.
+///
+/// `base_dir`, if given, restricts `input` to that directory — pass it whenever `input` comes
+/// from an untrusted source.
 #[pyfunction]
-fn convert_mcap(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResult<Py<PyDict>> {
+#[pyo3(signature = (input, out_dir, base_dir=None))]
+fn convert_mcap(
+    py: Python<'_>,
+    input: PathBuf,
+    out_dir: PathBuf,
+    base_dir: Option<PathBuf>,
+) -> PyResult<Py<PyDict>> {
+    let input = validate_path_containment(&input, base_dir.as_deref())?;
     let report = pyroboframes_core::mcap::convert(&input, &out_dir).map_err(core_err)?;
     conversion_report_to_dict(py, &report)
 }
@@ -795,8 +861,18 @@ fn convert_mcap(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResult<Py
 /// Convert a ROS 2 bag (`rosbag2` SQLite `.db3`) into one Parquet table per CDR topic under
 /// `out_dir`. Same return shape as [`convert_mcap`]; topics without an embedded `ros2msg`
 /// definition or not CDR-serialized are listed in `skipped`.
+///
+/// `base_dir`, if given, restricts `input` to that directory — pass it whenever `input` comes
+/// from an untrusted source.
 #[pyfunction]
-fn convert_ros2_bag(py: Python<'_>, input: PathBuf, out_dir: PathBuf) -> PyResult<Py<PyDict>> {
+#[pyo3(signature = (input, out_dir, base_dir=None))]
+fn convert_ros2_bag(
+    py: Python<'_>,
+    input: PathBuf,
+    out_dir: PathBuf,
+    base_dir: Option<PathBuf>,
+) -> PyResult<Py<PyDict>> {
+    let input = validate_path_containment(&input, base_dir.as_deref())?;
     let report = pyroboframes_core::rosbag::convert(&input, &out_dir).map_err(core_err)?;
     conversion_report_to_dict(py, &report)
 }

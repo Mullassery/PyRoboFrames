@@ -1,10 +1,10 @@
 //! Advanced metrics and observability
 //! Phase 3.1: Performance tracking, latency histograms, operational dashboards
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Histogram {
@@ -16,7 +16,7 @@ pub struct Histogram {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HistogramBucket {
-    pub le: f64,  // Less than or equal to
+    pub le: f64, // Less than or equal to
     pub count: u64,
 }
 
@@ -148,18 +148,17 @@ impl MetricsCollector {
 
     pub fn get_operation_metrics(&self, operation_name: &str) -> Option<OperationMetrics> {
         let ops = self.operations.read();
-        ops.get(operation_name)
-            .map(|m| {
-                let percentiles = self.calculate_percentiles(operation_name);
-                let mut result = m.clone();
-                result.latency = percentiles;
-                result.throughput_ops_sec = if result.total_time_ms > 0.0 {
-                    (result.total_operations as f64 / result.total_time_ms) * 1000.0
-                } else {
-                    0.0
-                };
-                result
-            })
+        ops.get(operation_name).map(|m| {
+            let percentiles = self.calculate_percentiles(operation_name);
+            let mut result = m.clone();
+            result.latency = percentiles;
+            result.throughput_ops_sec = if result.total_time_ms > 0.0 {
+                (result.total_operations as f64 / result.total_time_ms) * 1000.0
+            } else {
+                0.0
+            };
+            result
+        })
     }
 
     pub fn get_all_metrics(&self) -> Vec<OperationMetrics> {

@@ -60,7 +60,10 @@ impl MCPTools {
     }
 
     /// Get episode-level metadata
-    pub fn get_episode_metadata(dataset_name: &str, episode_id: &str) -> Result<EpisodeMetadata, String> {
+    pub fn get_episode_metadata(
+        dataset_name: &str,
+        episode_id: &str,
+    ) -> Result<EpisodeMetadata, String> {
         Ok(EpisodeMetadata {
             episode_id: episode_id.to_string(),
             frames: 0,
@@ -107,14 +110,19 @@ impl MCPTools {
     }
 
     /// Compare datasets by structure
-    pub fn compare_datasets(ds1: &str, ds2: &str) -> Result<std::collections::HashMap<String, String>, String> {
+    pub fn compare_datasets(
+        ds1: &str,
+        ds2: &str,
+    ) -> Result<std::collections::HashMap<String, String>, String> {
         let mut comparison = std::collections::HashMap::new();
         comparison.insert("status".to_string(), "equal".to_string());
         Ok(comparison)
     }
 
     /// Stream dataset statistics
-    pub fn get_dataset_stats(dataset_name: &str) -> Result<std::collections::HashMap<String, f64>, String> {
+    pub fn get_dataset_stats(
+        dataset_name: &str,
+    ) -> Result<std::collections::HashMap<String, f64>, String> {
         let mut stats = std::collections::HashMap::new();
         stats.insert("fps_avg".to_string(), 0.0);
         stats.insert("frames_per_episode_avg".to_string(), 0.0);

@@ -15,24 +15,24 @@ pub struct AutonomousDecision {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RecommendationType {
-    AdjustBatchSize,        // Change batch size
-    EnablePrefetch,         // Start predictive prefetching
-    ReduceDatasetSize,      // Skip low-quality data
-    TriggerReprocessing,    // Reprocess data for quality
-    IncreaseParallelism,    // Use more workers
-    ReduceParallelism,      // Use fewer workers
-    CacheAggressively,      // Increase cache size
-    FlushCache,             // Clear cache
-    SkipAnomalousFrames,    // Filter bad frames
-    RequestManualReview,    // Escalate to human
+    AdjustBatchSize,     // Change batch size
+    EnablePrefetch,      // Start predictive prefetching
+    ReduceDatasetSize,   // Skip low-quality data
+    TriggerReprocessing, // Reprocess data for quality
+    IncreaseParallelism, // Use more workers
+    ReduceParallelism,   // Use fewer workers
+    CacheAggressively,   // Increase cache size
+    FlushCache,          // Clear cache
+    SkipAnomalousFrames, // Filter bad frames
+    RequestManualReview, // Escalate to human
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DecisionPriority {
-    Critical,   // Must execute immediately
-    High,       // Execute ASAP
-    Medium,     // Execute soon
-    Low,        // Nice to have
+    Critical, // Must execute immediately
+    High,     // Execute ASAP
+    Medium,   // Execute soon
+    Low,      // Nice to have
 }
 
 impl DecisionPriority {
@@ -72,7 +72,10 @@ impl DecisionEngine {
         let change_ratio = (recommended_batch_size as f64 / current_batch_size as f64 - 1.0).abs();
 
         let (priority, rationale) = if resource_pressure > 0.9 {
-            (DecisionPriority::Critical, "Critical resource pressure detected")
+            (
+                DecisionPriority::Critical,
+                "Critical resource pressure detected",
+            )
         } else if resource_pressure > 0.7 {
             (
                 DecisionPriority::High,
@@ -157,7 +160,8 @@ impl DecisionEngine {
         access_patterns: Vec<f64>,
         memory_pressure: f64,
     ) -> AutonomousDecision {
-        let avg_locality = access_patterns.iter().sum::<f64>() / access_patterns.len().max(1) as f64;
+        let avg_locality =
+            access_patterns.iter().sum::<f64>() / access_patterns.len().max(1) as f64;
 
         let should_prefetch = avg_locality > 0.6 && memory_pressure < 0.8;
 
@@ -175,7 +179,11 @@ impl DecisionEngine {
             DecisionPriority::Low
         };
 
-        let expected_improvement = if should_prefetch { avg_locality * 0.2 } else { 0.0 };
+        let expected_improvement = if should_prefetch {
+            avg_locality * 0.2
+        } else {
+            0.0
+        };
 
         let decision = AutonomousDecision {
             decision_id: format!("prefetch-{}", self.decisions_made.len()),
@@ -268,7 +276,9 @@ impl DecisionEngine {
     }
 
     pub fn get_decision_by_id(&self, decision_id: &str) -> Option<&AutonomousDecision> {
-        self.decisions_made.iter().find(|d| d.decision_id == decision_id)
+        self.decisions_made
+            .iter()
+            .find(|d| d.decision_id == decision_id)
     }
 
     pub fn get_execution_status(&self, decision_id: &str) -> bool {
@@ -276,7 +286,10 @@ impl DecisionEngine {
     }
 
     pub fn get_total_expected_improvement(&self) -> f64 {
-        self.decisions_made.iter().map(|d| d.expected_improvement).sum()
+        self.decisions_made
+            .iter()
+            .map(|d| d.expected_improvement)
+            .sum()
     }
 }
 
@@ -315,7 +328,10 @@ mod tests {
 
         let decision = engine.make_cache_decision(0.9, 4000, 5);
 
-        assert_eq!(decision.recommendation, RecommendationType::CacheAggressively);
+        assert_eq!(
+            decision.recommendation,
+            RecommendationType::CacheAggressively
+        );
         assert!(decision.expected_improvement > 0.1);
     }
 
@@ -346,7 +362,10 @@ mod tests {
         let patterns = vec![0.2, 0.3, 0.1];
         let decision = engine.make_prefetch_decision(patterns, 0.9);
 
-        assert_eq!(decision.recommendation, RecommendationType::ReduceParallelism);
+        assert_eq!(
+            decision.recommendation,
+            RecommendationType::ReduceParallelism
+        );
     }
 
     #[test]
@@ -356,7 +375,10 @@ mod tests {
         let decision = engine.make_quality_decision(0.45, 0.2, 0.1);
 
         assert_eq!(decision.priority, DecisionPriority::Critical);
-        assert_eq!(decision.recommendation, RecommendationType::TriggerReprocessing);
+        assert_eq!(
+            decision.recommendation,
+            RecommendationType::TriggerReprocessing
+        );
     }
 
     #[test]
@@ -365,7 +387,10 @@ mod tests {
 
         let decision = engine.make_quality_decision(0.75, 0.15, 0.02);
 
-        assert_eq!(decision.recommendation, RecommendationType::SkipAnomalousFrames);
+        assert_eq!(
+            decision.recommendation,
+            RecommendationType::SkipAnomalousFrames
+        );
     }
 
     #[test]

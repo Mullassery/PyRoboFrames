@@ -71,21 +71,31 @@ verified this" companion.
 ## 🔴 Known gaps / not done
 
 - **True zero-copy array handoff (DLPack, skipping NumPy entirely)** — decode-to-buffer
-  is zero-copy on macOS as of v2.3.0, but `Loader`'s batch path still copies frame bytes
-  into one combined `[batch, H, W, 3]` NumPy array to build a batch from independent
-  per-frame buffers. Not something zero-copy decode alone removes; still future work.
+  is zero-copy on macOS as of v2.3.0, but `Loader`'s batch path still allocates one
+  combined `[batch, H, W, 3]` NumPy array and copies each decoded frame's pixels into it
+  — unavoidable as long as the public contract is "one packed NumPy array per batch"
+  (numpy needs contiguous memory; the source frames are independent buffers, one per
+  decode). What *was* fixable: each frame used to be copied twice — decode buffer → a
+  throwaway per-frame `Vec` (`Frame::to_rgb24_bytes()`) → the batch array via
+  `extend_from_slice`. `Frame::write_rgb24_into()` (`crates/pyroboframes-core/src/decode.rs`)
+  now writes straight from the decode buffer into the frame's slot in the batch array, so
+  it's down to the one copy that's structurally required. Skipping that last copy too
+  (e.g. decoding straight into the batch array's memory, or a DLPack array-of-buffers
+  instead of one packed array) is a further redesign, still future work.
 - **HEVC decode** in the native VideoToolbox path.
 - **Only macOS (Apple Silicon) wheels published to PyPI.** No Linux or Windows wheel has
   been published; Linux/Windows users build from the source distribution (requires a
   Rust toolchain + `ffmpeg` at build time). Linux `aarch64` and Windows haven't been
   validated at all.
-- **`numpy==1.24` pin friction** — hard-pinned for the compiled extension's ABI and the
-  Parquet path, but recent `scipy`/`scikit-learn`/`pandas` releases require
-  `numpy>=1.26`. Real, documented friction (see `SECURITY.md`), not silently papered
-  over — pin companion packages below their numpy-2-requiring thresholds.
-- **No adversarial-input hardening.** Format parsers (Parquet/MP4/HDF5/NetCDF/MCAP)
-  assume trusted input; none have been fuzz-tested. `pyroboframes.security.validate_dataset_path()`
-  exists but most entry points don't call it automatically — see `SECURITY.md`.
+- **Fuzz testing covers MCAP/rosbag/Parquet/ROS2 CDR, not MP4/HDF5/NetCDF.**
+  `crates/pyroboframes-core/fuzz/` (added v2.5.0) has 5 targets against
+  adversarially malformed bytes: MCAP, rosbag, Parquet data-shard, Parquet
+  episodes, and ROS2 CDR decode. The MP4/HDF5/NetCDF parsers still assume
+  trusted input and aren't fuzzed yet. Path
+  traversal is handled — `RoboFrameDataset.from_path`, `convert_mcap`,
+  `convert_ros2_bag`, `HDF5Dataset`/`convert_hdf5`, and `NetCDFDataset`/`convert_netcdf`
+  all accept an opt-in `base_dir` that enforces `pyroboframes.security.validate_dataset_path()`
+  containment — see `SECURITY.md`.
 
 ## Fixed this release (v2.4.0)
 
@@ -115,11 +125,18 @@ Prebuilt wheels:
 
 ## Dependencies
 
-Hard-pinned (see `pyproject.toml` for the authoritative list):
+Not hard-pinned — floor only (see `pyproject.toml` for the authoritative list):
 ```
-numpy==1.24
-pyarrow==14
+numpy>=1.24
+pyarrow>=14
 ```
+Earlier releases pinned `numpy==1.24`/`pyarrow==14` exactly, believed necessary for the
+compiled extension's ABI. That was relaxed to a floor in `2804b06`; verified here against
+numpy 2.4.6 + pyarrow 25.0.1 (plus modern scipy/scikit-learn/pandas) — full test suite
+green (302 passed, 0 failed). `pip install pyroboframes` resolves a mutually-compatible
+pair on its own; the only failure mode is manually pinning an old `pyarrow` (pre-numpy-2
+ABI) against a numpy>=2 install yourself.
+
 Optional extras (`mlx`, `dev`) and format-specific optional imports (`h5py`, `xarray`,
 `netCDF4`, `tensorflow_datasets`, `fsspec`+`s3fs`/`gcsfs`, `torch`, `jax`, `scipy`,
 `scikit-learn`) are not hard dependencies — install what you need.
