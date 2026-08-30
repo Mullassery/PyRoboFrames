@@ -2,6 +2,26 @@
 
 All notable changes to PyRoboFrames are documented in this file.
 
+## [2.5.1] — 2026-08-30
+
+### Fixed
+- **The `2.5.0` package published to PyPI was completely non-functional.** Inspecting the
+  actual uploaded wheel (`pyroboframes-2.5.0-cp310-abi3-macosx_11_0_arm64.whl`, 38 KB)
+  showed it contained no compiled extension and no Python source at all — just a
+  `pyroboframes.pth` file whose only content was the absolute local path
+  `/Users/georgimullassery/PyRoboFrames/python`. That's the artifact `maturin develop`
+  (editable-install mode) produces, not `maturin build` (a real, self-contained
+  distributable wheel) — it appears the release was built with the former and uploaded as
+  if it were the latter. `pip install pyroboframes` (any version resolving to `2.5.0`)
+  installed a package where `import pyroboframes` would fail immediately on any machine
+  other than the exact one it was built on, since the `.pth` path doesn't exist elsewhere.
+  Fixed by rebuilding with `maturin build --release` and verifying the result actually
+  contains `_core.abi3.so` and the `pyroboframes` Python package before upload — see
+  `scripts/release.sh`, added specifically to make this class of mistake structurally
+  harder to repeat (it fails loudly if the built wheel doesn't look like a real package).
+  Republished as `2.5.1` since PyPI never allows re-uploading a filename once claimed, even
+  after the broken `2.5.0` file is yanked.
+
 ## [2.5.0] — 2026-08-30
 
 ### Added
@@ -10,6 +30,15 @@ All notable changes to PyRoboFrames are documented in this file.
   targets exercising the parsers that handle untrusted/external input: MCAP,
   rosbag, Parquet data-shard, Parquet episodes, and ROS2 CDR decode. A new CI
   job builds and smoke-tests each target on every push.
+- **HEVC decode in the native VideoToolbox path** (`hev1`-tagged files — see
+  `ROADMAP_HONEST.md` for the `hvc1` scope limit). The `mp4` crate (0.14.0, its newest
+  published version) parses H.264's `avcC` box fully but its `HvcCBox` only reads
+  `configurationVersion` and discards the rest, so
+  `crates/pyroboframes-core/src/videotoolbox_native.rs::hevc_hvcc` is a from-scratch
+  `HEVCDecoderConfigurationRecord` (ISO/IEC 14496-15) box-tree reader that extracts the
+  real VPS/SPS/PPS NAL arrays. Verified against a real `libx265`-encoded clip: decoded
+  through `VTDecompressionSession`, cross-checked pixel-for-pixel against `ffmpeg`'s
+  software HEVC decode of the same bitstream.
 
 ### Performance
 - **`Loader`'s camera-frame batch assembly now copies each frame's pixels once instead
@@ -45,6 +74,29 @@ All notable changes to PyRoboFrames are documented in this file.
   accept an optional `base_dir` that rejects paths (including symlink escapes, via
   canonicalization) outside it. Opt-in — omitting `base_dir` preserves prior
   unrestricted behavior. See `SECURITY.md`.
+- **VideoToolbox hardware decode was dead code in every published wheel.**
+  `pyproject.toml`'s `[tool.maturin] features` never included `videotoolbox`, so every
+  wheel actually shipped fell back to the `ffmpeg` CLI-subprocess decoder on macOS — the
+  real, in-process `VTDecompressionSession` path (`videotoolbox_native.rs`) was real,
+  tested (`cargo test --features videotoolbox`), and completely unreachable in production.
+  Confirmed via `otool -L` on the built `.so`: no CoreMedia/CoreVideo/VideoToolbox
+  frameworks were linked before this fix. `videotoolbox` added to the maturin feature
+  list; safe on non-macOS source builds since the underlying crates are already
+  `target_os = "macos"`-gated in `Cargo.toml`.
+- **`NativeVideoToolboxFile::decode_at` could return the wrong or a duplicate frame** for
+  any clip with B-frame reordering (the normal case for real encoded video — the existing
+  test fixtures happened to disable B-frames to sidestep the *documented* no-reorder-buffer
+  limitation, which incidentally also hid this *different*, undocumented bug). It matched
+  a caller's timestamp against each sample's raw position in decode order, but decode
+  order only equals presentation order when there's no B-frame reordering; with reordering,
+  the whole PTS timeline is typically shifted by the encoder (visible as the first sample's
+  presentation time being nonzero), so nearby requested timestamps could resolve to the
+  identical nearest decode-order sample. Fixed by matching against each sample's actual
+  presentation time (DTS + rendering offset), offset-normalized to the stream's earliest
+  presentation time. Regression test:
+  `native_decode_handles_pts_offset_from_bframe_reordering`. This was only caught because
+  turning on `videotoolbox` in the shipped build (previous bullet) made this code path
+  reachable through the Python test suite for the first time.
 
 ## [2.4.0] — 2026-08-16
 

@@ -80,13 +80,14 @@ what's actually true as of this release:
 The published macOS wheel is built with `--features videotoolbox`; the source
 distribution defaults to the portable `ffmpeg` feature so it builds on any platform.
 
-**Honest limitation:** the native VideoToolbox path decodes H.264 only (no HEVC yet),
-and doesn't implement a full B-frame reorder buffer — correct for the common no-B-frames
-case and for isolated single-frame lookups, not yet a general streaming-playback decoder.
-Also, `Loader`'s batch path still copies frame bytes into one combined `[batch, H, W, 3]`
-NumPy array — decode-to-CPU-buffer is zero-copy, but building a single batched array from
-independent per-frame buffers isn't free; a true zero-copy `mx.array`/DLPack handoff that
-skips NumPy entirely is still future work.
+**Honest limitation:** the native VideoToolbox path decodes H.264 and HEVC tagged `hev1`
+(not `hvc1` — see `ROADMAP_HONEST.md`), and doesn't implement a full B-frame reorder
+buffer — correct for the common no-B-frames case and for isolated single-frame lookups,
+not yet a general streaming-playback decoder. Also, `Loader`'s batch path still allocates
+one combined `[batch, H, W, 3]` NumPy array and copies each decoded frame's pixels into it
+(one copy per frame, down from two as of v2.5.0) — decode-to-CPU-buffer is zero-copy, but
+building a single packed batch array from independent per-frame buffers isn't free; a true
+zero-copy `mx.array`/DLPack handoff that skips NumPy entirely is still future work.
 
 ## Dataset formats
 
@@ -224,10 +225,10 @@ pass; the CI badge should reflect that starting with the next run on `main`.
   `grep` count. Treat the CI badge as authoritative over any number in prose.
 - Package version (`2.4.0`, dynamic from `Cargo.toml`) matches the version
   currently published on PyPI — no drift as of this pass.
-- The native VideoToolbox decode path is H.264-only (no HEVC) and doesn't
-  implement a full B-frame reorder buffer — see "Hardware video decode" above
-  for the exact scope. `RemoteDataset`'s cloud-storage readers download to a
-  local cache rather than true zero-copy streaming.
+- The native VideoToolbox decode path handles H.264 and HEVC tagged `hev1` (not
+  `hvc1`) and doesn't implement a full B-frame reorder buffer — see "Hardware
+  video decode" above for the exact scope. `RemoteDataset`'s cloud-storage
+  readers download to a local cache rather than true zero-copy streaming.
 
 ## Cross-repo compatibility
 

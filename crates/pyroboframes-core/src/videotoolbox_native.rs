@@ -819,7 +819,10 @@ mod tests {
             .arg(&mp4_path)
             .status()
             .expect("ffmpeg must be installed to run this test");
-        assert!(status.success(), "ffmpeg failed to generate B-frame test clip");
+        assert!(
+            status.success(),
+            "ffmpeg failed to generate B-frame test clip"
+        );
         mp4_path
     }
 
@@ -847,7 +850,10 @@ mod tests {
         // timestamp too — the exact bug this regression-tests).
         let f0 = frame_at(0.0);
         let f1 = frame_at(1.0 / 30.0);
-        assert_ne!(f0, f1, "frames 1/30s apart must decode to different content");
+        assert_ne!(
+            f0, f1,
+            "frames 1/30s apart must decode to different content"
+        );
     }
 
     /// Same as [`generate_test_clip`] but HEVC (`libx265`), tagged `hvc1` (the fourcc real

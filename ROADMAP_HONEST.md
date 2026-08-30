@@ -1,7 +1,7 @@
 # PyRoboFrames — Honest Status
 
-**Current Version:** v2.4.0
-**Last Updated:** 2026-08-16
+**Current Version:** v2.5.1
+**Last Updated:** 2026-08-30
 **Status:** Beta. Core LeRobot loading + native macOS video decode are solid and tested;
 other formats and distributed/streaming features are real but less battle-tested.
 
@@ -21,13 +21,36 @@ verified this" companion.
   `VTDecompressionSession`: MP4 demux + `CMSampleBuffer` construction in Rust, decoded
   frames come back as a real IOSurface-backed `CVPixelBuffer`. Not a shell-out to the
   `ffmpeg` CLI (a subprocess boundary can only hand back copied bytes; this stays
-  in-process). Verified on real Apple Silicon hardware: `crates/pyroboframes-core/src/videotoolbox_native.rs`'s
-  test module generates a real H.264 clip via `ffmpeg`, decodes it through the real
-  `VTDecompressionSession` path, confirms genuine IOSurface backing, and cross-validates
+  in-process). Handles both H.264 (`avc1`) and HEVC tagged `hev1` (see scope limits).
+  Verified on real Apple Silicon hardware: `crates/pyroboframes-core/src/videotoolbox_native.rs`'s
+  test module generates real H.264 *and* HEVC clips via `ffmpeg`, decodes each through the
+  real `VTDecompressionSession` path, confirms genuine IOSurface backing, and cross-validates
   hardware-decoded pixels against `ffmpeg`'s software decode of the same bitstream.
-  **Known scope limits:** H.264 only (no HEVC parameter-set extraction yet); decode-order
-  reordering handles the no-B-frames case and isolated lookups correctly, not a full
-  streaming reorder buffer.
+  **This path was dead code in every published build until v2.5.0** — `pyproject.toml`'s
+  `[tool.maturin] features` never included `videotoolbox`, so every wheel actually shipped
+  fell back to the `ffmpeg` CLI subprocess decoder on macOS despite this file's test
+  coverage; `otool -L` on the built `.so` showed no CoreMedia/CoreVideo/VideoToolbox
+  frameworks linked. Fixed by adding it to the feature list — verify yourself with
+  `otool -L $(python -c "import pyroboframes,os;print(os.path.join(os.path.dirname(pyroboframes.__file__),'_core.abi3.so'))")`.
+  **Known scope limits:**
+  - HEVC tagged `hvc1` (a common alternative tag — some encoders default to it over `hev1`)
+    isn't supported: the `mp4` crate (0.14.0, its newest published version) doesn't
+    recognize `hvc1` sample entries at the track-discovery level at all, before any of
+    this module's own code runs. Re-mux/re-encode with `-tag:v hev1` as a workaround.
+  - No general B-frame reorder buffer: each `decode_at` call decodes samples in decode
+    order from the nearest preceding keyframe through the target sample, then returns
+    whichever decoded frame's presentation timestamp is closest to the target. Correct for
+    the no-B-frames case and isolated single-frame lookups, not a full streaming-playback
+    reorder buffer. A *related* bug existed until v2.5.0 and is now fixed: `decode_at`
+    matched the caller's timestamp against raw decode-order sample position instead of
+    presentation time, so on any clip where the encoder delays the whole PTS timeline (the
+    normal case whenever B-frames are used — visible as the first sample's presentation
+    time being nonzero) it could silently return the *wrong or duplicate* frame for nearby
+    timestamps. This wasn't caught earlier because it was untested (see the dead-code note
+    above) and the existing test fixtures explicitly disabled B-frames
+    (`-profile:v baseline`/`-bf 0`) to sidestep the reorder-buffer limitation, which also
+    hid this timestamp bug. Regression test:
+    `native_decode_handles_pts_offset_from_bframe_reordering`.
 - **FFmpeg / NVDEC fallback decode paths** — cross-platform, real (shells out to the
   `ffmpeg` CLI), used when `videotoolbox` isn't available or on Linux.
 - **MCAP / ROS2 bag → Parquet conversion** — native Rust, real (not a stub); covered by
@@ -82,7 +105,8 @@ verified this" companion.
   it's down to the one copy that's structurally required. Skipping that last copy too
   (e.g. decoding straight into the batch array's memory, or a DLPack array-of-buffers
   instead of one packed array) is a further redesign, still future work.
-- **HEVC decode** in the native VideoToolbox path.
+- **HEVC decode for `hvc1`-tagged files** in the native VideoToolbox path (see the scope
+  limits under VideoToolbox above — `hev1`-tagged HEVC works).
 - **Only macOS (Apple Silicon) wheels published to PyPI.** No Linux or Windows wheel has
   been published; Linux/Windows users build from the source distribution (requires a
   Rust toolchain + `ffmpeg` at build time). Linux `aarch64` and Windows haven't been
@@ -97,7 +121,33 @@ verified this" companion.
   all accept an opt-in `base_dir` that enforces `pyroboframes.security.validate_dataset_path()`
   containment — see `SECURITY.md`.
 
-## Fixed this release (v2.4.0)
+## Fixed this release (v2.5.1)
+
+- **The `2.5.0` package published to PyPI was completely non-functional** — a `maturin
+  develop` (editable-install) artifact got uploaded instead of a real `maturin build`
+  wheel; the file contained no compiled extension and no Python source, just a `.pth`
+  pointing at the maintainer's local machine. Every `pip install pyroboframes` resolving
+  to `2.5.0` was broken for every user. Fixed and republished as `2.5.1`; see
+  `CHANGELOG.md` and `scripts/release.sh` (new — verifies a built wheel actually looks
+  like a real package before it's ever uploaded).
+
+## Fixed in v2.5.0
+
+- **VideoToolbox hardware decode shipped as dead code in every prior release** — the
+  `videotoolbox` Cargo feature was missing from `pyproject.toml`'s `[tool.maturin]`
+  feature list, so every published wheel silently used the `ffmpeg` CLI fallback on macOS
+  instead of the real `VTDecompressionSession` path this doc has described as "verified on
+  real Apple Silicon hardware" all along (true of the code and its `cargo test` coverage,
+  never true of what actually shipped). Fixed; see the VideoToolbox entry above.
+- **HEVC decode added** to the native VideoToolbox path (`hev1`-tagged files; see scope
+  limits above) — the `mp4` crate's `hvcC` box parser only reads `configurationVersion`
+  and discards the VPS/SPS/PPS arrays, so `crates/pyroboframes-core/src/videotoolbox_native.rs::hevc_hvcc`
+  is a from-scratch `HEVCDecoderConfigurationRecord` (ISO/IEC 14496-15) reader.
+- **`decode_at` timestamp bug** (real-world B-frame clips could decode the wrong/duplicate
+  frame) — see the VideoToolbox entry above.
+- Path traversal, batch-copy perf, and numpy-cap fixes — see `CHANGELOG.md`.
+
+## Fixed in v2.4.0
 
 A round of correctness fixes surfaced during a fresh audit pass — see `CHANGELOG.md` for
 full detail. Highlights: `RoboFrameDataset.num_episodes`/`.fps`/`.cameras` were PyO3
