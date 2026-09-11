@@ -1,7 +1,7 @@
 # PyRoboFrames — Honest Status
 
 **Current Version:** v2.5.1
-**Last Updated:** 2026-08-30
+**Last Updated:** 2026-09-11
 **Status:** Beta. Core LeRobot loading + native macOS video decode are solid and tested;
 other formats and distributed/streaming features are real but less battle-tested.
 
@@ -15,8 +15,8 @@ verified this" companion.
 
 - **LeRobot v3.0 dataset reading** — native Rust core (`crates/pyroboframes-core`).
   Episode indexing, temporal windowing, train/val split, per-feature stats, batch
-  loading with worker threads. Extensively covered by `cargo test` (75 unit tests) and
-  `pytest` (`tests/test_loader.py`, `test_dataset_loaders.py`, etc.).
+  loading with worker threads. Extensively covered by `cargo test` (324 unit tests) and
+  `pytest` (`tests/test_loader.py`, `test_dataset_loaders.py`, etc. — 323 tests total).
 - **VideoToolbox hardware decode (macOS/Apple Silicon)** — a real, in-process
   `VTDecompressionSession`: MP4 demux + `CMSampleBuffer` construction in Rust, decoded
   frames come back as a real IOSurface-backed `CVPixelBuffer`. Not a shell-out to the
@@ -88,8 +88,10 @@ verified this" companion.
   without `scikit-learn` installed (a `UserWarning` is emitted — check for it if you
   depend on real normals, don't just check the return shape).
 - **GPU-acceleration transforms** (`gpu_acceleration.py`) — real CuPy/MLX/NumPy paths;
-  the `scipy`-backed resize/filter paths need `scipy<1.13` under this package's pinned
-  `numpy==1.24` (newer `scipy` requires `numpy>=1.26.4` and fails to import).
+  the `scipy`-backed resize/filter paths work against the package's current
+  `numpy>=1.24` floor (no ceiling — see the Dependencies section below; the old
+  `scipy<1.13`-under-`numpy==1.24` restriction described here previously was already
+  stale as of the caps being removed in v2.5.0).
 
 ## 🔴 Known gaps / not done
 
@@ -111,11 +113,19 @@ verified this" companion.
   been published; Linux/Windows users build from the source distribution (requires a
   Rust toolchain + `ffmpeg` at build time). Linux `aarch64` and Windows haven't been
   validated at all.
+- **CI is currently red on `main`: the `mcap_convert` fuzz target crashes with a
+  libFuzzer out-of-memory abort on a malformed MCAP header.** This is a real,
+  currently-open bug — an unbounded allocation reachable from adversarial input, not
+  flaky CI infra. `Python Tests` and `Rust Build & Test` jobs pass; only `Fuzz Targets
+  (build + smoke test)` fails. Not yet fixed as of this writing; check
+  `gh run list --repo Mullassery/PyRoboFrames` for current status before relying on
+  `convert_mcap` against untrusted MCAP files.
 - **Fuzz testing covers MCAP/rosbag/Parquet/ROS2 CDR, not MP4/HDF5/NetCDF.**
   `crates/pyroboframes-core/fuzz/` (added v2.5.0) has 5 targets against
   adversarially malformed bytes: MCAP, rosbag, Parquet data-shard, Parquet
-  episodes, and ROS2 CDR decode. The MP4/HDF5/NetCDF parsers still assume
-  trusted input and aren't fuzzed yet. Path
+  episodes, and ROS2 CDR decode (the MCAP target's own OOM crash above is exactly
+  the kind of bug this suite exists to catch — it caught one). The MP4/HDF5/NetCDF
+  parsers still assume trusted input and aren't fuzzed yet. Path
   traversal is handled — `RoboFrameDataset.from_path`, `convert_mcap`,
   `convert_ros2_bag`, `HDF5Dataset`/`convert_hdf5`, and `NetCDFDataset`/`convert_netcdf`
   all accept an opt-in `base_dir` that enforces `pyroboframes.security.validate_dataset_path()`

@@ -1,12 +1,31 @@
 # PyRoboFrames
 
 [![CI](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml/badge.svg)](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
-A Rust-backed ML dataloader for robot learning datasets. Native support for the
-[LeRobot](https://github.com/huggingface/lerobot) v3.0 dataset format, with hardware
-video decode (real, in-process **VideoToolbox** on Apple Silicon — not an `ffmpeg`
-subprocess), conversion from HDF5/NetCDF/RLDS/MCAP/ROS2-bag, and output as NumPy, PyTorch,
-JAX, or MLX arrays.
+## Problem
+
+Loading robot-learning datasets for training is usually slower than it needs to be:
+Python-side video decode, format-specific one-off loaders per dataset (HDF5 here, ROS2
+bags there, RLDS somewhere else), and on Apple Silicon specifically, no path to hardware
+video decode without either shelling out to `ffmpeg` per frame or writing your own
+VideoToolbox bindings.
+
+## Solution
+
+PyRoboFrames is a Rust-backed ML dataloader for robot learning datasets. Native support
+for the [LeRobot](https://github.com/huggingface/lerobot) v3.0 dataset format, with
+hardware video decode (real, in-process **VideoToolbox** on Apple Silicon — not an
+`ffmpeg` subprocess), conversion from HDF5/NetCDF/RLDS/MCAP/ROS2-bag into that format,
+and output as NumPy, PyTorch, JAX, or MLX arrays.
+
+The heavy lifting — dataset reading, video decode, temporal windowing — is a compiled
+Rust extension (`pyroboframes._core`, built with PyO3/maturin). The Python package on top
+of it is the ergonomic surface: `RoboFrameDataset`, `DataLoader`, format converters, and
+device adapters. If you're evaluating this against a bigger project like Hugging Face
+`datasets` or `torchcodec`: this is smaller in scope, focused specifically on robot
+learning's LeRobot-style episodic data (state/action/video, aligned by frame index), and
+its differentiating feature is genuine zero-copy hardware video decode on Apple Silicon.
 
 ```bash
 pip install pyroboframes
@@ -16,15 +35,27 @@ pip install pyroboframes
 > Silicon) only**. Linux/Windows users install from the source distribution, which
 > needs a Rust toolchain at build time — see [Installation](#installation) below.
 
-## What this actually is
+## Use cases
 
-The heavy lifting — dataset reading, video decode, temporal windowing — is a compiled
-Rust extension (`pyroboframes._core`, built with PyO3/maturin). The Python package on top
-of it is the ergonomic surface: `RoboFrameDataset`, `DataLoader`, format converters, and
-device adapters. If you're evaluating this against a bigger project like Hugging Face
-`datasets` or `torchcodec`: this is smaller in scope, focused specifically on robot
-learning's LeRobot-style episodic data (state/action/video, aligned by frame index), and
-its differentiating feature is genuine zero-copy hardware video decode on Apple Silicon.
+- **Training-loop data loading** — iterate a LeRobot v3.0 dataset in batches
+  (state/action tensors + decoded camera frames) directly into NumPy/PyTorch/JAX/MLX.
+  This is the primary, best-tested path. See [Quick start](#quick-start) and
+  [`examples/humanoid_multimodal_fusion.py`](examples/humanoid_multimodal_fusion.py) /
+  [`examples/robotdog_proprioceptive_learning.py`](examples/robotdog_proprioceptive_learning.py)
+  for full working scripts.
+- **Converting existing recordings into LeRobot format** — HDF5 (ROBOMIMIC/ACT-style),
+  NetCDF, RLDS (Open X-Embodiment), or raw MCAP/ROS2 bag recordings, via
+  `convert_hdf5()` / `convert_netcdf()` / `RLDSDataset.from_tfds()` / `convert_mcap()` /
+  `convert_ros2_bag()`, so a downstream pipeline only has to know one format.
+- **Apple Silicon training runs where camera decode is the bottleneck** — the
+  in-process VideoToolbox path avoids the subprocess-copy cost of shelling out to
+  `ffmpeg` per frame (see [Hardware video decode](#hardware-video-decode)).
+- **Not yet a good fit for:** Linux/Windows users who need a prebuilt wheel (source
+  build only, requires a Rust toolchain — see [Installation](#installation)); anything
+  needing true zero-copy remote dataset streaming (`RemoteDataset` downloads to a local
+  cache first, it doesn't stream); or footage that's `hvc1`-tagged HEVC or relies on a
+  B-frame reorder buffer (see the honest limitation in
+  [Hardware video decode](#hardware-video-decode)).
 
 ## Quick start
 
@@ -80,6 +111,13 @@ what's actually true as of this release:
 The published macOS wheel is built with `--features videotoolbox`; the source
 distribution defaults to the portable `ffmpeg` feature so it builds on any platform.
 
+**History:** every wheel published before v2.5.0 silently used the `ffmpeg`-subprocess
+fallback on macOS instead of the VideoToolbox path above, even though that path was real
+and covered by `cargo test --features videotoolbox` the whole time — the `videotoolbox`
+Cargo feature was simply missing from `pyproject.toml`'s `[tool.maturin] features` list,
+so it never got linked into a published wheel. Fixed in v2.5.0 (verify yourself with
+`otool -L` on your installed `_core*.so`: it should link CoreMedia/CoreVideo/VideoToolbox).
+
 **Honest limitation:** the native VideoToolbox path decodes H.264 and HEVC tagged `hev1`
 (not `hvc1` — see `ROADMAP_HONEST.md`), and doesn't implement a full B-frame reorder
 buffer — correct for the common no-B-frames case and for isolated single-frame lookups,
@@ -97,7 +135,7 @@ zero-copy `mx.array`/DLPack handoff that skips NumPy entirely is still future wo
 | **HDF5** (ROBOMIMIC/ACT-style) | Real, via `h5py` (optional dep) | `HDF5Dataset.from_path()`, `convert_hdf5()`. |
 | **NetCDF** | Real, via `xarray`+`netCDF4` (optional deps) | `NetCDFDataset.from_path()`, `convert_netcdf()`. |
 | **RLDS** (Open X-Embodiment) | Real, via `tensorflow_datasets` (optional dep) | `RLDSDataset.from_tfds()` / `.from_directory()`. |
-| **MCAP / ROS2 bag** | Real, native Rust | `convert_mcap()`, `convert_ros2_bag()` → Parquet. |
+| **MCAP / ROS2 bag** | Real, native Rust | `convert_mcap()`, `convert_ros2_bag()` → Parquet. See [What's not working](#whats-not-working--open-issues) — `convert_mcap` currently has an open fuzz-found crash on malformed input. |
 | **Cloud object storage** | Real, via `fsspec`+`s3fs`/`gcsfs` (optional deps) | `RemoteDataset.from_s3()`/`from_gcs()` — downloads to a local cache and reads from there; this is *not* a true zero-copy remote stream. |
 
 Each optional-dependency reader raises a clear `ImportError` with an install hint if the
@@ -123,8 +161,8 @@ Optional extras, installed separately depending on which formats/backends you us
 `h5py` (HDF5), `xarray netCDF4` (NetCDF), `tensorflow_datasets` (RLDS), `fsspec s3fs
 gcsfs` (cloud object storage), `mlx` (Apple Silicon array output — also `pip install pyroboframes[mlx]`),
 `torch`/`jax` (other array backends), `scipy scikit-learn` (GPU-acceleration transforms
-and 3D occupancy-grid morphology — pin below `scipy<1.13`/`scikit-learn<1.5` to stay
-compatible with this package's `numpy>=1.24,<1.27` dev-extras pin).
+and 3D occupancy-grid morphology — no version ceiling as of v2.5.0; verified working
+against numpy 2.4.6 + scipy 1.17 + scikit-learn 1.9).
 
 See [`.github/INSTALL.md`](.github/INSTALL.md) for troubleshooting.
 
@@ -140,73 +178,87 @@ cargo test --workspace
 cargo clippy --all-targets -- -D warnings
 ```
 
-## Status
+To cut a release, use `scripts/release.sh` rather than `maturin build` directly — it
+exists because v2.5.0 was accidentally published as a broken editable-install artifact
+(see [What's not working](#whats-not-working--open-issues)), and refuses to proceed if
+the built wheel doesn't look like a real, importable package.
 
-~308 Python tests / ~318 Rust unit+integration tests as of this revision (counted via
-`grep -c "def test_"` / `grep -c "#\[test\]"`). See [`ROADMAP_HONEST.md`](ROADMAP_HONEST.md)
-for an unvarnished list of what's solid vs. what's still rough, and
-[`SECURITY.md`](SECURITY.md) for the current security/compliance posture.
+## What's working now (verified)
 
-**Don't trust the CI badge above without reading this first.** Before this pass, CI had
-been red on every run for over a week straight, for six independent, real reasons -
-meaning neither the Rust nor the Python test suite was actually being exercised on any
-recent commit, despite the badge being visible in this README the whole time:
+323 Python tests / 324 Rust unit+integration tests as of this revision (`grep -c "def
+test_"` / `grep -c "#\[test\]"` — treat the CI badge above as more authoritative than
+any number in this file, since these drift). See [`ROADMAP_HONEST.md`](ROADMAP_HONEST.md)
+for the full solid-vs-rough breakdown and [`SECURITY.md`](SECURITY.md) for the current
+security/compliance posture.
 
-1. `--all-features` unconditionally enables `pyroboframes-py`'s `extension-module`
-   feature, which that crate's own `Cargo.toml` documents as only safe to combine with
-   maturin's build (it needs maturin's dynamic-lookup linker flags) - a plain
-   `cargo build`/`cargo test --all-features` fails to link regardless of platform. Fixed
-   by building/testing with `--features ffmpeg` instead (the feature actually relevant to
-   an ubuntu-latest runner; `videotoolbox` is macOS-only and `cuda` needs a CUDA toolkit
-   the runner doesn't have).
-2. `apple-cf`/`videotoolbox` (real macOS-only system-framework bindings, needed for the
-   VideoToolbox hardware decode path) were plain `[dependencies]` rather than scoped to
-   `[target.'cfg(target_os = "macos")'.dependencies]`, so even setting (1) aside, enabling
-   the `videotoolbox` feature on Linux tried to compile them and failed. Fixed.
-3. The Python job ran `cd python && pip install -e ".[dev]"`, but `pyproject.toml` lives at
-   the repo root, not in `python/` - this failed outright on every run, so the Python suite
-   never got a chance to run at all. Fixed to install from the root.
-4. Even if (3) hadn't failed first, the next step checked `if [ -d "python/tests" ]` before
-   running pytest - but the real suite lives in `./tests` at the repo root, so this check
-   was always false and silently printed "No Python tests found" instead of running
-   anything. Fixed to check/run `tests/` at the root.
-5. `numpy==1.24` (pinned in the `dev` extras) never published a `cp312` wheel - it predates
-   Python 3.12 - so on the `3.12` leg of the Python test matrix, `pip install -e ".[dev]"`
-   fell back to a source build that failed outright (no working
-   `setuptools.build_meta`). Relaxed to `numpy>=1.24,<1.27`, which resolves to 1.24.x on
-   3.10/3.11 and 1.26.4 (the first release with 3.12 wheels) on 3.12 - verified all of
-   numpy/pandas/scipy/scikit-learn still import together cleanly at that combination.
-6. With (1)-(2) fixed, `--features ffmpeg` started actually building and running
-   `decode::tests::ffmpeg_decoder_decodes_a_real_frame`, a real test that shells out to the
-   `ffmpeg` binary - which isn't installed on the `ubuntu-latest` runner by default. Added
+**CI history, because the badge alone doesn't tell you this:** before the pass that
+produced v2.5.1, CI had been red on every run for over a week straight, for six
+independent, real reasons — meaning neither the Rust nor the Python test suite was
+actually being exercised on any recent commit, despite the badge being visible in this
+README the whole time:
+
+1. `--all-features` unconditionally enabled `pyroboframes-py`'s `extension-module`
+   feature, which only links correctly under maturin's build — a plain `cargo build`
+   fails to link regardless of platform. Fixed by testing with `--features ffmpeg`
+   instead on the Linux CI runner.
+2. `apple-cf`/`videotoolbox` (macOS-only system-framework bindings) were plain
+   `[dependencies]` rather than scoped to `[target.'cfg(target_os = "macos")'.dependencies]`,
+   so enabling `videotoolbox` on Linux tried to compile them and failed. Fixed.
+3. The Python job ran `cd python && pip install -e ".[dev]"`, but `pyproject.toml` lives
+   at the repo root — this failed outright on every run. Fixed to install from the root.
+4. The next step checked `if [ -d "python/tests" ]` before running pytest, but the real
+   suite lives in `./tests` at the repo root, so this silently printed "No Python tests
+   found" instead of running anything. Fixed.
+5. `numpy==1.24` (pinned in `dev` extras) never published a `cp312` wheel, so the `3.12`
+   leg of the test matrix fell back to a source build that failed outright. Relaxed to a
+   floor with no ceiling (see Installation above).
+6. With (1)–(2) fixed, a real test that shells out to the `ffmpeg` binary started
+   running, but `ffmpeg` isn't installed on the `ubuntu-latest` runner by default. Added
    an explicit `apt-get install -y ffmpeg` step.
 
-With all six fixed, running the real suite for the first time surfaced one more real gap:
-`tests/test_storage.py` exercises `hub.py`'s optional `huggingface_hub`-based LeRobot-hub
-download path, but `huggingface_hub` wasn't listed in the `dev` extras, so a clean
-`pip install -e ".[dev]"` couldn't actually run that test. Added it to `dev`. Full result
-after all of the above, re-verified via a real CI run on `main` (Python 3.10/3.11/3.12,
-all three matrix legs identical): 271 passed, 12 skipped (environment-gated, e.g. missing
-ffprobe/OpenCV/torch/jax/mlx), 0 failed.
+Fixing all six surfaced a real gap (`huggingface_hub` missing from `dev` extras, added)
+and, separately, ~19 real assertion failures once 5 previously-non-compiling Rust
+integration-test files were fixed — including a priority-ordering bug that silently
+broke `FeedbackLoop::get_learning_report`'s retraining list, a model-id parsing bug that
+truncated any id containing an underscore, and an anomaly detector that stopped tracking
+temporal jitter after its first detected anomaly. All fixed as of v2.5.1.
 
-Separately, this pass also ran the full Rust suite (`cargo test --workspace`) locally for
-the first time in a while: 5 of the `crates/pyroboframes-core/tests/*.rs` integration-test
-files didn't even compile (private-field access from an external test crate, a
-borrow-of-moved-value, and a borrow-checker conflict). Fixing the compile errors surfaced
-~19 real assertion failures underneath, roughly split between miscalibrated test fixtures
-(values that didn't actually cross the thresholds they were meant to trigger) and genuine
-production bugs, the more notable of which: `TriggerPriority`/`DecisionPriority`/`CachePriority`
-all derived `Ord` with `Critical` declared first, so a natural `priority >=
-SomeVariant::High` comparison silently ranked `Critical` *below* `High`/`Medium`/`Low` -
-this broke `FeedbackLoop::get_learning_report`'s `models_to_retrain` field for real (not
-just in tests); `EnsembleOrchestrator::get_best_model` parsed a model's id back out of a
-`"{id}_{type}"` key via `.split('_').next()`, which silently truncated any model id
-containing an underscore; `AnomalyDetector` only recorded a frame's timestamp when no
-anomaly was found, so a single detected anomaly permanently broke temporal-jitter tracking
-for every later frame; and `DistributedCoordinator::elect_leader`'s
-`availability / (latency_ms + 1)` scoring let tiny latency differences dominate over large
-availability differences. All of the above (Rust suite and CI itself) are fixed as of this
-pass; the CI badge should reflect that starting with the next run on `main`.
+**Two incidents worth knowing about**, both already fixed but worth disclosing rather
+than burying in the changelog:
+
+- **v2.5.0's published PyPI wheel was completely broken** for every user — it contained
+  no compiled extension and no Python source, just a stray `.pth` file pointing at the
+  maintainer's local machine (the artifact of `maturin develop`, uploaded as if it were
+  a real `maturin build` wheel). `import pyroboframes` failed on any machine other than
+  the one it was built on. Fixed and republished as v2.5.1; `scripts/release.sh` (see
+  Development above) now makes this class of mistake structurally hard to repeat.
+- **VideoToolbox hardware decode — this README's headline feature — was dead code in
+  every wheel ever published before v2.5.0**, for the reason described in
+  [Hardware video decode](#hardware-video-decode) above. If you installed any version
+  before 2.5.0, you were silently getting the `ffmpeg`-subprocess fallback regardless of
+  what this README said.
+
+## What's not working / open issues
+
+- **CI is currently failing on `main`.** The `mcap_convert` fuzz target crashes with a
+  libFuzzer out-of-memory abort on a malformed MCAP header — a real, currently-open
+  unbounded-allocation bug, not flaky infra. `Python Tests` and `Rust Build & Test` jobs
+  pass; only `Fuzz Targets (build + smoke test)` fails. If you call `convert_mcap()`
+  against untrusted/adversarial MCAP files, treat that path as unhardened until this is
+  fixed — check `gh run list --repo Mullassery/PyRoboFrames` for current status.
+- **Only macOS (Apple Silicon) wheels are published to PyPI.** Linux/Windows users must
+  build from source (Rust toolchain + `ffmpeg` at build time); Linux `aarch64` and
+  Windows haven't been validated at all.
+- **HEVC decode only covers `hev1`-tagged files, not `hvc1`**, and there's no B-frame
+  reorder buffer — see the honest limitation under
+  [Hardware video decode](#hardware-video-decode).
+- **`RemoteDataset`'s cloud-storage readers are not true zero-copy streaming** — they
+  download to a local cache first.
+- **Fuzz testing covers MCAP/rosbag/Parquet/ROS2 CDR, not MP4/HDF5/NetCDF.** Those
+  parsers still assume trusted input. (The MCAP fuzz target's OOM crash above is exactly
+  the kind of bug this suite exists to catch — it caught one.)
+- **CUDA decode (`cuda` build feature) downloads frames to host memory** — not yet a
+  zero-copy CUDA buffer handoff.
 
 ## Known Issues
 
@@ -217,18 +269,10 @@ pass; the CI badge should reflect that starting with the next run on `main`.
   `docs/ROADMAP_V0.5.3_SAM_MODELS.md` were removed 2026-08-24: the module was dead code
   (never imported by `__init__.py`), untested, and `GroundingDINO.detect()` returned
   empty results for every frame instead of calling a model. Foundation-model /
-  auto-annotation work for this ecosystem lives in **PyRoboVision** instead, whose own
-  roadmap documents removing this exact "hardcoded fake results" pattern once already —
-  see [Cross-repo compatibility](#cross-repo-compatibility) below.
-- The Rust/Python test counts in the Status section above had drifted from the
-  actual source (previously stated as `223`/`75`); corrected here based on a
-  `grep` count. Treat the CI badge as authoritative over any number in prose.
-- Package version (`2.4.0`, dynamic from `Cargo.toml`) matches the version
-  currently published on PyPI — no drift as of this pass.
-- The native VideoToolbox decode path handles H.264 and HEVC tagged `hev1` (not
-  `hvc1`) and doesn't implement a full B-frame reorder buffer — see "Hardware
-  video decode" above for the exact scope. `RemoteDataset`'s cloud-storage
-  readers download to a local cache rather than true zero-copy streaming.
+  auto-annotation work for this ecosystem lives in **PyRoboVision** instead — see
+  [Cross-repo compatibility](#cross-repo-compatibility) below.
+- Package version (`2.5.1`, dynamic from `Cargo.toml`) matches the version currently
+  published on PyPI — no drift as of this pass.
 
 ## Cross-repo compatibility
 
