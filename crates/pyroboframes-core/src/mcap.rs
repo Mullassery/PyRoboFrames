@@ -505,6 +505,7 @@ mod tests {
         let mut writer = ::mcap::Writer::new(file).unwrap();
 
         let json_chan = Arc::new(::mcap::Channel {
+            id: 1,
             topic: "/state".into(),
             schema: None,
             message_encoding: "json".into(),
@@ -529,6 +530,7 @@ mod tests {
 
         // A non-JSON topic that must be reported as skipped.
         let raw_chan = Arc::new(::mcap::Channel {
+            id: 2,
             topic: "/raw".into(),
             schema: None,
             message_encoding: "protobuf".into(),
@@ -700,11 +702,13 @@ mod tests {
             let file = fs::File::create(&mcap_path).unwrap();
             let mut writer = ::mcap::Writer::new(file).unwrap();
             let schema = Arc::new(::mcap::Schema {
+                id: 1,
                 name: "demo.State".into(),
                 encoding: "protobuf".into(),
                 data: Cow::Owned(fds.clone()),
             });
             let chan = Arc::new(::mcap::Channel {
+                id: 1,
                 topic: "/state".into(),
                 schema: Some(schema),
                 message_encoding: "protobuf".into(),
@@ -779,11 +783,13 @@ mod tests {
             let file = fs::File::create(&mcap_path).unwrap();
             let mut writer = ::mcap::Writer::new(file).unwrap();
             let schema = Arc::new(::mcap::Schema {
+                id: 1,
                 name: "demo/Reading".into(),
                 encoding: "ros2msg".into(),
                 data: Cow::Owned(b"float64 value\nint32 seq\n".to_vec()),
             });
             let chan = Arc::new(::mcap::Channel {
+                id: 1,
                 topic: "/reading".into(),
                 schema: Some(schema),
                 message_encoding: "cdr".into(),
@@ -842,6 +848,7 @@ mod tests {
             let file = fs::File::create(&path).unwrap();
             let mut writer = ::mcap::Writer::new(file).unwrap();
             let chan = Arc::new(::mcap::Channel {
+                id: 1,
                 topic: "/t".into(),
                 schema: None,
                 message_encoding: "json".into(),
