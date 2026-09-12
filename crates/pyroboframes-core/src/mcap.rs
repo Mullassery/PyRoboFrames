@@ -150,13 +150,11 @@ pub(crate) struct TopicAccum {
     pub(crate) rows: Vec<BTreeMap<String, Leaf>>,
 }
 
-/// Convert an MCAP file at `input` into one Parquet table per JSON topic under `out_dir`
-/// (created if absent). Returns a [`ConversionReport`]; non-JSON topics are listed in
-/// `skipped_topics`.
-pub fn convert(input: &Path, out_dir: &Path) -> Result<ConversionReport> {
-    let bytes = fs::read(input)?;
-    let stream = ::mcap::MessageStream::new(&bytes)
-        .map_err(|e| Error::Conversion(format!("opening MCAP `{}`: {e}", input.display())))?;
+/// Read and decode every message in `bytes`, grouped by topic. Split out of [`convert`] so
+/// its body can be run behind `catch_unwind`.
+fn read_messages(bytes: &[u8]) -> Result<(BTreeMap<String, TopicAccum>, BTreeSet<String>)> {
+    let stream = ::mcap::MessageStream::new(bytes)
+        .map_err(|e| Error::Conversion(format!("opening MCAP: {e}")))?;
 
     let mut topics: BTreeMap<String, TopicAccum> = BTreeMap::new();
     let mut skipped: BTreeSet<String> = BTreeSet::new();
@@ -186,6 +184,34 @@ pub fn convert(input: &Path, out_dir: &Path) -> Result<ConversionReport> {
         acc.log_times.push(message.log_time as i64);
         acc.rows.push(leaves);
     }
+
+    Ok((topics, skipped))
+}
+
+/// Convert an MCAP file at `input` into one Parquet table per JSON topic under `out_dir`
+/// (created if absent). Returns a [`ConversionReport`]; non-JSON topics are listed in
+/// `skipped_topics`.
+pub fn convert(input: &Path, out_dir: &Path) -> Result<ConversionReport> {
+    let bytes = fs::read(input)?;
+
+    // `mcap::MessageStream`'s reader has known panics on malformed/adversarial input
+    // (e.g. an unchecked offset addition overflowing - see upstream
+    // https://github.com/foxglove/mcap, sans_io/linear_reader.rs) that we can't fix
+    // by upgrading (already on the latest release). Since this function's whole
+    // contract is "reject bad files with Err, never crash" (see the fuzz target),
+    // isolate the third-party parser behind catch_unwind so a panic deep inside it
+    // becomes a clean Err instead of aborting the process.
+    let read_result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| read_messages(&bytes)));
+    let (topics, skipped) = match read_result {
+        Ok(result) => result?,
+        Err(_) => {
+            return Err(Error::Conversion(format!(
+                "reading MCAP `{}`: parser panicked on malformed input",
+                input.display()
+            )));
+        }
+    };
 
     Ok(ConversionReport {
         topics: write_all(out_dir, &topics)?,
