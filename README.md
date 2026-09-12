@@ -240,12 +240,20 @@ than burying in the changelog:
 
 ## What's not working / open issues
 
-- **CI is currently failing on `main`.** The `mcap_convert` fuzz target crashes with a
-  libFuzzer out-of-memory abort on a malformed MCAP header — a real, currently-open
-  unbounded-allocation bug, not flaky infra. `Python Tests` and `Rust Build & Test` jobs
-  pass; only `Fuzz Targets (build + smoke test)` fails. If you call `convert_mcap()`
-  against untrusted/adversarial MCAP files, treat that path as unhardened until this is
-  fixed — check `gh run list --repo Mullassery/PyRoboFrames` for current status.
+- **`Fuzz Targets (build + smoke test)` is currently failing on `main`, for `mcap_convert`
+  specifically.** A real, currently-open bug in `mcap` 0.25.0 itself (the latest release —
+  no newer version fixes it): parsing a malformed record length can overflow an internal
+  `usize` addition and panic, inside `mcap`'s own reader, not our code. `mcap::convert()`
+  now isolates this behind `catch_unwind`, so **real callers get a clean `Err` instead of
+  a crash** (verified directly against the exact crash input). This does *not* make the
+  CI smoke test itself pass, though: `cargo-fuzz`'s harness deliberately aborts the
+  process on any panic before `catch_unwind` gets a chance to run, specifically so fuzzing
+  can find and report bugs like this one — that's the fuzzer working as intended, not a
+  regression. `mcap`'s public API has no way to bound record-length parsing to avoid the
+  panic being reachable at all (that knob exists only on an internal type this crate
+  doesn't expose). Tracked as an upstream issue to file against
+  [foxglove/mcap](https://github.com/foxglove/mcap); until fixed there, this is the
+  practical ceiling for hardening this path.
 - **Only macOS (Apple Silicon) wheels are published to PyPI.** Linux/Windows users must
   build from source (Rust toolchain + `ffmpeg` at build time); Linux `aarch64` and
   Windows haven't been validated at all.
@@ -255,13 +263,34 @@ than burying in the changelog:
 - **`RemoteDataset`'s cloud-storage readers are not true zero-copy streaming** — they
   download to a local cache first.
 - **Fuzz testing covers MCAP/rosbag/Parquet/ROS2 CDR, not MP4/HDF5/NetCDF.** Those
-  parsers still assume trusted input. (The MCAP fuzz target's OOM crash above is exactly
-  the kind of bug this suite exists to catch — it caught one.)
+  parsers still assume trusted input.
 - **CUDA decode (`cuda` build feature) downloads frames to host memory** — not yet a
   zero-copy CUDA buffer handoff.
 
 ## Known Issues
 
+- **2026-09-13: three fuzz-found crashes investigated, two fully fixed, one mitigated
+  (all three in third-party dependencies, not our code).**
+  1. `mcap_convert` was hitting a real libFuzzer out-of-memory abort on malformed MCAP
+     headers — an unbounded allocation inside the `mcap` crate's own record parser
+     (v0.9). Fixed by upgrading to `mcap` 0.25 (latest): the exact saved crash input no
+     longer reproduces, and a 315k-iteration local fuzz run found zero crashes. `mcap`
+     0.25's `Channel`/`Schema` structs gained a required `id: u16` field; the 7
+     test-fixture literals constructing these directly were updated accordingly.
+  2. `data_shard_parquet` was separately panicking inside the `parquet` crate's
+     Thrift-compact-protocol metadata decoder on a truncated Parquet footer (v55). Fixed
+     by upgrading `arrow`/`parquet` 55→59 (latest): the saved crash input no longer
+     reproduces.
+  3. After both upgrades, CI's fuzz smoke test found a **third, different** bug in
+     `mcap_convert`: a `usize` overflow panic inside `mcap` 0.25.0's own reader on a
+     different malformed length field — a genuine bug in the latest release, with no
+     newer version available and no public API to bound record-length parsing to avoid
+     it. Mitigated (not fixed) by wrapping the read path in `catch_unwind`, so real
+     callers get a clean `Err` instead of a process abort (verified against the exact
+     crash input) — see [What's not working](#whats-not-working--open-issues) for why
+     this specific CI job will keep showing red until the bug is fixed upstream.
+  All fixes verified against the full 318-test `cargo test --release --features ffmpeg`
+  suite (all passing) in addition to direct fuzz-input replay.
 - No open GitHub issues and no real `TODO`/`FIXME`/`XXX` markers in `crates/` or
   `python/` as of this pass (one `XXX` match is a filename placeholder in a doc
   comment, not an actual TODO).
