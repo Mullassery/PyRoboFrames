@@ -1,7 +1,7 @@
 # PyRoboFrames — Honest Status
 
 **Current Version:** v2.5.1
-**Last Updated:** 2026-09-11
+**Last Updated:** 2026-09-20
 **Status:** Beta. Core LeRobot loading + native macOS video decode are solid and tested;
 other formats and distributed/streaming features are real but less battle-tested.
 
@@ -113,13 +113,23 @@ verified this" companion.
   been published; Linux/Windows users build from the source distribution (requires a
   Rust toolchain + `ffmpeg` at build time). Linux `aarch64` and Windows haven't been
   validated at all.
-- **CI is currently red on `main`: the `mcap_convert` fuzz target crashes with a
-  libFuzzer out-of-memory abort on a malformed MCAP header.** This is a real,
-  currently-open bug — an unbounded allocation reachable from adversarial input, not
-  flaky CI infra. `Python Tests` and `Rust Build & Test` jobs pass; only `Fuzz Targets
-  (build + smoke test)` fails. Not yet fixed as of this writing; check
-  `gh run list --repo Mullassery/PyRoboFrames` for current status before relying on
-  `convert_mcap` against untrusted MCAP files.
+- **`mcap_convert`'s fuzz smoke test still cannot pass** (updated 2026-09-19, superseding
+  the "CI is red" note below from 2026-09-11) — but the underlying risk to real callers is
+  now mitigated, not open. Timeline: the original OOM abort (unbounded allocation in `mcap`
+  0.9's parser) was fixed by upgrading to `mcap` 0.25 (`7f0f344`); upgrading also fixed an
+  unrelated `parquet` Thrift-decoder panic on a truncated footer by bumping `arrow`/`parquet`
+  55→59. That surfaced a **third, different** bug: a `usize`-overflow panic inside `mcap`
+  0.25.0's own reader on a malformed length field — a genuine upstream bug with no newer
+  `mcap` release available and no public API to bound record-length parsing (`f4cd27e`).
+  `mcap::convert()` now wraps its read loop in `catch_unwind`, so real callers get a clean
+  `Err` instead of a process abort (verified against the exact crash input). `cargo-fuzz`'s
+  harness deliberately calls `process::abort()` on any panic before `catch_unwind` can run,
+  so this specific fuzz target's smoke test will keep failing until the bug is fixed
+  upstream in [foxglove/mcap](https://github.com/foxglove/mcap) — that's the fuzzer working
+  as intended, not a regression. CI (`8447c70`) now treats only this one target's failure as
+  a known, warned-but-non-blocking exception; a crash in any of the other 4 targets still
+  fails the job. Before `8447c70`, a `set -e` bug meant this target's failure was silently
+  masking the other 4 targets from ever running at all — that's fixed too.
 - **Fuzz testing covers MCAP/rosbag/Parquet/ROS2 CDR, not MP4/HDF5/NetCDF.**
   `crates/pyroboframes-core/fuzz/` (added v2.5.0) has 5 targets against
   adversarially malformed bytes: MCAP, rosbag, Parquet data-shard, Parquet
@@ -200,3 +210,52 @@ ABI) against a numpy>=2 install yourself.
 Optional extras (`mlx`, `dev`) and format-specific optional imports (`h5py`, `xarray`,
 `netCDF4`, `tensorflow_datasets`, `fsspec`+`s3fs`/`gcsfs`, `torch`, `jax`, `scipy`,
 `scikit-learn`) are not hard dependencies — install what you need.
+
+## Technical Debt
+
+Verified 2026-09-20 by actually running the commands below against `crates/`, not by
+inspection.
+
+- **CI never runs `cargo clippy` or `cargo fmt --check`, despite both `CONTRIBUTING.md`
+  and `SECURITY.md` telling contributors to run them before opening a PR.**
+  `.github/workflows/ci.yml` has no lint job at all — only build/test/fuzz-build. Because
+  nothing enforces it, real lint debt has accumulated silently:
+  `cargo clippy --release --features ffmpeg --all-targets -- -D warnings` fails outright
+  with 22 errors in `pyroboframes-core`'s lib and 31 in its lib tests (21 overlap) as of
+  this pass, plus more across `phase4_integration_test.rs`/`phase5_integration_test.rs`/
+  `phase7_integration_test.rs`/`phase8_integration_test.rs`/`cross_project_integration_test.rs`/
+  `integration_test.rs` — roughly 47 distinct warnings crate-wide. Concrete examples:
+  - `crates/pyroboframes-core/src/quality.rs:92-97` — manual min/max clamp instead of
+    `.clamp(0.0, 1.0)` (clippy: `manual_clamp` — also notes `.clamp()` differs from
+    chained `.min().max()` on NaN input, so this isn't purely stylistic).
+  - `crates/pyroboframes-core/src/quality.rs:114` — `or_insert_with(Vec::new)` instead of
+    `or_default()`.
+  - `crates/pyroboframes-core/src/streaming.rs:110-111` — manual `div_ceil` reimplementation.
+  - `crates/pyroboframes-core/src/streaming.rs:318` — `assert!(progress >= 50.0 &&
+    progress <= 51.0)` instead of a range check.
+  - `crates/pyroboframes-core/src/distributed.rs:425` — `assert!(x == false)` instead of
+    `assert!(!x)`.
+  - `crates/pyroboframes-core/src/feedback.rs:486` — `.get(0).unwrap()` on a `VecDeque`
+    instead of `.front()`.
+  - `crates/pyroboframes-core/src/intelligence.rs:339,354` and `crates/pyroboframes-core/src/mcp.rs:180`
+    — `assert!(x.len() > 0)` instead of `assert!(!x.is_empty())`.
+  - Four missing `Default` impls (`ResourceMonitor`, `QualityAssessor`, `DecisionEngine`,
+    `DatasetSelector`), several unused variables/imports, two "comparison against
+    type::MIN/MAX always true/false" warnings, and a "items after a test module" warning —
+    see `cargo clippy --all-targets` output for exact locations, not reproduced in full here.
+  This did not block the pass above because it was flagged as documentation/disclosure,
+  not a fix-it-now item — plain `cargo clippy` (no `-D warnings`) and `cargo fmt --all --check`
+  both pass cleanly, and none of these are correctness bugs in the paths this project's own
+  tests exercise. Fixing all of them and then actually adding a `clippy`/`fmt` CI job is real,
+  scoped work for a dedicated follow-up session (adding the gate now, before the debt is
+  paid down, would immediately turn CI red).
+- **No `cargo audit` (or equivalent Rust dependency-vulnerability scan) exists anywhere in
+  this repo or its CI.** Not run as part of this pass either — this sandbox has no network
+  access to crates.io's advisory database, so any attempt would silently fail rather than
+  give a real answer. This is a real, unverified gap, not a "checked and clean" result.
+- **`crates/pyroboframes-core/fuzz/` covers MCAP, rosbag, Parquet (2 targets), and ROS2
+  CDR — not MP4, HDF5, or NetCDF.** Those three parsers still assume trusted input; see
+  "Known gaps / not done" above.
+- No `TODO`/`FIXME`/`XXX` markers found in `crates/` or `python/` as a live gap tracker —
+  this project appears to track work in this file and `CHANGELOG.md` instead, which is a
+  reasonable substitute as long as both stay current (see the dated corrections above).

@@ -12,18 +12,20 @@ Include:
 - Potential impact
 - Suggested fix (if you have one)
 
-## Current Status (v2.4.0)
+## Current Status (v2.5.1)
 
 PyRoboFrames is a small, single-maintainer project. It is **not** independently
 security-audited and carries **no compliance certifications** (see below) — evaluate it
 yourself before using it to handle sensitive data, and don't treat this document as a
 substitute for your own review. That said, "beta, no production use" no longer reflects
 reality: the core dataset-loading and video-decode path is real, tested Rust/PyO3 code
-(223 Python tests + 75 Rust unit tests passing, 0 known failures as of this release), the
-headline VideoToolbox hardware-decode path is a genuine in-process `VTDecompressionSession`
-integration (not a subprocess shell-out), and it has been used to load real LeRobot
-datasets end-to-end. Treat it as: solid for the code paths you've tested against your own
-data, not yet hardened against adversarial input.
+(323 Python tests + 324 Rust unit/integration tests as of this revision — treat the CI
+badge in `README.md` as more authoritative than any number in this file, since these
+drift), the headline VideoToolbox hardware-decode path is a genuine in-process
+`VTDecompressionSession` integration (not a subprocess shell-out), and it has been used to
+load real LeRobot datasets end-to-end. Treat it as: solid for the code paths you've tested
+against your own data, partially (not fully) hardened against adversarial input — see the
+fuzz-testing gap below.
 
 ### What's implemented and tested
 - LeRobot v3.0 dataset reading (the native, most-exercised format) — Rust core, `pytest`
@@ -38,10 +40,14 @@ data, not yet hardened against adversarial input.
   and reads from there; **not** a true zero-copy remote stream (see `ROADMAP_HONEST.md`).
 
 ### Known gaps (be aware of these)
-- **Input trust boundary:** dataset files (Parquet, MP4, HDF5, NetCDF, MCAP) are assumed
-  to come from a source you trust. None of the format parsers have been fuzz-tested
-  against adversarially malformed input. Don't point this at untrusted user uploads
-  without your own sandboxing.
+- **Input trust boundary — partial fuzz coverage, not full.** `crates/pyroboframes-core/fuzz/`
+  (5 targets: MCAP, rosbag, Parquet data-shard, Parquet episodes, ROS2 CDR decode) has
+  actually found and driven fixes for real crashes — see `ROADMAP_HONEST.md`'s "Fixed in
+  v2.5.0"/"Technical Debt" sections, including one (an upstream `mcap` 0.25.0 `usize`
+  overflow panic) that's mitigated via `catch_unwind` in `mcap::convert()` but not fixed
+  upstream. **MP4, HDF5, and NetCDF parsing are not fuzzed at all** and still assume
+  trusted input. Don't point any of this at untrusted user uploads without your own
+  sandboxing, and treat the MP4/HDF5/NetCDF paths as the least-hardened of the group.
 - **Path handling:** `pyroboframes.security.validate_dataset_path()` rejects `..`
   components and can restrict a path to a base directory. `RoboFrameDataset.from_path`,
   `convert_mcap`, `convert_ros2_bag`, `HDF5Dataset`/`HDF5Dataset.from_path`/`convert_hdf5`,
@@ -75,9 +81,12 @@ This project uses:
 - Python 3.10+
 - Rust 1.78+ (for Rust components; `rust-toolchain.toml` pins the exact version CI builds against)
 
-`numpy` and `pyarrow` are pinned to exact versions (see `pyproject.toml`) rather than
-left floating, specifically to avoid unreviewed transitive upgrades landing silently.
-Bump them deliberately, not via `pip install -U`.
+`numpy` and `pyarrow` declare a floor (`numpy>=1.24`, `pyarrow>=14`), not an exact pin —
+see "Known gaps" above for why the earlier exact pins were relaxed. There is currently no
+`cargo audit` (or equivalent) job in CI checking Rust dependencies for known
+vulnerabilities — this is a real, unverified gap (this project's sandbox environments
+have no network access to crates.io's advisory database to run one), tracked in
+`ROADMAP_HONEST.md`'s Technical Debt section rather than claimed as done here.
 
 ## Compliance & Certifications
 

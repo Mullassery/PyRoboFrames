@@ -2,6 +2,52 @@
 
 All notable changes to PyRoboFrames are documented in this file.
 
+## [Unreleased]
+
+### Removed
+- **`pyroboframes/scripts/setup_shortcuts.sh`** — an orphaned top-level directory
+  (`pyroboframes/`, distinct from the real package at `python/pyroboframes/`) containing a
+  script that only aliased a `pyroboframes dashboard` CLI command that doesn't exist
+  anywhere in this codebase (no `console_scripts`/`[project.scripts]` entry, no `dashboard`
+  function). Zero references to it anywhere in the repo.
+- **`scripts/test_dashboards_crossplatform.sh`** — a "cross-platform dashboard test"
+  script that never tested PyRoboFrames at all: every package name it checks
+  (`pystreamai`, `pystreammcp`, `pystreampdf`, `pystreamxl`, `statguardian`,
+  `pyreverseetl`, `pyterrainmap`, `pyroboreplay`, `pyrobosimulator`) belongs to unrelated
+  sibling projects by the same author — leftover from a copy-pasted template, like the
+  dead `cli_workflow.py`/`server_workflow.py`/`mcp_*.py` files removed previously (see
+  `623835b`). Not referenced by CI, `Makefile`, or any doc.
+
+### Fixed
+- **Two fuzz-found crashes in third-party dependencies, both confirmed fixed.** The
+  `mcap_convert` fuzz target found a real out-of-memory abort on malformed MCAP input
+  (an unbounded allocation inside `mcap` 0.9's own record parser, not this project's
+  code); fixed by upgrading `mcap` 0.9 → 0.25 (latest) — confirmed with a
+  315k-iteration/60s local fuzz run finding zero crashes. While verifying that fix, a
+  second, unrelated crash turned up: `data_shard_parquet` panicking inside `parquet`
+  55's Thrift-compact-protocol metadata decoder on a truncated Parquet footer; fixed by
+  upgrading `arrow`/`parquet` 55 → 59 (latest). `mcap` 0.25's `Channel`/`Schema` structs
+  gained a required `id: u16` field; updated the 7 test-fixture literals constructing
+  these directly.
+- **Hardened `mcap::convert()` against a third, still-open upstream `mcap` bug.** After
+  the two upgrades above, the CI fuzz smoke test found a *different* crash in
+  `mcap_convert`: a `usize`-overflow panic inside `mcap` 0.25.0's own reader on a
+  different malformed length field. This is a genuine bug in the latest available `mcap`
+  release (no newer version fixes it, and `mcap`'s public API has no way to bound
+  record-length parsing to avoid it being reachable). Mitigated — not fixed at the
+  source — by wrapping the read loop in `catch_unwind`, so real callers get a clean
+  `Err` instead of a process abort (verified directly against the exact crash input).
+  `cargo-fuzz`'s own smoke test for this one target will keep failing regardless, since
+  `libfuzzer-sys` calls `process::abort()` on any panic before `catch_unwind` can run —
+  see `ROADMAP_HONEST.md` and the CI fix below for why that's expected, not a regression.
+- **CI's fuzz smoke-test job was silently skipping 4 of its 5 targets.** `set -e` meant
+  the loop aborted on `mcap_convert`'s first (already-documented, unfixable-from-here)
+  failure above, so `rosbag_convert`/`data_shard_parquet`/`episodes_parquet`/
+  `ros2_cdr_decode` never actually got smoke-tested on any push since this started
+  failing. Every target now always runs; `mcap_convert`'s known crash is logged as a
+  warning and doesn't fail the job, but a crash in any other target still does. Also
+  bumped `actions/setup-python` v4 → v5 (flagged by `actionlint`).
+
 ## [2.5.1] — 2026-08-30
 
 ### Fixed

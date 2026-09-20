@@ -13,8 +13,8 @@ tests/                      Python integration tests
 benches/                    Throughput benchmark harness
 ```
 
-Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) first — it explains the design and the decisions
-behind it.
+Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) first — it explains the design and the
+decisions behind it.
 
 ## Dev setup (Apple Silicon)
 
@@ -43,4 +43,5 @@ cargo test --workspace     # Rust tests
 
 ## License
 
-By contributing, you agree your contributions are licensed under the [Proprietary License](./LICENSE).
+By contributing, you agree your contributions are licensed under this project's
+[Apache License 2.0](./LICENSE).
