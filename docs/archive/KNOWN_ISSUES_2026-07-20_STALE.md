@@ -1,7 +1,7 @@
 # PyRoboFrames - Known Issues
 
 > **This file is stale (last updated 2026-07-20, against v1.2.0)** and kept for history
-> only. For the current, accurate status see **[`ROADMAP_HONEST.md`](ROADMAP_HONEST.md)**.
+> only. For the current, accurate status see **[`ROADMAP_HONEST.md`](../../ROADMAP_HONEST.md)**.
 > In particular: PyPI publication is confirmed working (releases through v2.4.0 have
 > published successfully), so the "publication status unclear" note below no longer
 > applies.

@@ -2,7 +2,7 @@
 
 > **This file is stale (frozen at v1.1.0 planning)** and kept for history only. For the
 > current, accurate status of what's implemented vs. aspirational, see
-> **[`ROADMAP_HONEST.md`](ROADMAP_HONEST.md)**.
+> **[`ROADMAP_HONEST.md`](../../ROADMAP_HONEST.md)**.
 
 **Current Version:** v1.1.0
 

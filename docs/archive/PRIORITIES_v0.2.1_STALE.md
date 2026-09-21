@@ -1,6 +1,6 @@
 # PyRoboFrames Priorities — At a Glance
 
-High-level summary of work organized by priority tier. For detailed breakdown, see [`ROADMAP.md`](./ROADMAP.md).
+High-level summary of work organized by priority tier. For detailed breakdown, see [`ROADMAP.md`](../ROADMAP.md).
 
 ---
 
@@ -202,7 +202,7 @@ Grab these if looking for small, high-impact contributions:
 
 ## 📚 Related Docs
 
-- **[`ROADMAP.md`](./ROADMAP.md)** — Full prioritized plan (P0–P10), verification tiers, effort estimates
-- **[`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md)** — Original v0.1 build sequence
-- **[`COMPARISON.md`](./COMPARISON.md)** — Competitive analysis & adopted techniques
+- **[`ROADMAP.md`](../ROADMAP.md)** — Full prioritized plan (P0–P10), verification tiers, effort estimates
+- **[`IMPLEMENTATION_PLAN_v0.1.md`](./IMPLEMENTATION_PLAN_v0.1.md)** — Original v0.1 build sequence
+- **[`COMPARISON.md`](../COMPARISON.md)** — Competitive analysis & adopted techniques
 - **[`ARCHITECTURE.md`](../ARCHITECTURE.md)** — Design decisions and the gap we're filling

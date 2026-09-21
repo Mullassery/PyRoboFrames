@@ -4,6 +4,29 @@ All notable changes to PyRoboFrames are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`cargo audit` now runs in CI** (`.github/workflows/ci.yml`'s new `security-audit`
+  job) — the prior audit pass couldn't verify this sandbox had crates.io advisory-database
+  access; it does. Found 2 real vulnerabilities (`RUSTSEC-2025-0020`, `RUSTSEC-2026-0177`,
+  both `pyo3` 0.22.x, fixed upstream in a major-version bump not done here) and 3
+  unmaintained/unsound warnings (`paste`, `lru`) — see `ROADMAP_HONEST.md`. Non-blocking
+  (`|| true`) until the `pyo3` migration lands, so it reports without failing CI today.
+
+### Fixed
+- **8 broken relative Markdown links**, found by resolving every relative link in the repo
+  against its source file's directory: `CHANGELOG.md`'s `DEPLOYMENT_SECURITY.md` link
+  (file actually lives at `docs/DEPLOYMENT_SECURITY.md`), `docs/MCP_QUICKSTART.md`'s
+  `README.md` link (needed `../`), and 6 links inside `docs/archive/*_STALE.md` files that
+  broke when those files were moved into `docs/archive/` in an earlier pass without
+  updating their internal relative paths (`PRIORITIES_v0.2.1_STALE.md` × 4,
+  `ROADMAP_v1.1_STALE.md`, `KNOWN_ISSUES_2026-07-20_STALE.md`). Verified by re-resolving
+  every relative link in the repo against its filesystem location — zero broken afterward.
+- **`.github/workflows/ci.yml`: bumped `actions/checkout` v4→v7 and `actions/setup-python`
+  v5→v7** (3 call sites) to the latest available major versions. Checked each intermediate
+  release's changelog for breaking changes relevant to this workflow (no special inputs
+  used, GitHub-hosted runners already meet the minimum runner version) before bumping;
+  `actionlint` clean before and after.
+
 ### Removed
 - **`pyroboframes/scripts/setup_shortcuts.sh`** — an orphaned top-level directory
   (`pyroboframes/`, distinct from the real package at `python/pyroboframes/`) containing a
@@ -343,7 +366,7 @@ See GitHub tags for v1.1.0 and earlier.
 - ✅ Dependency pinning (numpy==1.24, pyarrow==14)
 - ⚠️ PyPI token rotated (was exposed in development)
 
-See [DEPLOYMENT_SECURITY.md](./DEPLOYMENT_SECURITY.md) for details.
+See [docs/DEPLOYMENT_SECURITY.md](./docs/DEPLOYMENT_SECURITY.md) for details.
 
 ---
 

@@ -213,8 +213,8 @@ Optional extras (`mlx`, `dev`) and format-specific optional imports (`h5py`, `xa
 
 ## Technical Debt
 
-Verified 2026-09-20 by actually running the commands below against `crates/`, not by
-inspection.
+Verified 2026-09-20 (clippy/fmt) and 2026-09-21 (cargo audit, ruff) by actually running
+the commands below, not by inspection.
 
 - **CI never runs `cargo clippy` or `cargo fmt --check`, despite both `CONTRIBUTING.md`
   and `SECURITY.md` telling contributors to run them before opening a PR.**
@@ -249,10 +249,34 @@ inspection.
   tests exercise. Fixing all of them and then actually adding a `clippy`/`fmt` CI job is real,
   scoped work for a dedicated follow-up session (adding the gate now, before the debt is
   paid down, would immediately turn CI red).
-- **No `cargo audit` (or equivalent Rust dependency-vulnerability scan) exists anywhere in
-  this repo or its CI.** Not run as part of this pass either — this sandbox has no network
-  access to crates.io's advisory database, so any attempt would silently fail rather than
-  give a real answer. This is a real, unverified gap, not a "checked and clean" result.
+  Re-verified 2026-09-21: still ~47 (22 lib + 31 lib test, 21 overlap), unchanged from the
+  2026-09-20 count above — nothing new accumulated between passes.
+- **`cargo audit` now runs in CI** (`.github/workflows/ci.yml`'s `security-audit` job,
+  added 2026-09-21 with real network access to crates.io's advisory database — the
+  2026-09-20 pass above couldn't reach it). It found 2 real vulnerabilities and 3
+  unmaintained/unsound warnings in this repo's actual `Cargo.lock`: **RUSTSEC-2025-0020**
+  and **RUSTSEC-2026-0177** (both in `pyo3` 0.22.6 — a `PyString::from_object` buffer-
+  overflow risk and a missing `Sync` bound on `PyCFunction::new_closure` closures, fixed
+  upstream in `pyo3` >=0.24.1 and >=0.29.0 respectively), plus **RUSTSEC-2024-0436**
+  (`paste` 1.0.15, unmaintained), **RUSTSEC-2026-0253** and **RUSTSEC-2026-0002** (`lru`
+  0.12.5, two unsound-but-not-CVE'd issues around `pop()` panic safety and `IterMut`).
+  Fixing the two real vulnerabilities means a `pyo3` major-version migration across the
+  entire `pyroboframes-py` binding layer — real, scoped work, not done here. The CI job is
+  intentionally non-blocking (`|| true`) until that migration lands, so it surfaces
+  results in every run's log without turning CI red today.
+- **`ruff check .` reports 446 issues across `python/` and `tests/`, not previously
+  audited or documented anywhere in this repo.** No `ruff`/lint CI job exists (only
+  `Makefile`'s `make lint` mentions it) and `ruff` isn't in the `dev` extra's checked
+  path, so this is silent debt exactly like the clippy findings above. Breakdown (top
+  categories): 82 `UP006` (non-PEP585 type hints, e.g. `List[int]` vs `list[int]`), 72
+  `F401` (unused imports), 70 `UP045` (non-PEP604 `Optional[X]` vs `X | None`), 52 `I001`
+  (unsorted imports), 26 `BLE001` (blind `except:`), 26 `UP035` (deprecated typing
+  imports), plus smaller counts of ~20 other rule categories. 312 of the 446 are
+  `ruff --fix`-able, but running that unreviewed across the whole package is real,
+  scoped cleanup work (and `BLE001`/blind-except findings need actual judgment about
+  whether the broad catches are intentional, not a mechanical fix) — not done in this
+  pass. Flagged here as documentation/disclosure, matching how the clippy debt above is
+  handled.
 - **`crates/pyroboframes-core/fuzz/` covers MCAP, rosbag, Parquet (2 targets), and ROS2
   CDR — not MP4, HDF5, or NetCDF.** Those three parsers still assume trusted input; see
   "Known gaps / not done" above.

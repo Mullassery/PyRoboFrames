@@ -43,4 +43,4 @@ endpoint = metadata.start_mcp_connector()
 
 ---
 
-For full documentation, see [README.md](README.md)
+For full documentation, see [README.md](../README.md)
