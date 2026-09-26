@@ -306,6 +306,56 @@ than burying in the changelog:
 - Package version (`2.5.1`, dynamic from `Cargo.toml`) matches the version currently
   published on PyPI — no drift as of this pass.
 
+## vs LeRobot's own dataloader
+
+HuggingFace's own `lerobot` package ships its own dataloader for the exact
+format PyRoboFrames targets — the closest, most direct comparison. Tested
+against a real public dataset, [`lerobot/pusht`](https://huggingface.co/datasets/lerobot/pusht)
+(25,650 frames, 206 episodes, downloaded fresh from the Hub), 2016 frames,
+batch size 32, both on the same machine (Apple Silicon).
+
+| | PyRoboFrames | lerobot's own `LeRobotDataset` |
+|---|---|---|
+| Tabular-only (state/action, no video) | **1,039,169 frames/s** | 5,247 frames/s |
+| Full batch (state/action + video decode) | 59 frames/s | **852 frames/s** |
+
+**PyRoboFrames is ~198x faster reading tabular data** (a real, verified
+advantage of Rust-native mmap'd Parquet reads over `lerobot`'s
+`datasets`/pandas-based path) — **but ~14x *slower* once video decode is
+in the loop**, which is the opposite of what "hardware-accelerated video
+decode" implies. Both numbers are real; neither is cherry-picked.
+
+**Real root cause of the video-decode slowdown**, found while running this
+benchmark: `Decoder::decode_batch`'s default implementation
+(`crates/pyroboframes-core/src/decode.rs`) just calls `.decode()` once per
+requested timestamp, independently. Its own doc comment claimed hardware
+backends override this to reuse GOP decode state — but neither
+`VideoToolboxDecoder` implementation (native or the ffmpeg-subprocess
+fallback) has ever actually done so. The optimization was described in a
+comment, not built. The doc comment is now corrected; the real
+optimization is tracked as a known gap in `ROADMAP_HONEST.md`, not
+attempted here (a genuine decode-pipeline redesign, not a drive-by fix).
+
+**A second, more fundamental real finding: every current real-world
+LeRobot v3.0 dataset checked on the Hub ships AV1-encoded video by
+default** (`lerobot/pusht`, `lerobot/xarm_lift_medium`,
+`lerobot/aloha_sim_insertion_human` — all three `av01`), which this
+decoder cannot read at all (H.264/HEVC only). This isn't a rare edge
+case — it means video decode, as shipped, cannot open any current public
+dataset's video without re-encoding it first, which is what this
+benchmark had to do (`ffmpeg -c:v libx264`) to get a completable
+comparison at all. Documented in `ROADMAP_HONEST.md`.
+
+**Real bug found and fixed while running this benchmark:** `next.reward`
+— a plain scalar `Float32` column, present in every real dataset checked
+— crashed `feature_f32()` with `data column 'next.reward' is not a float32
+list`, because only `FixedSizeList`/`List`-encoded columns were handled.
+Real LeRobot datasets legitimately mix vector features
+(`observation.state`, `action`) with scalar ones (`next.reward`,
+`next.done`, `index`, ...) in the same shard. Fixed by treating a scalar
+`Float32` value as a length-1 vector; regression test added
+(`crates/pyroboframes-core/src/data.rs`).
+
 ## Cross-repo compatibility
 
 This repo is one of several independently-published robotics packages by

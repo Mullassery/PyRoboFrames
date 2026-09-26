@@ -159,9 +159,12 @@ pub trait Decoder: Send {
     /// Decode the frame of `camera` in `file` nearest `timestamp` (seconds).
     fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame>;
 
-    /// Decode several timestamps from one video at once. The default decodes one-by-one;
-    /// hardware backends override this to order seeks and reuse GOP decode state (à la
-    /// torchcodec), which is much faster than independent seeks.
+    /// Decode several timestamps from one video at once. The default decodes one-by-one.
+    /// **No backend currently overrides this** (verified 2026-09 via real-world benchmarking
+    /// against `lerobot/pusht`: ~14x slower than `lerobot`'s own dataloader on a fixed
+    /// sequential-frame batch) — ordering seeks and reusing GOP decode state (à la
+    /// torchcodec) the way this comment used to describe as already-implemented is real,
+    /// valuable future work, not current behavior. See `ROADMAP_HONEST.md`.
     fn decode_batch(
         &mut self,
         camera: &str,

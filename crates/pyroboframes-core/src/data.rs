@@ -60,8 +60,19 @@ impl DataShard {
         if let Some(list) = col.as_any().downcast_ref::<ListArray>() {
             return floats(&list.value(local), column);
         }
+        // Real LeRobot v3.0 datasets legitimately mix vector features
+        // (observation.state, action, ...) with plain scalar ones
+        // (next.reward, next.done, index, ...) in the same shard. Treating
+        // this uniformly as a length-1 vector, instead of erroring, lets
+        // callers iterate `self.features` without having to special-case
+        // which columns happen to be scalars for a given dataset -- this
+        // crashed on the very first real-world dataset tested against
+        // (lerobot/pusht's `next.reward` column).
+        if let Some(scalar) = col.as_any().downcast_ref::<Float32Array>() {
+            return Ok(vec![scalar.value(local)]);
+        }
         Err(Error::Dataset(format!(
-            "data column `{column}` is not a float32 list (got {:?})",
+            "data column `{column}` is not a float32 scalar or list (got {:?})",
             col.data_type()
         )))
     }
@@ -138,6 +149,35 @@ mod tests {
             shard.feature_f32("observation.state", 1).unwrap(),
             vec![4.0, 5.0, 6.0]
         );
+    }
+
+    #[test]
+    fn reads_scalar_float_column_as_length_one_vector() {
+        // Regression test found via real-world benchmarking against
+        // lerobot/pusht (a real public LeRobot v3.0 dataset): a plain
+        // scalar Float32 column (e.g. `next.reward`) crashed instead of
+        // being read, because only FixedSizeList/List encodings were
+        // handled. Real LeRobot datasets mix vector features
+        // (observation.state, action) with scalar ones (next.reward,
+        // next.done, index, ...) in the same shard.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("file-000.parquet");
+
+        let arr = Float32Array::from(vec![0.5f32, 1.25]);
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "next.reward",
+            arr.data_type().clone(),
+            false,
+        )]));
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(arr)]).unwrap();
+        let file = File::create(&path).unwrap();
+        let mut w = ArrowWriter::try_new(file, schema, None).unwrap();
+        w.write(&batch).unwrap();
+        w.close().unwrap();
+
+        let shard = DataShard::open(&path).unwrap();
+        assert_eq!(shard.feature_f32("next.reward", 0).unwrap(), vec![0.5]);
+        assert_eq!(shard.feature_f32("next.reward", 1).unwrap(), vec![1.25]);
     }
 
     #[test]

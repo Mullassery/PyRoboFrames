@@ -95,6 +95,31 @@ verified this" companion.
 
 ## 🔴 Known gaps / not done
 
+- **`decode_batch` never actually reuses GOP decode state — every real batched read is a
+  series of independent seeks.** `Decoder::decode_batch`'s default trait method
+  (`crates/pyroboframes-core/src/decode.rs`) just calls `.decode()` once per timestamp; its
+  own doc comment claimed "hardware backends override this to order seeks and reuse GOP
+  decode state... much faster than independent seeks," but neither `VideoToolboxDecoder`
+  impl (native or the ffmpeg-subprocess fallback) has ever actually overridden it — that
+  optimization was described, not built. Measured real-world impact (2026-09-27,
+  benchmarking against a real public dataset, `lerobot/pusht`, re-encoded to H.264 locally
+  since every real LeRobot v3.0 dataset checked — `pusht`, `xarm_lift_medium`,
+  `aloha_sim_insertion_human` — now ships AV1 video by default, which this decoder can't
+  read at all, see the HEVC/AV1 gap below): 2016 sequential frames, batch size 32 — 59
+  frames/s here vs `lerobot`'s own PyAV+torch dataloader at 852 frames/s, ~14x slower, not
+  faster. The doc comment is now corrected to say so plainly. Implementing the real
+  optimization (ordered seeks, keyframe-aware decode reuse) is real, valuable future work —
+  not attempted here, since it's a genuine decode-pipeline redesign, not a drive-by fix.
+- **Every current real-world LeRobot v3.0 dataset on the Hub ships AV1-encoded video by
+  default, which this decoder cannot read at all** (only `avc1`/`hev1` H.264/HEVC, per the
+  HEVC gap below). Checked three real, unrelated public datasets — `lerobot/pusht`,
+  `lerobot/xarm_lift_medium`, `lerobot/aloha_sim_insertion_human` — all three are `av01`.
+  This isn't a rare edge case; it means the video-decode path, as shipped, cannot open any
+  current real dataset's video without the caller re-encoding it to H.264 first (which is
+  what this benchmark did to get a completable comparison at all). AV1 hardware decode
+  requires newer Apple Silicon (M3+) and isn't universally available via VideoToolbox the
+  way H.264/HEVC is — real AV1 support is a substantial, separate undertaking, not a small
+  fix.
 - **True zero-copy array handoff (DLPack, skipping NumPy entirely)** — decode-to-buffer
   is zero-copy on macOS as of v2.3.0, but `Loader`'s batch path still allocates one
   combined `[batch, H, W, 3]` NumPy array and copies each decoded frame's pixels into it
