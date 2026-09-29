@@ -13,6 +13,19 @@ All notable changes to PyRoboFrames are documented in this file.
   (`|| true`) until the `pyo3` migration lands, so it reports without failing CI today.
 
 ### Fixed
+- **`decode_batch` now actually reuses GOP decode state, for the native macOS
+  `VideoToolboxDecoder` path.** Previously the trait's default (independent per-timestamp
+  seeks) was never overridden by any backend despite a doc comment claiming otherwise,
+  measured at ~14x slower than `lerobot`'s own dataloader on a real benchmark (see
+  `ROADMAP_HONEST.md`). `NativeVideoToolboxFile::decode_batch_at` now processes requests in
+  ascending decode-order and resumes decoding from the last-decoded sample instead of
+  re-walking back to a keyframe per request. Verified against a real 20-frame, 2-GOP H.264
+  test clip: pixel-identical to per-frame `decode_at` (including out-of-order/duplicate
+  requests), and submits each real sample to VideoToolbox exactly once (20 total) instead of
+  re-decoding each GOP's prefix per request (110 total for the naive per-frame loop) — a
+  real 5.5x reduction on this clip, growing with real-world GOP size. The
+  ffmpeg-subprocess fallback backend still uses the unoptimized default; not attempted in
+  this pass.
 - **8 broken relative Markdown links**, found by resolving every relative link in the repo
   against its source file's directory: `CHANGELOG.md`'s `DEPLOYMENT_SECURITY.md` link
   (file actually lives at `docs/DEPLOYMENT_SECURITY.md`), `docs/MCP_QUICKSTART.md`'s

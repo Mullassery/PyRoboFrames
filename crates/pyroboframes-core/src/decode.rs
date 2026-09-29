@@ -160,11 +160,13 @@ pub trait Decoder: Send {
     fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame>;
 
     /// Decode several timestamps from one video at once. The default decodes one-by-one.
-    /// **No backend currently overrides this** (verified 2026-09 via real-world benchmarking
-    /// against `lerobot/pusht`: ~14x slower than `lerobot`'s own dataloader on a fixed
-    /// sequential-frame batch) — ordering seeks and reusing GOP decode state (à la
-    /// torchcodec) the way this comment used to describe as already-implemented is real,
-    /// valuable future work, not current behavior. See `ROADMAP_HONEST.md`.
+    /// **The native macOS `VideoToolboxDecoder` overrides this** (as of 2026-09-29) with
+    /// real ordered-seek, GOP-reuse decoding — see
+    /// `NativeVideoToolboxFile::decode_batch_at`. The original ~14x-slower-than-`lerobot`
+    /// finding (verified 2026-09-27 via real-world benchmarking against `lerobot/pusht`)
+    /// applied to every backend at the time; the ffmpeg-subprocess fallback
+    /// `VideoToolboxDecoder` and other backends still use this default. See
+    /// `ROADMAP_HONEST.md`.
     fn decode_batch(
         &mut self,
         camera: &str,
@@ -348,6 +350,35 @@ mod macos {
                     pixel_buffer: Arc::new(pixel_buffer),
                 },
             })
+        }
+
+        /// Real GOP-reuse override: see
+        /// `NativeVideoToolboxFile::decode_batch_at`. Replaces the trait's
+        /// default (independent per-timestamp seeks, ~14x slower than a
+        /// real competitor's dataloader on a real benchmark -- see
+        /// `ROADMAP_HONEST.md`) with ordered seeks that resume decoding from
+        /// the last-decoded sample instead of re-walking back to the
+        /// nearest keyframe for every single timestamp.
+        fn decode_batch(
+            &mut self,
+            camera: &str,
+            file: &Path,
+            timestamps: &[f64],
+        ) -> Result<Vec<Frame>> {
+            let decoded = self.native.decode_batch_at(file, timestamps)?;
+            Ok(decoded
+                .into_iter()
+                .zip(timestamps.iter())
+                .map(|((pixel_buffer, width, height), &timestamp)| Frame {
+                    width,
+                    height,
+                    camera: camera.to_string(),
+                    timestamp,
+                    pixels: FrameBuffer::IOSurface {
+                        pixel_buffer: Arc::new(pixel_buffer),
+                    },
+                })
+                .collect())
         }
     }
 }

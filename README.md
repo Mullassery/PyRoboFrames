@@ -331,10 +331,16 @@ benchmark: `Decoder::decode_batch`'s default implementation
 requested timestamp, independently. Its own doc comment claimed hardware
 backends override this to reuse GOP decode state — but neither
 `VideoToolboxDecoder` implementation (native or the ffmpeg-subprocess
-fallback) has ever actually done so. The optimization was described in a
-comment, not built. The doc comment is now corrected; the real
-optimization is tracked as a known gap in `ROADMAP_HONEST.md`, not
-attempted here (a genuine decode-pipeline redesign, not a drive-by fix).
+fallback) had ever actually done so at the time of this benchmark. **FIXED
+(2026-09-29) for the native path**: `VideoToolboxDecoder`'s native
+`VTDecompressionSession` backend now really does reuse GOP decode state —
+verified to submit each real sample to VideoToolbox exactly once across a
+batch instead of re-decoding each GOP's prefix per request (a real 5.5x
+reduction in redundant hardware-decode submissions on a real test clip; see
+`ROADMAP_HONEST.md` for the full measurement and why this benchmark's exact
+59 vs. 852 frames/s numbers haven't been rerun yet — blocked on the AV1 gap
+below). The ffmpeg-subprocess fallback path still uses the unoptimized
+default; not attempted in this pass.
 
 **A second, more fundamental real finding: every current real-world
 LeRobot v3.0 dataset checked on the Hub ships AV1-encoded video by

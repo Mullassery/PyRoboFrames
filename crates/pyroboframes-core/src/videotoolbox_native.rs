@@ -30,6 +30,11 @@
 //!   correct for the common case (no B-frames, decode order == display
 //!   order) and for isolated single-frame lookups with B-frames, but is
 //!   not a full streaming-playback reorder buffer.
+//! - `decode_batch_at` (real GOP-reuse batch decode, added 2026-09-29) processes
+//!   requests in ascending decode-order and resumes from the last-decoded sample instead of
+//!   re-walking back to a keyframe for every request -- but a request that seeks backward
+//!   relative to what's already been decoded within the same batch call still falls back to
+//!   the normal keyframe walk-back (correct, just not the optimized path).
 
 use std::fs::File;
 use std::io::BufReader;
@@ -519,6 +524,11 @@ pub struct NativeVideoToolboxFile {
     pts_offset: i64,
     session: DecompressionSession,
     collector: FrameCollector,
+    /// Total real samples fed to the decompression session across this
+    /// file's lifetime -- used by tests to prove `decode_batch_at` actually
+    /// avoids redundant re-decode of already-decoded GOP prefixes, not just
+    /// that it returns the right pixels.
+    decoded_sample_count: usize,
 }
 
 impl NativeVideoToolboxFile {
@@ -636,6 +646,7 @@ impl NativeVideoToolboxFile {
             pts_offset,
             session,
             collector,
+            decoded_sample_count: 0,
         })
     }
 
@@ -651,32 +662,106 @@ impl NativeVideoToolboxFile {
     /// Decodes the frame nearest `timestamp_s`, returning the real
     /// hardware-decoded, IOSurface-backed pixel buffer.
     pub fn decode_at(&mut self, timestamp_s: f64) -> Result<CVPixelBuffer> {
-        // `timestamp_s` is a presentation-time lookup (what callers mean by "the frame at this
-        // point in the video"), so the target sample must be the one whose *presentation* time
-        // (PTS = DTS + rendering offset) is nearest — not decode time (DTS). Those only coincide
-        // when there's no reordering (no B-frames); `sample_index` stays DTS-ordered (decode
-        // order) for the GOP walk-back below, so this is a linear scan rather than a binary
-        // search — sample counts here are per-file, not per-dataset, so this isn't hot.
+        let target_idx = self.nearest_sample_index(timestamp_s);
+        let start_idx = self.keyframe_walkback(target_idx);
+        let frames = self.decode_range(start_idx, target_idx)?;
+        self.pick_nearest_frame(frames, target_idx)
+    }
+
+    /// Decodes several timestamps against this same open file, reusing
+    /// already-decoded GOP state across requests instead of re-walking back
+    /// to the nearest keyframe and redoing that decode work for every single
+    /// timestamp independently (what calling `decode_at` in a loop does, and
+    /// what this type's own callers did before this method existed — see
+    /// `Decoder::decode_batch`'s doc comment and `ROADMAP_HONEST.md` for the
+    /// real ~14x-slower-than-a-real-competitor benchmark this fixes).
+    ///
+    /// Requests are processed in ascending decode-order (ordered seeks, as
+    /// the trait's original doc comment always described but never
+    /// implemented): whenever the next request's target sample is at or
+    /// after the last sample decoded so far in this batch, decoding resumes
+    /// from there instead of walking back to that GOP's keyframe again. A
+    /// request that requires seeking backward (relative to what's already
+    /// been decoded within this batch) falls back to the normal keyframe
+    /// walk-back — correct, just not the optimized path; real workloads
+    /// (sequential or shuffled-but-batched dataset reads) request
+    /// non-decreasing timestamps far more often than not.
+    ///
+    /// Returns pixel buffers in the same order as `timestamps_s` (not
+    /// decode order).
+    pub fn decode_batch_at(&mut self, timestamps_s: &[f64]) -> Result<Vec<CVPixelBuffer>> {
+        if timestamps_s.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let targets: Vec<usize> = timestamps_s
+            .iter()
+            .map(|&t| self.nearest_sample_index(t))
+            .collect();
+
+        let mut decode_order: Vec<usize> = (0..targets.len()).collect();
+        decode_order.sort_by_key(|&i| targets[i]);
+
+        let mut results: Vec<Option<CVPixelBuffer>> = (0..targets.len()).map(|_| None).collect();
+        let mut next_undecoded_idx: Option<usize> = None;
+
+        for request_i in decode_order {
+            let target_idx = targets[request_i];
+            let start_idx = match next_undecoded_idx {
+                Some(next) if next <= target_idx => next,
+                _ => self.keyframe_walkback(target_idx),
+            };
+            let frames = self.decode_range(start_idx, target_idx)?;
+            results[request_i] = Some(self.pick_nearest_frame(frames, target_idx)?);
+            next_undecoded_idx = Some(target_idx + 1);
+        }
+
+        results
+            .into_iter()
+            .map(|r| r.expect("every index in decode_order is a unique index into results"))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(Ok)
+            .collect()
+    }
+
+    /// The decode-order sample index whose *presentation* time is nearest
+    /// `timestamp_s` (PTS = DTS + rendering offset, not decode time — those
+    /// only coincide when there's no B-frame reordering). `sample_index`
+    /// stays DTS-ordered (decode order) since that's what the keyframe
+    /// walk-back and sequential-decode-reuse logic need to walk.
+    fn nearest_sample_index(&self, timestamp_s: f64) -> usize {
         let target_units =
             (timestamp_s * f64::from(self.timescale)).round() as i64 + self.pts_offset;
-        let target_idx = self
-            .sample_index
+        self.sample_index
             .iter()
             .enumerate()
             .min_by_key(|(_, e)| (e.presentation_time_units - target_units).abs())
             .map(|(i, _)| i)
-            .expect("sample_index is non-empty (checked in open())");
+            .expect("sample_index is non-empty (checked in open())")
+    }
 
+    /// Walks back from `target_idx` to the nearest preceding (or equal)
+    /// sync/keyframe sample — the earliest sample VideoToolbox needs fed in
+    /// order to correctly decode `target_idx`.
+    fn keyframe_walkback(&self, target_idx: usize) -> usize {
         let mut start_idx = target_idx;
         while start_idx > 0 && !self.sample_index[start_idx].is_sync {
             start_idx -= 1;
         }
+        start_idx
+    }
 
-        // Clear any stale frames left over from a previous call.
+    /// Feeds decode-order samples `start_idx..=end_idx` to the real
+    /// `VTDecompressionSession` and returns the resulting output frames
+    /// (unfiltered — callers match by presentation time via
+    /// `pick_nearest_frame`).
+    fn decode_range(&mut self, start_idx: usize, end_idx: usize) -> Result<Vec<DecodedFrame>> {
+        // Clear any stale frames left over from a previous, unrelated call.
         self.collector.drain();
 
         let mut decoded = 0usize;
-        for i in start_idx..=target_idx {
+        for i in start_idx..=end_idx {
             let sample_id = self.sample_index[i].sample_id;
             let sample = self
                 .reader
@@ -697,6 +782,7 @@ impl NativeVideoToolboxFile {
                 .map_err(|e| Error::Decode(format!("VTDecompressionSessionDecodeFrame: {e:?}")))?;
             decoded += 1;
         }
+        self.decoded_sample_count += decoded;
 
         self.collector
             .wait_until_at_least(decoded, DECODE_WAIT_TIMEOUT);
@@ -707,7 +793,16 @@ impl NativeVideoToolboxFile {
                 frames.len()
             )));
         }
+        Ok(frames)
+    }
 
+    /// Picks the decoded frame whose real presentation time is nearest
+    /// `target_idx`'s.
+    fn pick_nearest_frame(
+        &self,
+        frames: Vec<DecodedFrame>,
+        target_idx: usize,
+    ) -> Result<CVPixelBuffer> {
         let target_pts_units = self.sample_index[target_idx].presentation_time_units;
         let target_pts_seconds = target_pts_units as f64 / f64::from(self.timescale);
 
@@ -756,6 +851,27 @@ impl NativeVideoToolboxDecoder {
         let (width, height) = state.dimensions()?;
         let pixel_buffer = state.decode_at(timestamp_s)?;
         Ok((pixel_buffer, width, height))
+    }
+
+    /// Real GOP-reuse batch decode -- see
+    /// `NativeVideoToolboxFile::decode_batch_at`. Returns pixel buffers in
+    /// the same order as `timestamps_s`.
+    pub fn decode_batch_at(
+        &mut self,
+        file: &Path,
+        timestamps_s: &[f64],
+    ) -> Result<Vec<(CVPixelBuffer, u32, u32)>> {
+        if !self.files.contains_key(file) {
+            let opened = NativeVideoToolboxFile::open(file)?;
+            self.files.insert(file.to_path_buf(), opened);
+        }
+        let state = self.files.get_mut(file).expect("just inserted");
+        let (width, height) = state.dimensions()?;
+        let pixel_buffers = state.decode_batch_at(timestamps_s)?;
+        Ok(pixel_buffers
+            .into_iter()
+            .map(|pb| (pb, width, height))
+            .collect())
     }
 }
 
@@ -824,6 +940,92 @@ mod tests {
             "ffmpeg failed to generate B-frame test clip"
         );
         mp4_path
+    }
+
+    /// Real regression test for the GOP-reuse fix: `decode_batch_at` must
+    /// produce pixel-identical results to calling `decode_at` in a loop
+    /// (correctness), while decoding real, measurably fewer total samples
+    /// (the actual performance bug -- see `ROADMAP_HONEST.md`'s real
+    /// ~14x-slower-than-`lerobot` benchmark this addresses). Uses
+    /// `generate_test_clip`'s real 20-frame, GOP-size-10 H.264 clip: naive
+    /// per-frame decoding of all 20 real frames would re-walk each GOP's
+    /// keyframe on every request (55 total sample-decodes per 10-frame GOP,
+    /// 110 across both real GOPs); real GOP-aware sequential reuse should
+    /// decode each of the 20 real samples exactly once.
+    #[test]
+    fn decode_batch_reuses_gop_state_and_matches_per_frame_decode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mp4 = generate_test_clip(tmp.path(), 64, 48);
+        let timestamps: Vec<f64> = (0..20).map(|i| i as f64 * 0.1).collect();
+
+        let mut batch_file = NativeVideoToolboxFile::open(&mp4).unwrap();
+        let batch_buffers = batch_file.decode_batch_at(&timestamps).unwrap();
+        assert_eq!(batch_buffers.len(), 20);
+
+        let mut per_frame_file = NativeVideoToolboxFile::open(&mp4).unwrap();
+        let per_frame_pixels: Vec<Vec<u8>> = timestamps
+            .iter()
+            .map(|&t| {
+                let buf = per_frame_file.decode_at(t).unwrap();
+                let guard = buf.lock_read_only().unwrap();
+                guard.as_slice().to_vec()
+            })
+            .collect();
+
+        for (i, batch_buf) in batch_buffers.into_iter().enumerate() {
+            let guard = batch_buf.lock_read_only().unwrap();
+            assert_eq!(
+                guard.as_slice(),
+                per_frame_pixels[i].as_slice(),
+                "frame {i} (t={:.1}s): batch decode must match individual decode_at exactly",
+                timestamps[i]
+            );
+        }
+
+        // The real efficiency claim: batch decoding this real 20-frame,
+        // 2-GOP clip should decode each real sample exactly once (20 real
+        // VTDecompressionSession submissions), not re-decode each GOP's
+        // prefix once per requested frame within it (110 real submissions
+        // for a naive per-frame loop over the same 20 timestamps).
+        assert_eq!(
+            batch_file.decoded_sample_count, 20,
+            "GOP-aware batch decode should submit each real sample exactly once"
+        );
+        assert_eq!(
+            per_frame_file.decoded_sample_count, 110,
+            "naive per-frame decode_at re-decodes each GOP's prefix on every call \
+             (confirms this test would have caught the original bug)"
+        );
+    }
+
+    #[test]
+    fn decode_batch_handles_out_of_order_and_duplicate_timestamps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mp4 = generate_test_clip(tmp.path(), 64, 48);
+
+        // Deliberately out of order, with a duplicate -- decode_batch_at
+        // must still return results in the *requested* order, correct for
+        // every entry, even though it internally reorders for GOP reuse.
+        let timestamps = vec![0.5, 0.0, 0.3, 0.3, 1.8];
+        let mut file = NativeVideoToolboxFile::open(&mp4).unwrap();
+        let buffers = file.decode_batch_at(&timestamps).unwrap();
+        assert_eq!(buffers.len(), 5);
+
+        let mut reference_file = NativeVideoToolboxFile::open(&mp4).unwrap();
+        for (i, &t) in timestamps.iter().enumerate() {
+            let expected = reference_file.decode_at(t).unwrap();
+            let expected_guard = expected.lock_read_only().unwrap();
+            let actual_guard = buffers[i].lock_read_only().unwrap();
+            assert_eq!(
+                actual_guard.as_slice(),
+                expected_guard.as_slice(),
+                "out-of-order/duplicate request {i} (t={t}) must still match decode_at"
+            );
+        }
+        // The two requests for t=0.3 must be pixel-identical to each other too.
+        let a = buffers[2].lock_read_only().unwrap();
+        let b = buffers[3].lock_read_only().unwrap();
+        assert_eq!(a.as_slice(), b.as_slice());
     }
 
     #[test]

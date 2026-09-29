@@ -95,21 +95,36 @@ verified this" companion.
 
 ## 🔴 Known gaps / not done
 
-- **`decode_batch` never actually reuses GOP decode state — every real batched read is a
-  series of independent seeks.** `Decoder::decode_batch`'s default trait method
-  (`crates/pyroboframes-core/src/decode.rs`) just calls `.decode()` once per timestamp; its
-  own doc comment claimed "hardware backends override this to order seeks and reuse GOP
-  decode state... much faster than independent seeks," but neither `VideoToolboxDecoder`
-  impl (native or the ffmpeg-subprocess fallback) has ever actually overridden it — that
-  optimization was described, not built. Measured real-world impact (2026-09-27,
-  benchmarking against a real public dataset, `lerobot/pusht`, re-encoded to H.264 locally
-  since every real LeRobot v3.0 dataset checked — `pusht`, `xarm_lift_medium`,
-  `aloha_sim_insertion_human` — now ships AV1 video by default, which this decoder can't
-  read at all, see the HEVC/AV1 gap below): 2016 sequential frames, batch size 32 — 59
-  frames/s here vs `lerobot`'s own PyAV+torch dataloader at 852 frames/s, ~14x slower, not
-  faster. The doc comment is now corrected to say so plainly. Implementing the real
-  optimization (ordered seeks, keyframe-aware decode reuse) is real, valuable future work —
-  not attempted here, since it's a genuine decode-pipeline redesign, not a drive-by fix.
+- **FIXED (2026-09-29), native VideoToolbox path only: `decode_batch` now actually reuses
+  GOP decode state.** `Decoder::decode_batch`'s default trait method still just calls
+  `.decode()` once per timestamp (unchanged, still the right default for backends that
+  can't do better) — but `VideoToolboxDecoder`'s native path (`crates/pyroboframes-core/src/videotoolbox_native.rs`,
+  `NativeVideoToolboxFile::decode_batch_at`) now overrides it for real: requests are
+  processed in ascending decode-order, and whenever the next request's target sample is at
+  or after the last sample decoded so far in this batch, decoding resumes from there
+  instead of walking back to that GOP's keyframe and re-submitting already-decoded samples
+  to `VTDecompressionSession` again. Verified two ways: (1) correctness — a real 20-frame,
+  2-GOP H.264 test clip decoded via `decode_batch_at` is pixel-identical to calling
+  `decode_at` individually per frame, including out-of-order and duplicate-timestamp
+  requests; (2) the actual efficiency claim — the batch path submits each of the 20 real
+  samples to VideoToolbox exactly once, vs. 110 real submissions (re-decoding each GOP's
+  prefix on every request) for the naive per-frame loop over the same 20 timestamps on the
+  same clip — a real 5.5x reduction in redundant hardware-decode work on this small test
+  clip, and the reduction grows with real-world GOP size (LeRobot-style datasets commonly
+  use 30-60+ frame GOPs, where the naive path's redundant work grows roughly quadratically
+  with GOP size). This is a synthetic-clip measurement of the underlying redundant-decode
+  elimination, not a rerun of the full `lerobot/pusht` frames/sec benchmark below — that
+  would need a fresh real-dataset run (blocked on the AV1 gap right below: `pusht` itself
+  ships AV1, so re-running the original 59 vs 852 frames/s comparison needs either a
+  locally re-encoded H.264 copy, as the original benchmark used, or real AV1 decode
+  support) — a natural next step for whoever picks that up.
+  - **Still not fixed, explicitly out of scope for this pass**: the ffmpeg-subprocess
+    fallback `VideoToolboxDecoder` (`macos_ffmpeg_fallback`, used when the native
+    `videotoolbox` feature isn't compiled in) still uses the trait's default per-timestamp
+    `decode()` loop — the same GOP-reuse optimization could apply there too (via `ffmpeg`'s
+    own sequential-decode + seek flags) but wasn't attempted in this pass, since it's a
+    separate code path with different plumbing (shelling out to the CLI vs. driving
+    `VTDecompressionSession` directly).
 - **Every current real-world LeRobot v3.0 dataset on the Hub ships AV1-encoded video by
   default, which this decoder cannot read at all** (only `avc1`/`hev1` H.264/HEVC, per the
   HEVC gap below). Checked three real, unrelated public datasets — `lerobot/pusht`,
