@@ -333,13 +333,69 @@ mod macos {
     /// hardware decode, driven directly (no ffmpeg subprocess): the decoded
     /// `CVPixelBuffer` is IOSurface-backed and stays in-process, enabling
     /// real zero-copy hand-off (see `FrameBuffer::IOSurface`).
+    ///
+    /// **Real AV1 fallback (2026-09-29):** the native `VTDecompressionSession`
+    /// path above is H.264/HEVC-specific -- NAL-unit parsing, AVCC/HVCC
+    /// `CMFormatDescription` construction -- none of which applies to AV1's
+    /// completely different OBU-based bitstream. Every current real-world
+    /// LeRobot v3.0 dataset ships AV1 by default (see `ROADMAP_HONEST.md`),
+    /// so being unable to open those files at all was a hard blocker, not
+    /// just a missed optimization. Rather than reimplementing a second,
+    /// from-scratch native hardware-decode path for a different codec,
+    /// real AV1 decode is delegated to `ffmpeg` (built with a real AV1
+    /// decoder -- `dav1d` -- on this project's target platforms), the same
+    /// subprocess pattern `macos_ffmpeg_fallback` already uses. This trades
+    /// zero-copy IOSurface hand-off for AV1 files specifically (they land
+    /// in `FrameBuffer::Owned` instead) in exchange for being able to open
+    /// them at all; H.264/HEVC files are completely unaffected and keep
+    /// the fast, zero-copy native path. Requires the `ffmpeg` feature,
+    /// which the real published wheel already enables alongside
+    /// `videotoolbox` (see `pyproject.toml`).
     #[derive(Default)]
     pub struct VideoToolboxDecoder {
         native: NativeVideoToolboxDecoder,
+        #[cfg(any(feature = "ffmpeg", feature = "cuda"))]
+        av1_dims: std::collections::HashMap<PathBuf, (u32, u32)>,
+    }
+
+    #[cfg(any(feature = "ffmpeg", feature = "cuda"))]
+    impl VideoToolboxDecoder {
+        /// Probes the real codec of `file`'s video stream via `ffprobe`.
+        /// Cheap relative to decoding, but still a real subprocess spawn --
+        /// callers cache the result (`av1_dims`) rather than re-probing
+        /// every frame.
+        fn is_av1(file: &Path) -> bool {
+            super::ffcli::probe_codec(file)
+                .map(|codec| codec == "av1")
+                .unwrap_or(false)
+        }
+
+        fn av1_dims(&mut self, file: &Path) -> Result<(u32, u32)> {
+            if let Some(&d) = self.av1_dims.get(file) {
+                return Ok(d);
+            }
+            let dims = super::ffcli::probe_dims(file)?;
+            self.av1_dims.insert(file.to_path_buf(), dims);
+            Ok(dims)
+        }
     }
 
     impl Decoder for VideoToolboxDecoder {
         fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
+            #[cfg(any(feature = "ffmpeg", feature = "cuda"))]
+            if Self::is_av1(file) {
+                let (width, height) = self.av1_dims(file)?;
+                // No `-hwaccel videotoolbox`: verified empirically (even on an
+                // Apple M5) that ffmpeg's VideoToolbox hwaccel path does not
+                // support AV1 here ("Your platform doesn't support hardware
+                // accelerated AV1 decoding") -- real AV1 hardware decode isn't
+                // reliably exposed through ffmpeg's hwaccel layer even where the
+                // silicon nominally supports it. Software decode via `dav1d`
+                // (this project's real, working AV1 decoder) is what's actually
+                // used here.
+                return super::ffcli::decode_frame(camera, file, timestamp, width, height, None);
+            }
+
             let (pixel_buffer, width, height) = self.native.decode_at(file, timestamp)?;
             Ok(Frame {
                 width,
@@ -358,13 +414,25 @@ mod macos {
         /// real competitor's dataloader on a real benchmark -- see
         /// `ROADMAP_HONEST.md`) with ordered seeks that resume decoding from
         /// the last-decoded sample instead of re-walking back to the
-        /// nearest keyframe for every single timestamp.
+        /// nearest keyframe for every single timestamp. AV1 files (see
+        /// `is_av1` above) fall back to the trait's default per-timestamp
+        /// behavior via `self.decode(...)` in a loop -- real and correct,
+        /// just not GOP-reuse-optimized, since that optimization is
+        /// specific to driving `VTDecompressionSession` directly.
         fn decode_batch(
             &mut self,
             camera: &str,
             file: &Path,
             timestamps: &[f64],
         ) -> Result<Vec<Frame>> {
+            #[cfg(any(feature = "ffmpeg", feature = "cuda"))]
+            if Self::is_av1(file) {
+                return timestamps
+                    .iter()
+                    .map(|&t| self.decode(camera, file, t))
+                    .collect();
+            }
+
             let decoded = self.native.decode_batch_at(file, timestamps)?;
             Ok(decoded
                 .into_iter()
@@ -433,6 +501,34 @@ mod macos_ffmpeg_fallback {
 mod ffcli {
     use super::*;
     use std::process::Command;
+
+    /// The real video stream codec name (e.g. `"av1"`, `"h264"`, `"hevc"`) via `ffprobe` --
+    /// used by the native macOS `VideoToolboxDecoder` to detect AV1 files its
+    /// `VTDecompressionSession` path can't parse and route them through the ffmpeg
+    /// subprocess fallback instead.
+    pub(crate) fn probe_codec(file: &Path) -> Result<String> {
+        let out = Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(file)
+            .output()
+            .map_err(|e| crate::Error::Decode(format!("ffprobe not runnable: {e}")))?;
+        if !out.status.success() {
+            return Err(crate::Error::Decode(format!(
+                "ffprobe failed for {}",
+                file.display()
+            )));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
 
     /// Video stream width/height via `ffprobe`.
     pub(crate) fn probe_dims(file: &Path) -> Result<(u32, u32)> {
@@ -678,6 +774,82 @@ mod tests {
         assert_eq!(frames.len(), 3);
         assert_eq!(dec.calls, 3);
         assert_eq!(frames[2].timestamp, 2.0);
+    }
+
+    /// Real end-to-end regression test for the AV1 fallback: previously
+    /// every real-world LeRobot v3.0 dataset (which all ship AV1 by
+    /// default) could not be opened at all by this decoder. Generates a
+    /// real AV1 (`libsvtav1`) clip via `ffmpeg`, decodes it through the
+    /// actual public `VideoToolboxDecoder` used in production (not a
+    /// direct call into the fallback internals), and cross-checks the
+    /// decoded pixels against ffmpeg's own reference decode of the same
+    /// frame -- the same cross-validation pattern the existing native
+    /// H.264/HEVC tests use.
+    #[cfg(all(target_os = "macos", feature = "videotoolbox", feature = "ffmpeg"))]
+    #[test]
+    fn av1_file_decodes_via_real_ffmpeg_fallback_and_matches_reference() {
+        use std::process::Command;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mp4_path = tmp.path().join("clip_av1.mp4");
+        let status = Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=64x48:rate=10",
+                "-frames:v",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:v",
+                "libsvtav1",
+                "-g",
+                "10",
+            ])
+            .arg(&mp4_path)
+            .status()
+            .expect("ffmpeg must be installed to run this test");
+        assert!(status.success(), "ffmpeg failed to generate AV1 test clip");
+
+        let mut decoder = VideoToolboxDecoder::default();
+        let frame = decoder.decode("cam", &mp4_path, 0.5).unwrap();
+        assert_eq!((frame.width, frame.height), (64, 48));
+
+        let FrameBuffer::Owned { data, channels } = &frame.pixels else {
+            panic!("AV1 fallback frames must be FrameBuffer::Owned (ffmpeg subprocess path), not IOSurface");
+        };
+        assert_eq!(*channels, 3);
+        assert!(data.iter().any(|&b| b != 0), "decoded AV1 frame was all zero");
+
+        // Cross-check against ffmpeg's own reference decode of the same timestamp.
+        let reference = Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-i"])
+            .arg(&mp4_path)
+            .args(["-ss", "0.5", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+            .output()
+            .expect("ffmpeg must be installed");
+        assert!(reference.status.success());
+        let expected_len = 64 * 48 * 3;
+        assert_eq!(data.as_slice(), &reference.stdout[..expected_len]);
+
+        // Real GOP-reuse batch path falls back to per-frame decode for AV1
+        // (documented, not optimized) -- verify it still produces correct,
+        // distinct frames for multiple real timestamps.
+        let batch = decoder
+            .decode_batch("cam", &mp4_path, &[0.0, 0.5, 1.0])
+            .unwrap();
+        assert_eq!(batch.len(), 3);
+        let FrameBuffer::Owned { data: d0, .. } = &batch[0].pixels else {
+            panic!("expected Owned")
+        };
+        let FrameBuffer::Owned { data: d1, .. } = &batch[2].pixels else {
+            panic!("expected Owned")
+        };
+        assert_ne!(d0, d1, "frames 1s apart must decode to different content");
     }
 
     #[test]

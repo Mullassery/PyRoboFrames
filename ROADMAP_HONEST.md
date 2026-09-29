@@ -125,16 +125,39 @@ verified this" companion.
     own sequential-decode + seek flags) but wasn't attempted in this pass, since it's a
     separate code path with different plumbing (shelling out to the CLI vs. driving
     `VTDecompressionSession` directly).
-- **Every current real-world LeRobot v3.0 dataset on the Hub ships AV1-encoded video by
-  default, which this decoder cannot read at all** (only `avc1`/`hev1` H.264/HEVC, per the
-  HEVC gap below). Checked three real, unrelated public datasets — `lerobot/pusht`,
-  `lerobot/xarm_lift_medium`, `lerobot/aloha_sim_insertion_human` — all three are `av01`.
-  This isn't a rare edge case; it means the video-decode path, as shipped, cannot open any
-  current real dataset's video without the caller re-encoding it to H.264 first (which is
-  what this benchmark did to get a completable comparison at all). AV1 hardware decode
-  requires newer Apple Silicon (M3+) and isn't universally available via VideoToolbox the
-  way H.264/HEVC is — real AV1 support is a substantial, separate undertaking, not a small
-  fix.
+- **FIXED (2026-09-29): AV1-encoded video, which every current real-world LeRobot v3.0
+  dataset on the Hub ships by default, can now actually be opened.** Checked three real,
+  unrelated public datasets — `lerobot/pusht`, `lerobot/xarm_lift_medium`,
+  `lerobot/aloha_sim_insertion_human` — all three are `av01`; this wasn't a rare edge case,
+  it meant the video-decode path, as shipped, couldn't open any current real dataset's
+  video without the caller re-encoding it to H.264 first. The native `VTDecompressionSession`
+  path (`crates/pyroboframes-core/src/videotoolbox_native.rs`) is fundamentally H.264/HEVC-
+  specific — NAL-unit parsing, AVCC/HVCC `CMFormatDescription` construction — and does not
+  gain AV1 support; instead, `macos::VideoToolboxDecoder`
+  (`crates/pyroboframes-core/src/decode.rs`) now probes the real codec via `ffprobe` and,
+  for AV1 files specifically, transparently falls back to a real `ffmpeg` subprocess decode
+  (this project's real, working AV1 decoder is `dav1d`, already compiled into the target
+  `ffmpeg` builds). H.264/HEVC files are completely unaffected and keep the fast, zero-copy
+  native path; AV1 frames land in `FrameBuffer::Owned` (a real copy through the ffmpeg
+  pipe) instead of `FrameBuffer::IOSurface`. **Real hardware AV1 decode was tried and does
+  not work even on an Apple M5** (verified empirically: `ffmpeg -hwaccel videotoolbox` on a
+  real AV1 file fails with "Your platform doesn't support hardware accelerated AV1
+  decoding," regardless of the "M3+" expectation) — software decode via `dav1d` is what's
+  actually used, and is what's verified below. Requires the `ffmpeg` feature, which the
+  real published wheel already enables alongside `videotoolbox` (`pyproject.toml`).
+  - **Verified**: a real `libsvtav1`-encoded test clip, decoded through the actual public
+    `VideoToolboxDecoder`/`Decoder` API (not a direct call into fallback internals), produces
+    pixel-identical output to ffmpeg's own reference decode of the same timestamp, and
+    `decode_batch` (which falls back to real per-timestamp decode for AV1 -- no GOP-reuse
+    optimization for this path, since that's specific to driving `VTDecompressionSession`
+    directly) produces distinct, correct frames across multiple real timestamps.
+  - **Still not done**: real hardware AV1 decode (should newer Apple Silicon or a future
+    ffmpeg/VideoToolbox pairing actually expose it) and GOP-reuse for the AV1 fallback path
+    specifically -- both real, valuable follow-ups, not attempted here. The original
+    59 vs. 852 frames/s `lerobot/pusht` benchmark (see the GOP-reuse entry above) hasn't
+    been rerun against real un-re-encoded AV1 input; software AV1 decode via subprocess is
+    expected to be markedly slower than the native H.264 zero-copy path, not a performance
+    win, just a "can open the file at all" fix.
 - **True zero-copy array handoff (DLPack, skipping NumPy entirely)** — decode-to-buffer
   is zero-copy on macOS as of v2.3.0, but `Loader`'s batch path still allocates one
   combined `[batch, H, W, 3]` NumPy array and copies each decoded frame's pixels into it

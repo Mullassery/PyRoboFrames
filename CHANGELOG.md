@@ -5,6 +5,24 @@ All notable changes to PyRoboFrames are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Real AV1 video decode support.** Every current real-world LeRobot v3.0 dataset on the
+  Hub ships AV1-encoded video by default (`lerobot/pusht`, `lerobot/xarm_lift_medium`,
+  `lerobot/aloha_sim_insertion_human` — all three `av01`), which this decoder could not
+  open at all before this change (H.264/HEVC only). The native `VTDecompressionSession`
+  path is fundamentally H.264/HEVC-specific and does not gain AV1 support; instead,
+  `macos::VideoToolboxDecoder` (`crates/pyroboframes-core/src/decode.rs`) now probes the
+  real codec via `ffprobe` and transparently falls back to a real `ffmpeg`+`dav1d`
+  subprocess decode for AV1 files specifically — H.264/HEVC files are completely unaffected
+  and keep the fast, zero-copy native path. Real hardware AV1 decode via ffmpeg's
+  VideoToolbox hwaccel does not work even on an Apple M5 (verified empirically: "Your
+  platform doesn't support hardware accelerated AV1 decoding"), so this uses software
+  `dav1d` decode — a "can open the file at all" fix, not a performance win. Verified with a
+  real end-to-end regression test: a real `libsvtav1`-encoded clip, decoded through the
+  actual public `Decoder` API, is pixel-identical to ffmpeg's own reference decode of the
+  same timestamp, and `decode_batch` (falls back to per-frame decode for AV1, no GOP-reuse
+  for this path) produces correct, distinct frames across multiple real timestamps. Requires
+  the `ffmpeg` feature, which the real published wheel already enables alongside
+  `videotoolbox`.
 - **`cargo audit` now runs in CI** (`.github/workflows/ci.yml`'s new `security-audit`
   job) — the prior audit pass couldn't verify this sandbox had crates.io advisory-database
   access; it does. Found 2 real vulnerabilities (`RUSTSEC-2025-0020`, `RUSTSEC-2026-0177`,

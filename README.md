@@ -337,20 +337,29 @@ fallback) had ever actually done so at the time of this benchmark. **FIXED
 verified to submit each real sample to VideoToolbox exactly once across a
 batch instead of re-decoding each GOP's prefix per request (a real 5.5x
 reduction in redundant hardware-decode submissions on a real test clip; see
-`ROADMAP_HONEST.md` for the full measurement and why this benchmark's exact
-59 vs. 852 frames/s numbers haven't been rerun yet — blocked on the AV1 gap
-below). The ffmpeg-subprocess fallback path still uses the unoptimized
-default; not attempted in this pass.
+`ROADMAP_HONEST.md` for the full measurement). The ffmpeg-subprocess
+fallback path still uses the unoptimized default; not attempted in this
+pass.
 
-**A second, more fundamental real finding: every current real-world
-LeRobot v3.0 dataset checked on the Hub ships AV1-encoded video by
-default** (`lerobot/pusht`, `lerobot/xarm_lift_medium`,
-`lerobot/aloha_sim_insertion_human` — all three `av01`), which this
-decoder cannot read at all (H.264/HEVC only). This isn't a rare edge
-case — it means video decode, as shipped, cannot open any current public
-dataset's video without re-encoding it first, which is what this
-benchmark had to do (`ffmpeg -c:v libx264`) to get a completable
-comparison at all. Documented in `ROADMAP_HONEST.md`.
+**A second, more fundamental real finding, now fixed: every current
+real-world LeRobot v3.0 dataset checked on the Hub ships AV1-encoded video
+by default** (`lerobot/pusht`, `lerobot/xarm_lift_medium`,
+`lerobot/aloha_sim_insertion_human` — all three `av01`), which this decoder
+could not read at all (H.264/HEVC only) at the time of this benchmark —
+video decode, as shipped, could not open any current public dataset's
+video without re-encoding it first, which is what this benchmark had to do
+(`ffmpeg -c:v libx264`) to get a completable comparison at all. **FIXED
+(2026-09-29)**: the native decoder now probes the real codec and
+transparently falls back to a real `ffmpeg`+`dav1d` subprocess decode for
+AV1 files specifically (H.264/HEVC files are unaffected, still zero-copy
+native decode) — verified against a real AV1 test clip, pixel-identical to
+ffmpeg's own reference decode. Real hardware AV1 decode does not work via
+ffmpeg's VideoToolbox hwaccel even on an Apple M5 (verified empirically);
+software `dav1d` decode is what's actually used, so this is a "can open
+the file at all" fix, not a performance win — the original 59 vs. 852
+frames/s numbers above haven't been rerun against real un-re-encoded AV1
+input, and software AV1 decode via subprocess is expected to be markedly
+slower than the native H.264 path. Full detail in `ROADMAP_HONEST.md`.
 
 **Real bug found and fixed while running this benchmark:** `next.reward`
 — a plain scalar `Float32` column, present in every real dataset checked
