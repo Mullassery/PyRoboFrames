@@ -483,7 +483,7 @@ mod tests {
         loop_instance.record_prediction_feedback(feedback);
         assert_eq!(loop_instance.prediction_feedback.len(), 1);
 
-        let recorded = loop_instance.prediction_feedback.get(0).unwrap();
+        let recorded = loop_instance.prediction_feedback.front().unwrap();
         assert!(recorded.error > 0.01 && recorded.error < 0.03);
     }
 

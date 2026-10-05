@@ -4,6 +4,46 @@ All notable changes to PyRoboFrames are documented in this file.
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-10-05
+
+### Removed
+- **`DatasetMetadata` / the "MCP 2.0" quickstart (`python/pyroboframes/_mcp_connector.py`,
+  `_mcp_tools.py`), exported from the public API.** Every method fabricated plausible-looking
+  fake data instead of querying anything real: `verify_dataset_integrity` always returned
+  `is_valid: True`; `detect_format_compatibility` always returned `compatible: True`;
+  `search_datasets`/`list_datasets` synthesized fictitious dataset IDs, frame counts, and
+  sizes from the query string itself. The documented quickstart (`start_mcp_connector()`)
+  also required an undeclared `dab` subprocess binary not installed by `pip install
+  pyroboframes`, so it failed immediately for any real user regardless. Zero test coverage,
+  zero prior disclosure. Removed rather than kept as a disclosed stub, matching this
+  project's own v2.4.0 precedent of removing ~700 lines of near-identical fake-MCP-demo
+  code. See `TECHNICAL_DEBT.md` TD-0001. `docs/MCP_QUICKSTART.md` archived with a disclosure
+  note at `docs/archive/MCP_QUICKSTART_2026-10_REMOVED_FAKE_DATA.md`.
+
+### Fixed
+- Two tautological test assertions that could never fail regardless of actual behavior
+  (`integration_test.rs:75`, `cross_project_integration_test.rs:300` — both had a `usize
+  >= 0` half of an `||`, always true; the second also checked a cache-hit counter the test
+  never actually incremented). TD-0003.
+- ~37 of 47 clippy warnings (unused imports/variables, manual clamp/div_ceil
+  reimplementations, boolean-literal comparisons, missing `Default` impls, etc.) via
+  `cargo clippy --fix` plus manual review. TD-0006.
+
+### Verified, not changed
+- Re-confirmed the prior session's VideoToolbox HEVC/B-frame fixes and the v2.5.1 broken-wheel
+  fix are both still correct — the latter by downloading the *live published* 2.5.1 wheel
+  into a clean venv and confirming the compiled extension imports correctly, not just reading
+  git history (the original bug's whole failure mode was git looking fine while the published
+  artifact was broken).
+
+### Known, deliberately not fixed this release
+- `pyo3` 0.22.6 has 2 real CVEs (RUSTSEC-2025-0020, RUSTSEC-2026-0177) fixable by bumping to
+  0.29, but doing so requires pyo3 0.29's stricter `Send+Sync` check on the `Loader` pyclass,
+  which rejects it because the native VideoToolbox decoder wraps an FFI `VTDecompressionSession`
+  handle of unverified thread-safety. Attempted, fully diagnosed (32 mechanical API renames
+  confirmed working), deliberately reverted rather than forcing an unverified `unsafe impl
+  Sync`. See `TECHNICAL_DEBT.md` TD-0002.
+
 ### Added
 - **`output="numpy_zerocopy"` loader mode: true zero-copy per-frame array handoff,
   skipping the shared-batch-buffer copy entirely.** The default `output="numpy"` packs

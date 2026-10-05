@@ -111,7 +111,7 @@ impl MetricsCollector {
 
         // Record latency for percentile calculation
         lats.entry(operation_name.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(duration_ms);
     }
 

@@ -69,6 +69,12 @@ pub struct QualityAssessor {
     recommendation_cache: HashMap<String, Vec<QualityRecommendation>>,
 }
 
+impl Default for QualityAssessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QualityAssessor {
     pub fn new() -> Self {
         QualityAssessor {
@@ -111,7 +117,7 @@ impl QualityAssessor {
 
         self.assessment_history
             .entry(dataset_name.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(score.clone());
 
         score

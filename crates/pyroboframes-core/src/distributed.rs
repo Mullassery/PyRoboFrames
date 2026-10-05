@@ -422,7 +422,7 @@ mod tests {
             active: true,
         });
 
-        assert!(coordinator.can_reach_quorum() == false); // Only 1 node
+        assert!(!coordinator.can_reach_quorum()); // Only 1 node
 
         coordinator.mark_node_offline("node_1");
         let health = coordinator.get_network_health();

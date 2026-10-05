@@ -284,7 +284,7 @@ impl EnsembleOrchestrator {
 
         self.performance_history
             .entry(format!("{}_{:?}", model_id, prediction_type))
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(record);
     }
 

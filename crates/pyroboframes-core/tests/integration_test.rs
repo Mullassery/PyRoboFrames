@@ -72,7 +72,7 @@ fn test_mcp_tool_get_dataset_stats() {
         let result = MCPTools::get_dataset_stats(dataset);
         assert!(result.is_ok());
         let stats = result.unwrap();
-        assert!(stats.contains_key("fps_avg") || stats.len() >= 0);
+        assert!(stats.contains_key("fps_avg"));
     }
 }
 

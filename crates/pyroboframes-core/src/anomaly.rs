@@ -416,7 +416,7 @@ mod tests {
         detector.detect_missing_frames(&frame_ids);
 
         let critical = detector.get_critical_anomalies();
-        assert!(critical.len() > 0);
+        assert!(!critical.is_empty());
     }
 
     #[test]

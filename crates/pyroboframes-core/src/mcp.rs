@@ -2,7 +2,6 @@
 //! Provides structured tools for dataset introspection, loading, and validation
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DatasetInfo {
@@ -55,13 +54,13 @@ impl MCPTools {
     }
 
     /// List all available episodes in a dataset
-    pub fn list_episodes(dataset_name: &str) -> Result<Vec<EpisodeMetadata>, String> {
+    pub fn list_episodes(_dataset_name: &str) -> Result<Vec<EpisodeMetadata>, String> {
         Ok(vec![])
     }
 
     /// Get episode-level metadata
     pub fn get_episode_metadata(
-        dataset_name: &str,
+        _dataset_name: &str,
         episode_id: &str,
     ) -> Result<EpisodeMetadata, String> {
         Ok(EpisodeMetadata {
@@ -94,7 +93,7 @@ impl MCPTools {
     }
 
     /// Check data consistency across episodes
-    pub fn check_data_consistency(dataset_name: &str) -> Result<Vec<String>, String> {
+    pub fn check_data_consistency(_dataset_name: &str) -> Result<Vec<String>, String> {
         Ok(vec![])
     }
 
@@ -111,8 +110,8 @@ impl MCPTools {
 
     /// Compare datasets by structure
     pub fn compare_datasets(
-        ds1: &str,
-        ds2: &str,
+        _ds1: &str,
+        _ds2: &str,
     ) -> Result<std::collections::HashMap<String, String>, String> {
         let mut comparison = std::collections::HashMap::new();
         comparison.insert("status".to_string(), "equal".to_string());
@@ -121,7 +120,7 @@ impl MCPTools {
 
     /// Stream dataset statistics
     pub fn get_dataset_stats(
-        dataset_name: &str,
+        _dataset_name: &str,
     ) -> Result<std::collections::HashMap<String, f64>, String> {
         let mut stats = std::collections::HashMap::new();
         stats.insert("fps_avg".to_string(), 0.0);
@@ -177,7 +176,7 @@ mod tests {
     #[test]
     fn test_list_supported_formats() {
         let formats = MCPTools::list_supported_formats();
-        assert!(formats.len() > 0);
+        assert!(!formats.is_empty());
         assert!(formats.contains(&"lerobot".to_string()));
     }
 

@@ -402,7 +402,7 @@ fn test_anomaly_in_decision_success_rate() {
 
     // Simulate sudden drop in success rate
     for i in 0..20 {
-        let success = if i < 15 { true } else { false }; // Sudden drop
+        let success = i < 15; // Sudden drop
 
         loop_instance.record_decision_outcome(DecisionOutcome {
             decision_id: format!("d{}", i),

@@ -107,8 +107,7 @@ impl CloudStreamer {
             return Err("Max concurrent downloads reached".to_string());
         }
 
-        let parts_total = ((size_bytes as usize + self.config.chunk_size_mb * 1024 * 1024 - 1)
-            / (self.config.chunk_size_mb * 1024 * 1024))
+        let parts_total = (size_bytes as usize).div_ceil(self.config.chunk_size_mb * 1024 * 1024)
             .max(1);
 
         let task = DownloadTask {
@@ -315,7 +314,7 @@ mod tests {
         streamer.report_part_downloaded("file1", 500).unwrap();
 
         let progress = streamer.get_download_progress("file1").unwrap();
-        assert!(progress >= 50.0 && progress <= 51.0);
+        assert!((50.0..=51.0).contains(&progress));
     }
 
     #[test]

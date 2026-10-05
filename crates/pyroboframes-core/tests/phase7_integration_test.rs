@@ -248,7 +248,7 @@ fn test_node_offline_detection_and_recovery() {
         active: true,
     });
 
-    assert!(coordinator.can_reach_quorum() == false);
+    assert!(!coordinator.can_reach_quorum());
 
     // Mark node offline
     coordinator.mark_node_offline("node_1");

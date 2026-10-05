@@ -150,12 +150,12 @@ fn test_decision_ranking_and_execution() {
     let mut engine = DecisionEngine::new();
 
     // Create decisions with varying priorities
-    let critical_decision = engine.make_batch_size_decision(64, 32, 0.95, 0.95);
+    let _critical_decision = engine.make_batch_size_decision(64, 32, 0.95, 0.95);
     // cache_hit_rate must be strictly < 0.1 to get High priority (0.1 itself doesn't qualify)
-    let high_decision = engine.make_cache_decision(0.05, 1000, 250);
+    let _high_decision = engine.make_cache_decision(0.05, 1000, 250);
     // avg_locality must be > 0.6 (and <= 0.9) for Medium; [0.5, 0.4, 0.6] averages to
     // 0.5, which doesn't clear the should_prefetch threshold and falls through to Low.
-    let medium_decision = engine.make_prefetch_decision(vec![0.7, 0.65, 0.75], 0.6);
+    let _medium_decision = engine.make_prefetch_decision(vec![0.7, 0.65, 0.75], 0.6);
 
     // Rank by priority
     let (top_id, second_id) = {
@@ -303,7 +303,7 @@ fn test_adaptive_decision_making_over_time() {
 
         // Periodically make decisions based on current state
         if timestep % 10 == 0 {
-            let memory = (4000 - (timestep * 40)) as u32;
+            let memory = (4000 - (timestep * 40));
             let cpu = 40.0 + (timestep as f64 * 1.5);
             let gpu = 50.0 + (timestep as f64 * 1.0);
 

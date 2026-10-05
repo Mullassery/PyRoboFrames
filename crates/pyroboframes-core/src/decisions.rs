@@ -54,6 +54,12 @@ pub struct DecisionEngine {
     decisions_executed: Vec<String>,
 }
 
+impl Default for DecisionEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DecisionEngine {
     pub fn new() -> Self {
         DecisionEngine {

@@ -6,7 +6,7 @@ use pyroboframes_core::anomaly::{AnomalyDetector, AnomalyType, ColorBalance, Fra
 use pyroboframes_core::intelligence::{
     AccessPattern, DatasetScore, DatasetSelector, PredictiveCache, QualityMetrics,
 };
-use pyroboframes_core::quality::{QualityAssessor, QualitySeverity, RecommendationCategory};
+use pyroboframes_core::quality::{QualityAssessor, RecommendationCategory};
 
 #[test]
 fn test_intelligent_dataset_selection_workflow() {
@@ -257,7 +257,7 @@ fn test_predictive_cache_with_access_patterns() {
 
     // Get predictions
     let critical = cache.get_critical_frames();
-    assert!(critical.len() > 0);
+    assert!(!critical.is_empty());
 
     // Verify prefetch decisions
     let predictions = cache.get_critical_frames();

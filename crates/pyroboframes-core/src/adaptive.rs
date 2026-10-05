@@ -194,6 +194,12 @@ pub struct ResourceMonitor {
     peak_gpu_percent: f64,
 }
 
+impl Default for ResourceMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ResourceMonitor {
     pub fn new() -> Self {
         ResourceMonitor {
@@ -232,6 +238,12 @@ impl ResourceMonitor {
         self.peak_gpu_mb = 0;
         self.peak_cpu_percent = 0.0;
         self.peak_gpu_percent = 0.0;
+    }
+}
+
+impl PartialEq for ResourceConstraint {
+    fn eq(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
     }
 }
 
@@ -373,11 +385,5 @@ mod tests {
 
         let recommendation = sizer.adjust_batch_size(&resources, &performance);
         assert!(recommendation.recommended_size > 64);
-    }
-}
-
-impl PartialEq for ResourceConstraint {
-    fn eq(&self, other: &Self) -> bool {
-        std::mem::discriminant(self) == std::mem::discriminant(other)
     }
 }

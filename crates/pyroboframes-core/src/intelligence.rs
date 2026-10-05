@@ -69,6 +69,12 @@ pub struct DatasetSelector {
     quality_scores: HashMap<String, QualityMetrics>,
 }
 
+impl Default for DatasetSelector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DatasetSelector {
     pub fn new() -> Self {
         DatasetSelector {
@@ -120,7 +126,7 @@ impl DatasetSelector {
 
     pub fn get_quality_score(&self, dataset_name: &str) -> Option<f64> {
         self.quality_scores.get(dataset_name).map(|m| {
-            (m.completeness * 0.4 + m.temporal_consistency * 0.35 + m.sensor_alignment * 0.25)
+            m.completeness * 0.4 + m.temporal_consistency * 0.35 + m.sensor_alignment * 0.25
         })
     }
 }
@@ -336,7 +342,7 @@ mod tests {
         }
 
         let critical = cache.get_critical_frames();
-        assert!(critical.len() > 0);
+        assert!(!critical.is_empty());
     }
 
     #[test]
@@ -348,10 +354,10 @@ mod tests {
         }
 
         // Get predictions and verify at least some exist
-        let critical_frames = cache.get_critical_frames();
+        let _critical_frames = cache.get_critical_frames();
 
         // Verify the prediction update happened
-        assert!(cache.predictions.len() > 0);
+        assert!(!cache.predictions.is_empty());
 
         // Verify that at least one frame has a valid prefetch decision
         let mut has_prefetch_decision = false;

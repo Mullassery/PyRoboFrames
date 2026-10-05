@@ -226,7 +226,7 @@ fn test_resilient_dataset_loading_workflow() {
     let mut detector = FaultDetector::new(3);
     let mut breaker = CircuitBreaker::new(2, 1);
 
-    let dataset = "lerobot/pusht";
+    let _dataset = "lerobot/pusht";
 
     // Resilient loading with all three patterns
     let mut attempt = 0;
@@ -275,7 +275,7 @@ fn test_multi_dataset_processing_with_cache_and_resilience() {
         match MCPTools::get_dataset_info(dataset) {
             Ok(info) => {
                 // Cache the result
-                let key = dataset.len() as usize;
+                let key = dataset.len();
                 let data = format!("{:?}", info).into_bytes();
                 cache.put(key, data);
 
@@ -295,9 +295,12 @@ fn test_multi_dataset_processing_with_cache_and_resilience() {
     let health = detector.get_health_score();
     assert!(health > 0.3);
 
-    // Cache should have data
+    // Cache should have data: `put()` was called once per successfully-processed
+    // dataset above, and `put()` updates `memory_bytes` (unlike `hits`, which only
+    // increments on `get()` — this test never reads back, so `hits` is always 0,
+    // making the original `stats.hits >= 0` check a no-op tautology on a u64).
     let stats = cache.stats();
-    assert!(stats.hits >= 0 || processed > 0);
+    assert!(stats.memory_bytes > 0);
 }
 
 // ============================================================================
@@ -331,7 +334,7 @@ fn test_mcp_tools_high_volume_queries() {
     let mut success_count = 0;
     for _ in 0..100 {
         for dataset in &datasets {
-            if let Ok(_) = MCPTools::get_dataset_info(dataset) {
+            if MCPTools::get_dataset_info(dataset).is_ok() {
                 success_count += 1;
             }
         }
