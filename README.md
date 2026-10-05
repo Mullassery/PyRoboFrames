@@ -121,11 +121,17 @@ so it never got linked into a published wheel. Fixed in v2.5.0 (verify yourself 
 **Honest limitation:** the native VideoToolbox path decodes H.264 and HEVC tagged `hev1`
 (not `hvc1` — see `ROADMAP_HONEST.md`), and doesn't implement a full B-frame reorder
 buffer — correct for the common no-B-frames case and for isolated single-frame lookups,
-not yet a general streaming-playback decoder. Also, `Loader`'s batch path still allocates
-one combined `[batch, H, W, 3]` NumPy array and copies each decoded frame's pixels into it
-(one copy per frame, down from two as of v2.5.0) — decode-to-CPU-buffer is zero-copy, but
-building a single packed batch array from independent per-frame buffers isn't free; a true
-zero-copy `mx.array`/DLPack handoff that skips NumPy entirely is still future work.
+not yet a general streaming-playback decoder. `Loader`'s default `output="numpy"` batch
+path still allocates one combined `[batch, H, W, 3]` NumPy array and copies each decoded
+frame's pixels into it (one copy per frame, down from two as of v2.5.0) — pass
+`output="numpy_zerocopy"` instead (fixed 2026-10-05) to get each camera's frames back as
+a `list` of individually-owned `[H, W, 3]` arrays with no copy into a shared batch buffer
+at all; since NumPy arrays implement `__dlpack__`, `torch.from_dlpack`/
+`jax.dlpack.from_dlpack` on any element is zero-copy too. Trade-off: no single stacked
+tensor — the caller pays for that (real, unavoidable) combining copy only if/when they
+explicitly ask for it, e.g. via `torch.stack(...)`. Not available with `num_workers>0`
+(the off-GIL prefetch pipeline uses a separate assembler architecture). See
+`ROADMAP_HONEST.md` for the full before/after.
 
 ## Dataset formats
 

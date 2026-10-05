@@ -5,6 +5,19 @@ All notable changes to PyRoboFrames are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **`output="numpy_zerocopy"` loader mode: true zero-copy per-frame array handoff,
+  skipping the shared-batch-buffer copy entirely.** The default `output="numpy"` packs
+  every camera's frames into one combined `[batch, H, W, 3]` array, which needs a real
+  copy from each independent per-frame decode buffer into that shared array. The new mode
+  returns a Python `list` of individually-owned `[H, W, 3]` arrays instead (nested one
+  level deeper for the windowed/`delta_timestamps` case): each frame's buffer is handed to
+  NumPy via `rust-numpy`'s ownership-transferring `into_pyarray_bound`, not copied.
+  Verified pixel-identical to the packed-array path, and that returned arrays are
+  genuinely independent allocations (distinct `.base` objects per frame), not views into
+  one shared buffer. Since NumPy arrays implement `__dlpack__`, any
+  `torch.from_dlpack`/`jax.dlpack.from_dlpack` consumer is zero-copy too. Not available
+  with `num_workers>0` (separate prefetch-pipeline architecture) — fails clearly at
+  construction time if combined. See `ROADMAP_HONEST.md`.
 - **Real AV1 video decode support.** Every current real-world LeRobot v3.0 dataset on the
   Hub ships AV1-encoded video by default (`lerobot/pusht`, `lerobot/xarm_lift_medium`,
   `lerobot/aloha_sim_insertion_human` — all three `av01`), which this decoder could not
@@ -41,9 +54,15 @@ All notable changes to PyRoboFrames are documented in this file.
   test clip: pixel-identical to per-frame `decode_at` (including out-of-order/duplicate
   requests), and submits each real sample to VideoToolbox exactly once (20 total) instead of
   re-decoding each GOP's prefix per request (110 total for the naive per-frame loop) — a
-  real 5.5x reduction on this clip, growing with real-world GOP size. The
-  ffmpeg-subprocess fallback backend still uses the unoptimized default; not attempted in
-  this pass.
+  real 5.5x reduction on this clip, growing with real-world GOP size.
+- **The ffmpeg-subprocess fallback decoders now also do real GOP-reuse batch decoding**
+  (`macos_ffmpeg_fallback::VideoToolboxDecoder` and `linux::FfmpegDecoder` — previously left
+  unoptimized above). One `ffprobe` metadata pass builds a real frame/keyframe index; a
+  `decode_batch` call decodes its whole covering-keyframe-to-last-request span in exactly
+  one `ffmpeg` subprocess instead of one independent accurate-output-seek subprocess per
+  timestamp. Verified for both decoders: pixel-identical to per-frame `decode()`, and a real
+  `ffmpeg_invocations` counter (incremented at the actual subprocess call sites) confirms
+  1 invocation for a 20-timestamp/2-GOP batch vs. 20 for the naive per-frame loop.
 - **8 broken relative Markdown links**, found by resolving every relative link in the repo
   against its source file's directory: `CHANGELOG.md`'s `DEPLOYMENT_SECURITY.md` link
   (file actually lives at `docs/DEPLOYMENT_SECURITY.md`), `docs/MCP_QUICKSTART.md`'s

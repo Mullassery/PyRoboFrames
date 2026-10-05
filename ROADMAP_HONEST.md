@@ -118,13 +118,26 @@ verified this" companion.
   ships AV1, so re-running the original 59 vs 852 frames/s comparison needs either a
   locally re-encoded H.264 copy, as the original benchmark used, or real AV1 decode
   support) — a natural next step for whoever picks that up.
-  - **Still not fixed, explicitly out of scope for this pass**: the ffmpeg-subprocess
-    fallback `VideoToolboxDecoder` (`macos_ffmpeg_fallback`, used when the native
-    `videotoolbox` feature isn't compiled in) still uses the trait's default per-timestamp
-    `decode()` loop — the same GOP-reuse optimization could apply there too (via `ffmpeg`'s
-    own sequential-decode + seek flags) but wasn't attempted in this pass, since it's a
-    separate code path with different plumbing (shelling out to the CLI vs. driving
-    `VTDecompressionSession` directly).
+  - **FIXED (2026-10-05): the ffmpeg-subprocess fallback decoders now also do real
+    GOP-reuse batch decoding.** Both `macos_ffmpeg_fallback::VideoToolboxDecoder` (used
+    when the native `videotoolbox` feature isn't compiled in, but `ffmpeg` is) and
+    `linux::FfmpegDecoder` (the cross-platform CLI decoder) now override `decode_batch`:
+    one `ffprobe` metadata-only pass builds a real frame/keyframe index (`probe_frame_index`),
+    the batch's covering keyframe-to-last-request span is computed the same way the native
+    path's `keyframe_walkback` does, and that whole span is decoded in exactly one
+    `ffmpeg` subprocess (`decode_rgb24_sequential`) instead of one independent
+    accurate-output-seek subprocess per requested timestamp (what the previous default-trait
+    behavior, and `decode_rgb24`'s per-call re-decode-from-the-start-of-the-file semantics,
+    actually did -- worse than the native path's prior gap, since every single-frame
+    `ffmpeg` invocation re-decoded from frame 0 every time, not just from the nearest
+    keyframe). **Verified two ways, for both decoders**: (1) correctness -- a real 20-frame,
+    2-GOP (GOP size 10) H.264 test clip decoded via `decode_batch` is pixel-identical to
+    calling `decode()` individually per frame; (2) the real efficiency claim, counted via an
+    actual `ffmpeg_invocations` counter field incremented at the real `Command::new("ffmpeg")`
+    call sites (not inferred from timing): `decode_batch` over all 20 timestamps needs exactly
+    1 `ffmpeg` subprocess invocation, vs. 20 for the naive per-frame loop over the same clip.
+    See `decode::tests::decode_batch_matches_per_frame_decode_and_reduces_ffmpeg_invocations`
+    and `decode::tests::macos_fallback_decode_batch_matches_per_frame_decode_and_reduces_ffmpeg_invocations`.
 - **FIXED (2026-09-29): AV1-encoded video, which every current real-world LeRobot v3.0
   dataset on the Hub ships by default, can now actually be opened.** Checked three real,
   unrelated public datasets — `lerobot/pusht`, `lerobot/xarm_lift_medium`,
@@ -158,18 +171,38 @@ verified this" companion.
     been rerun against real un-re-encoded AV1 input; software AV1 decode via subprocess is
     expected to be markedly slower than the native H.264 zero-copy path, not a performance
     win, just a "can open the file at all" fix.
-- **True zero-copy array handoff (DLPack, skipping NumPy entirely)** — decode-to-buffer
-  is zero-copy on macOS as of v2.3.0, but `Loader`'s batch path still allocates one
-  combined `[batch, H, W, 3]` NumPy array and copies each decoded frame's pixels into it
-  — unavoidable as long as the public contract is "one packed NumPy array per batch"
-  (numpy needs contiguous memory; the source frames are independent buffers, one per
-  decode). What *was* fixable: each frame used to be copied twice — decode buffer → a
-  throwaway per-frame `Vec` (`Frame::to_rgb24_bytes()`) → the batch array via
-  `extend_from_slice`. `Frame::write_rgb24_into()` (`crates/pyroboframes-core/src/decode.rs`)
-  now writes straight from the decode buffer into the frame's slot in the batch array, so
-  it's down to the one copy that's structurally required. Skipping that last copy too
-  (e.g. decoding straight into the batch array's memory, or a DLPack array-of-buffers
-  instead of one packed array) is a further redesign, still future work.
+- ~~**True zero-copy array handoff (DLPack, skipping NumPy entirely)**~~ **FIXED
+  (2026-10-05), as a new opt-in `output="numpy_zerocopy"` mode.** The default
+  `output="numpy"` path's remaining copy (decode buffer → shared `[batch, H, W, 3]`
+  array) was correctly diagnosed here as structurally required *as long as the contract
+  is one packed array per batch* -- numpy needs contiguous memory, and the source frames
+  are independent per-decode buffers. Fixing it for real meant changing that contract:
+  `output="numpy_zerocopy"` (`Loader.__next__` in `crates/pyroboframes-py/src/lib.rs`)
+  returns each camera's frames as a Python `list` of individually-owned `[H, W, 3]`
+  arrays instead of one packed 4D array (nested one level deeper, `list[list[...]]`, for
+  the windowed/`delta_timestamps` case). Each frame's `Vec<u8>` (from
+  `Frame::to_rgb24_bytes()`) is handed to NumPy via `rust-numpy`'s
+  `into_pyarray_bound`/`PyArray::from_owned_array_bound`, which transfers ownership of
+  the existing heap allocation into a NumPy-owned capsule rather than copying bytes --
+  confirmed via source inspection of the `numpy` crate (`IntoPyArray for Vec<T>`,
+  `from_owned_array_bound`'s doc comment: "uses the internal `Vec` ... as the base
+  object") and empirically (each returned array's `.base` is a distinct `PySliceContainer`
+  object per frame, not a NumPy-allocated buffer or a shared view -- see
+  `tests::test_output_numpy_zerocopy_matches_packed_array_and_owns_its_memory`'s
+  `base_ids` check). Since NumPy arrays implement `__dlpack__`/`__dlpack_device__`
+  (verified: NumPy 2.0.2, `hasattr(arr, '__dlpack__')` is `True`), any
+  `torch.from_dlpack`/`jax.dlpack.from_dlpack` consumer gets the same zero-copy property
+  transitively, without this crate needing to implement the DLPack C-level protocol
+  itself. Verified pixel-identical to the packed-array path for both the non-windowed and
+  windowed cases (`tests/test_loader.py`). **Trade-off, stated plainly**: no single
+  stacked tensor is produced -- combining `batch_size` independent buffers into one
+  contiguous tensor is a real copy no matter which framework performs it, so this mode
+  defers that cost to the caller (e.g. an explicit `torch.stack(...)`) instead of paying
+  it unconditionally on every batch. **Not implemented for the `num_workers>0` prefetch
+  path** (`PrefetchLoader`/`pyroboframes_core::pipeline`), which assembles packed arrays
+  via a separate Rust-side background-assembler architecture; passing
+  `output="numpy_zerocopy"` with `num_workers>=1` now fails clearly at construction time
+  with an explanatory error instead of a confusing downstream one.
 - **HEVC decode for `hvc1`-tagged files** in the native VideoToolbox path (see the scope
   limits under VideoToolbox above — `hev1`-tagged HEVC works).
 - **Only macOS (Apple Silicon) wheels published to PyPI.** No Linux or Windows wheel has

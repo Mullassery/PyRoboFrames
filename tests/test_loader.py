@@ -257,6 +257,108 @@ def test_windowed_frame_loader_batch_slots_match_individual_decode(tmp_path):
     assert not np.array_equal(batched[1, 0], batched[1, 1])
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_output_numpy_zerocopy_matches_packed_array_and_owns_its_memory(tmp_path):
+    """`output='numpy_zerocopy'` must return the same pixels as the default packed-array
+    path, just reshaped into a list of individually-owned arrays instead of one combined
+    [batch, H, W, 3] array. Each array's `.base` is a distinct `PySliceContainer` wrapping
+    its own Rust-allocated buffer -- rust-numpy's zero-copy transfer-of-ownership mechanism
+    (`PyArray::from_owned_array_bound`), not a NumPy-allocated copy. `.base is None` /
+    `flags['OWNDATA']` is NOT the right check here: a zero-copy array wrapping *foreign*
+    (non-NumPy-allocated) memory correctly reports `OWNDATA=False` with `.base` set to its
+    owning object -- that's what a genuine zero-copy foreign-buffer array looks like, not a
+    sign of copying. What actually distinguishes "N independent per-frame buffers" from "N
+    views into one shared packed buffer" is whether `.base` is the *same* object across
+    frames (shared) or a *different* object per frame (independent) -- checked below."""
+    make_dataset(str(tmp_path), with_video=True)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+
+    batch_size = 4
+    packed = next(iter(ds.loader(batch_size=batch_size, shuffle=False, cameras=[CAM])))[CAM]
+
+    zerocopy_loader = ds.loader(
+        batch_size=batch_size, shuffle=False, cameras=[CAM], output="numpy_zerocopy"
+    )
+    frames = next(iter(zerocopy_loader))[CAM]
+
+    assert isinstance(frames, list)
+    assert len(frames) == batch_size
+    base_ids = {id(f.base) for f in frames}
+    assert len(base_ids) == batch_size, (
+        "frames share a base object -- they're views into one packed buffer, "
+        "not independent zero-copy allocations"
+    )
+    for i, frame in enumerate(frames):
+        assert frame.shape == (VID_H, VID_W, 3)
+        assert frame.dtype == np.uint8
+        np.testing.assert_array_equal(
+            frame, packed[i], err_msg=f"zerocopy frame {i} differs from the packed array's slot"
+        )
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_output_numpy_zerocopy_windowed_matches_packed_array(tmp_path):
+    """Same correctness check as above, for the windowed (`delta_timestamps`) nested
+    list-of-lists structure."""
+    make_dataset(str(tmp_path), with_video=True)
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+
+    batch_size = 3
+    delta_timestamps = {CAM: [-1 / 30, 0.0]}
+
+    packed = next(
+        iter(
+            ds.loader(
+                batch_size=batch_size,
+                shuffle=False,
+                cameras=[CAM],
+                delta_timestamps=delta_timestamps,
+                tolerance_s=1e-3,
+            )
+        )
+    )[CAM]
+
+    zerocopy_loader = ds.loader(
+        batch_size=batch_size,
+        shuffle=False,
+        cameras=[CAM],
+        delta_timestamps=delta_timestamps,
+        tolerance_s=1e-3,
+        output="numpy_zerocopy",
+    )
+    items = next(iter(zerocopy_loader))[CAM]
+
+    assert isinstance(items, list)
+    assert len(items) == batch_size
+    all_frames = [frame for steps in items for frame in steps]
+    base_ids = {id(f.base) for f in all_frames}
+    assert len(base_ids) == len(all_frames), (
+        "frames share a base object -- they're views into one packed buffer, "
+        "not independent zero-copy allocations"
+    )
+    for i, steps in enumerate(items):
+        assert isinstance(steps, list)
+        assert len(steps) == 2
+        for s, frame in enumerate(steps):
+            assert frame.shape == (VID_H, VID_W, 3)
+            np.testing.assert_array_equal(
+                frame,
+                packed[i, s],
+                err_msg=f"zerocopy item {i} step {s} differs from the packed array's slot",
+            )
+
+
+def test_output_numpy_zerocopy_rejected_with_prefetch(tmp_path):
+    """The off-GIL prefetch pipeline (`num_workers>0`) assembles batches via a separate Rust
+    code path (`pyroboframes_core::pipeline`) that doesn't implement the per-frame zero-copy
+    mode -- must fail clearly at construction time, not with a confusing downstream error
+    from the (unrelated) framework-conversion helper."""
+    make_dataset(str(tmp_path))
+    ds = prf.RoboFrameDataset.from_path(str(tmp_path))
+    with pytest.raises(Exception):
+        ds.loader(output="numpy_zerocopy", num_workers=1)
+
+
 def test_output_torch(tmp_path):
     torch = pytest.importorskip("torch")
     make_dataset(str(tmp_path))

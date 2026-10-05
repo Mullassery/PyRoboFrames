@@ -475,6 +475,12 @@ mod macos_ffmpeg_fallback {
     #[derive(Default)]
     pub struct VideoToolboxDecoder {
         dims: HashMap<PathBuf, (u32, u32)>,
+        frame_index: HashMap<PathBuf, Vec<ffcli::ProbedFrame>>,
+        /// Real count of `ffmpeg` subprocess invocations (see
+        /// `linux::FfmpegDecoder::ffmpeg_invocations` for the equivalent on
+        /// the other fallback decoder) -- used by
+        /// `tests::macos_fallback_decode_batch_matches_per_frame_decode_and_reduces_ffmpeg_invocations`.
+        pub(crate) ffmpeg_invocations: usize,
     }
 
     impl VideoToolboxDecoder {
@@ -486,12 +492,125 @@ mod macos_ffmpeg_fallback {
             self.dims.insert(file.to_path_buf(), dims);
             Ok(dims)
         }
+
+        fn frame_index(&mut self, file: &Path) -> Result<&[ffcli::ProbedFrame]> {
+            if !self.frame_index.contains_key(file) {
+                let index = ffcli::probe_frame_index(file)?;
+                self.frame_index.insert(file.to_path_buf(), index);
+            }
+            Ok(&self.frame_index[file])
+        }
+
+        /// The frame-index position whose real presentation time is nearest
+        /// `timestamp`.
+        fn nearest_sample_index(index: &[ffcli::ProbedFrame], timestamp: f64) -> usize {
+            index
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    (a.pts_seconds - timestamp)
+                        .abs()
+                        .partial_cmp(&(b.pts_seconds - timestamp).abs())
+                        .expect("pts_seconds is always finite")
+                })
+                .map(|(i, _)| i)
+                .expect("frame_index is non-empty (probe_frame_index errors on empty)")
+        }
+
+        /// Walks back from `target_idx` to the nearest preceding (or equal)
+        /// keyframe -- the earliest frame `ffmpeg` needs to start decoding
+        /// from to correctly produce `target_idx`.
+        fn keyframe_walkback(index: &[ffcli::ProbedFrame], target_idx: usize) -> usize {
+            let mut start = target_idx;
+            while start > 0 && !index[start].is_keyframe {
+                start -= 1;
+            }
+            start
+        }
     }
 
     impl Decoder for VideoToolboxDecoder {
         fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
             let (width, height) = self.dimensions(file)?;
+            self.ffmpeg_invocations += 1;
             ffcli::decode_frame(camera, file, timestamp, width, height, Some("videotoolbox"))
+        }
+
+        /// Real GOP-reuse override, mirroring
+        /// `NativeVideoToolboxFile::decode_batch_at`'s strategy but adapted
+        /// for subprocess decoding (which can't keep a decoder session open
+        /// across separate `ffmpeg` invocations the way `VTDecompressionSession`
+        /// can across separate `decode()` calls): rather than letting the
+        /// trait's default call `decode()` once per timestamp -- each of
+        /// which re-decodes from the *start of the file* every time (see
+        /// `decode_rgb24`'s accurate output-seek) -- this probes the real
+        /// frame/keyframe index once (`frame_index`, cached per file), finds
+        /// the single keyframe covering the batch's earliest request, and
+        /// decodes the whole span up through the batch's latest request in
+        /// one continuous `ffmpeg` subprocess (`decode_rgb24_sequential`),
+        /// picking out each request's frame from that one decoded run
+        /// instead of re-decoding shared GOP prefixes once per request.
+        /// Verified pixel-identical to `decode()` in a loop; see
+        /// `tests::macos_fallback_decode_batch_matches_per_frame_decode_and_reduces_ffmpeg_invocations`.
+        fn decode_batch(
+            &mut self,
+            camera: &str,
+            file: &Path,
+            timestamps: &[f64],
+        ) -> Result<Vec<Frame>> {
+            if timestamps.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let (width, height) = self.dimensions(file)?;
+            let index = self.frame_index(file)?.to_vec();
+
+            let targets: Vec<usize> = timestamps
+                .iter()
+                .map(|&t| Self::nearest_sample_index(&index, t))
+                .collect();
+
+            let min_target = *targets.iter().min().expect("timestamps is non-empty");
+            let max_target = *targets.iter().max().expect("timestamps is non-empty");
+            let start_idx = Self::keyframe_walkback(&index, min_target);
+
+            let frame_count = max_target - start_idx + 1;
+            self.ffmpeg_invocations += 1;
+            let decoded = ffcli::decode_rgb24_sequential(
+                file,
+                index[start_idx].pts_seconds,
+                frame_count,
+                width,
+                height,
+                Some("videotoolbox"),
+            )?;
+
+            timestamps
+                .iter()
+                .zip(targets.iter())
+                .map(|(&timestamp, &target_idx)| {
+                    let data = decoded
+                        .get(target_idx - start_idx)
+                        .ok_or_else(|| {
+                            crate::Error::Decode(format!(
+                                "decode_rgb24_sequential returned {} frames, needed index {}",
+                                decoded.len(),
+                                target_idx - start_idx
+                            ))
+                        })?
+                        .clone();
+                    Ok(Frame {
+                        width,
+                        height,
+                        camera: camera.to_string(),
+                        timestamp,
+                        pixels: FrameBuffer::Owned {
+                            data: Arc::new(data),
+                            channels: 3,
+                        },
+                    })
+                })
+                .collect()
         }
     }
 }
@@ -630,6 +749,131 @@ mod ffcli {
         let data = decode_rgb24(file, timestamp, width, height, hwaccel)?;
         Ok(frame(camera, timestamp, width, height, data))
     }
+
+    /// One video stream frame's real presentation timestamp and whether it's
+    /// a sync/keyframe -- used by the ffmpeg-subprocess GOP-reuse batch path
+    /// (`macos_ffmpeg_fallback::VideoToolboxDecoder::decode_batch`) the same
+    /// way the native `VTDecompressionSession` path uses its own
+    /// container-parsed sample index (see `videotoolbox_native.rs`).
+    #[derive(Debug, Clone, Copy)]
+    pub(crate) struct ProbedFrame {
+        pub(crate) pts_seconds: f64,
+        pub(crate) is_keyframe: bool,
+    }
+
+    /// Every frame's real presentation time and keyframe flag, via one
+    /// `ffprobe` metadata-only pass (no decode) over the whole video stream.
+    /// `best_effort_timestamp_time` (not `pts_time`) is used because it's
+    /// what `ffprobe` itself recommends for a frame's effective timestamp
+    /// when a container doesn't carry an explicit PTS for every frame.
+    /// Frames are returned in the same order `ffmpeg`'s own `rawvideo`
+    /// decode output emits them (presentation/display order), which is what
+    /// lets `decode_rgb24_sequential` below match decoded frames back to
+    /// this index by position alone.
+    pub(crate) fn probe_frame_index(file: &Path) -> Result<Vec<ProbedFrame>> {
+        let out = Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "frame=key_frame,best_effort_timestamp_time",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(file)
+            .output()
+            .map_err(|e| crate::Error::Decode(format!("ffprobe not runnable: {e}")))?;
+        if !out.status.success() {
+            return Err(crate::Error::Decode(format!(
+                "ffprobe failed for {}",
+                file.display()
+            )));
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut frames = Vec::new();
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            let mut fields = line.split(',');
+            let key_frame = fields.next().ok_or_else(|| {
+                crate::Error::Decode(format!("malformed ffprobe frame line: {line:?}"))
+            })?;
+            let pts_time = fields.next().ok_or_else(|| {
+                crate::Error::Decode(format!("malformed ffprobe frame line: {line:?}"))
+            })?;
+            let pts_seconds: f64 = pts_time.trim().parse().map_err(|_| {
+                crate::Error::Decode(format!(
+                    "unparseable frame timestamp {pts_time:?} in {line:?}"
+                ))
+            })?;
+            frames.push(ProbedFrame {
+                pts_seconds,
+                is_keyframe: key_frame.trim() == "1",
+            });
+        }
+        if frames.is_empty() {
+            return Err(crate::Error::Decode(format!(
+                "ffprobe returned no frames for {}",
+                file.display()
+            )));
+        }
+        Ok(frames)
+    }
+
+    /// Decodes `frame_count` consecutive frames starting at the real
+    /// keyframe timestamp `start_pts_seconds`, in one `ffmpeg` subprocess --
+    /// the GOP-reuse building block: decoding N consecutive frames in one
+    /// continuous run does real, less redundant work than N separate
+    /// subprocess invocations each independently re-decoding from the start
+    /// of the file (what `decode_rgb24`'s accurate output-seek does,
+    /// correct but with no reuse across calls). `start_pts_seconds` must be
+    /// a real keyframe's timestamp (fast input-seek before `-i` only lands
+    /// reliably on keyframe boundaries); a small epsilon is subtracted to
+    /// guard against landing just after it due to floating-point rounding.
+    pub(crate) fn decode_rgb24_sequential(
+        file: &Path,
+        start_pts_seconds: f64,
+        frame_count: usize,
+        width: u32,
+        height: u32,
+        hwaccel: Option<&str>,
+    ) -> Result<Vec<Vec<u8>>> {
+        let seek = (start_pts_seconds - 0.001).max(0.0);
+        let mut cmd = Command::new("ffmpeg");
+        cmd.args(["-nostdin", "-v", "error", "-ss"])
+            .arg(format!("{seek}"));
+        if let Some(hw) = hwaccel {
+            cmd.args(["-hwaccel", hw]);
+        }
+        cmd.arg("-i")
+            .arg(file)
+            .args(["-frames:v", &frame_count.to_string()])
+            .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+        let out = cmd
+            .output()
+            .map_err(|e| crate::Error::Decode(format!("ffmpeg not runnable: {e}")))?;
+        if !out.status.success() {
+            return Err(crate::Error::Decode(format!(
+                "ffmpeg failed to decode {} from {start_pts_seconds}s ({frame_count} frames)",
+                file.display()
+            )));
+        }
+        let frame_size = width as usize * height as usize * 3;
+        let expected = frame_size * frame_count;
+        if out.stdout.len() < expected {
+            return Err(crate::Error::Decode(format!(
+                "short sequential decode from {}: got {} bytes, expected {expected} ({frame_count} frames)",
+                file.display(),
+                out.stdout.len()
+            )));
+        }
+        Ok(out
+            .stdout
+            .chunks(frame_size)
+            .take(frame_count)
+            .map(|chunk| chunk.to_vec())
+            .collect())
+    }
 }
 
 #[cfg(feature = "cuda")]
@@ -684,6 +928,14 @@ mod linux {
     #[derive(Default)]
     pub struct FfmpegDecoder {
         dims: HashMap<PathBuf, (u32, u32)>,
+        frame_index: HashMap<PathBuf, Vec<ffcli::ProbedFrame>>,
+        /// Real count of `ffmpeg` subprocess invocations this decoder has
+        /// made (incremented at the actual `Command::new("ffmpeg")` call
+        /// sites in `decode`/`decode_batch` below) -- used by
+        /// `tests::decode_batch_matches_per_frame_decode_and_reduces_ffmpeg_invocations`
+        /// to verify the GOP-reuse efficiency claim against a real spawn
+        /// count, not inferred from timing.
+        pub(crate) ffmpeg_invocations: usize,
     }
 
     impl FfmpegDecoder {
@@ -696,12 +948,119 @@ mod linux {
             self.dims.insert(file.to_path_buf(), dims);
             Ok(dims)
         }
+
+        fn frame_index(&mut self, file: &Path) -> Result<&[ffcli::ProbedFrame]> {
+            if !self.frame_index.contains_key(file) {
+                let index = ffcli::probe_frame_index(file)?;
+                self.frame_index.insert(file.to_path_buf(), index);
+            }
+            Ok(&self.frame_index[file])
+        }
+
+        /// The frame-index position whose real presentation time is nearest
+        /// `timestamp`. Same approach as the macOS ffmpeg-fallback decoder's
+        /// (see `macos_ffmpeg_fallback::VideoToolboxDecoder`) -- duplicated
+        /// rather than shared because the two decoders' state (dims +
+        /// frame_index caches) lives in different structs and pulling this
+        /// out into a free function would need passing the index by value
+        /// either way.
+        fn nearest_sample_index(index: &[ffcli::ProbedFrame], timestamp: f64) -> usize {
+            index
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    (a.pts_seconds - timestamp)
+                        .abs()
+                        .partial_cmp(&(b.pts_seconds - timestamp).abs())
+                        .expect("pts_seconds is always finite")
+                })
+                .map(|(i, _)| i)
+                .expect("frame_index is non-empty (probe_frame_index errors on empty)")
+        }
+
+        /// Walks back from `target_idx` to the nearest preceding (or equal)
+        /// keyframe.
+        fn keyframe_walkback(index: &[ffcli::ProbedFrame], target_idx: usize) -> usize {
+            let mut start = target_idx;
+            while start > 0 && !index[start].is_keyframe {
+                start -= 1;
+            }
+            start
+        }
     }
 
     impl Decoder for FfmpegDecoder {
         fn decode(&mut self, camera: &str, file: &Path, timestamp: f64) -> Result<Frame> {
             let (width, height) = self.dimensions(file)?;
+            self.ffmpeg_invocations += 1;
             ffcli::decode_frame(camera, file, timestamp, width, height, None)
+        }
+
+        /// Real GOP-reuse override -- same strategy as
+        /// `macos_ffmpeg_fallback::VideoToolboxDecoder::decode_batch`, with
+        /// no `-hwaccel` flag (this decoder's `decode()` doesn't pass one
+        /// either; VAAPI/NVDEC auto-selection isn't wired up here, matching
+        /// existing behavior). See that implementation's doc comment for
+        /// the full rationale.
+        fn decode_batch(
+            &mut self,
+            camera: &str,
+            file: &Path,
+            timestamps: &[f64],
+        ) -> Result<Vec<Frame>> {
+            if timestamps.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let (width, height) = self.dimensions(file)?;
+            let index = self.frame_index(file)?.to_vec();
+
+            let targets: Vec<usize> = timestamps
+                .iter()
+                .map(|&t| Self::nearest_sample_index(&index, t))
+                .collect();
+
+            let min_target = *targets.iter().min().expect("timestamps is non-empty");
+            let max_target = *targets.iter().max().expect("timestamps is non-empty");
+            let start_idx = Self::keyframe_walkback(&index, min_target);
+
+            let frame_count = max_target - start_idx + 1;
+            self.ffmpeg_invocations += 1;
+            let decoded = ffcli::decode_rgb24_sequential(
+                file,
+                index[start_idx].pts_seconds,
+                frame_count,
+                width,
+                height,
+                None,
+            )?;
+
+            timestamps
+                .iter()
+                .zip(targets.iter())
+                .map(|(&timestamp, &target_idx)| {
+                    let data = decoded
+                        .get(target_idx - start_idx)
+                        .ok_or_else(|| {
+                            crate::Error::Decode(format!(
+                                "decode_rgb24_sequential returned {} frames, needed index {}",
+                                decoded.len(),
+                                target_idx - start_idx
+                            ))
+                        })?
+                        .clone();
+                    Ok(Frame {
+                        width,
+                        height,
+                        camera: camera.to_string(),
+                        timestamp,
+                        pixels: FrameBuffer::Owned {
+                            data: Arc::new(data),
+                            channels: 3,
+                        },
+                    })
+                })
+                .collect()
         }
     }
 }
@@ -940,6 +1299,128 @@ mod tests {
         assert_eq!((frame.width, frame.height), (64, 48));
         assert_eq!(frame.pixels.as_bytes().len(), 64 * 48 * 3);
         assert_eq!(frame.pixels.channels(), 3);
+    }
+
+    /// Generates a real H.264 MP4 (baseline profile, no B-frames, so decode
+    /// order == display order -- matching `videotoolbox_native.rs`'s own
+    /// GOP-reuse test clip) via `ffmpeg`: 20 frames, GOP size 10 (2 GOPs).
+    #[cfg(feature = "ffmpeg")]
+    fn generate_gop_test_clip(dir: &std::path::Path, width: u32, height: u32) -> PathBuf {
+        use std::process::Command;
+        let mp4_path = dir.join("gop_clip.mp4");
+        let status = Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                &format!("testsrc=size={width}x{height}:rate=10"),
+                "-frames:v",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:v",
+                "libx264",
+                "-profile:v",
+                "baseline",
+                "-g",
+                "10",
+            ])
+            .arg(&mp4_path)
+            .status()
+            .expect("ffmpeg must be installed to run this test");
+        assert!(status.success(), "ffmpeg failed to generate GOP test clip");
+        mp4_path
+    }
+
+    /// Real regression test for the ffmpeg-subprocess-fallback GOP-reuse
+    /// fix (`FfmpegDecoder::decode_batch`): must produce pixel-identical
+    /// results to calling `decode()` per timestamp in a loop (correctness),
+    /// while invoking `ffmpeg` far fewer times than that naive loop would
+    /// (the actual efficiency claim). Mirrors
+    /// `videotoolbox_native::tests::decode_batch_reuses_gop_state_and_matches_per_frame_decode`'s
+    /// structure for the subprocess-based decoder.
+    #[cfg(feature = "ffmpeg")]
+    #[test]
+    fn decode_batch_matches_per_frame_decode_and_reduces_ffmpeg_invocations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mp4 = generate_gop_test_clip(tmp.path(), 64, 48);
+
+        // All 20 real frame timestamps, as in the native-path test: one
+        // decode_batch call for all of them should need far fewer ffmpeg
+        // subprocess invocations than 20 separate decode() calls.
+        let timestamps: Vec<f64> = (0..20).map(|i| i as f64 * 0.1).collect();
+
+        let mut batch_dec = FfmpegDecoder::default();
+        let batch_frames = batch_dec.decode_batch("cam", &mp4, &timestamps).unwrap();
+        assert_eq!(batch_frames.len(), 20);
+
+        let mut naive_dec = FfmpegDecoder::default();
+        for (i, &t) in timestamps.iter().enumerate() {
+            let naive_frame = naive_dec.decode("cam", &mp4, t).unwrap();
+            assert_eq!(
+                naive_frame.pixels.as_bytes(),
+                batch_frames[i].pixels.as_bytes(),
+                "frame {i} (t={t}) differs between decode_batch and per-frame decode"
+            );
+            assert_eq!(naive_frame.timestamp, batch_frames[i].timestamp);
+        }
+
+        // The real efficiency claim: decode_batch's whole 20-frame span
+        // (2 GOPs, GOP size 10) should need far fewer real `ffmpeg`
+        // subprocess invocations than 20 separate decode() calls -- counted
+        // for real via each decoder's `ffmpeg_invocations` field (see
+        // `FfmpegDecoder`), incremented at the actual `Command::new("ffmpeg")`
+        // call sites, not inferred from timing or re-derived logic.
+        assert_eq!(
+            batch_dec.ffmpeg_invocations, 1,
+            "decode_batch over one 2-GOP clip should need exactly 1 ffmpeg subprocess"
+        );
+        assert_eq!(
+            naive_dec.ffmpeg_invocations, 20,
+            "20 separate decode() calls should need 20 ffmpeg subprocesses (no reuse)"
+        );
+    }
+
+    /// Same regression test as
+    /// `decode_batch_matches_per_frame_decode_and_reduces_ffmpeg_invocations`
+    /// above, but for the macOS `ffmpeg -hwaccel videotoolbox` fallback
+    /// decoder (`macos_ffmpeg_fallback::VideoToolboxDecoder`, re-exported
+    /// here as `VideoToolboxDecoder` via `use super::*` since this cfg
+    /// combination is exactly the one under which that module -- not the
+    /// native `VTDecompressionSession` one -- is what gets compiled).
+    #[cfg(all(target_os = "macos", not(feature = "videotoolbox"), feature = "ffmpeg"))]
+    #[test]
+    fn macos_fallback_decode_batch_matches_per_frame_decode_and_reduces_ffmpeg_invocations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mp4 = generate_gop_test_clip(tmp.path(), 64, 48);
+        let timestamps: Vec<f64> = (0..20).map(|i| i as f64 * 0.1).collect();
+
+        let mut batch_dec = VideoToolboxDecoder::default();
+        let batch_frames = batch_dec.decode_batch("cam", &mp4, &timestamps).unwrap();
+        assert_eq!(batch_frames.len(), 20);
+
+        let mut naive_dec = VideoToolboxDecoder::default();
+        for (i, &t) in timestamps.iter().enumerate() {
+            let naive_frame = naive_dec.decode("cam", &mp4, t).unwrap();
+            assert_eq!(
+                naive_frame.pixels.as_bytes(),
+                batch_frames[i].pixels.as_bytes(),
+                "frame {i} (t={t}) differs between decode_batch and per-frame decode"
+            );
+            assert_eq!(naive_frame.timestamp, batch_frames[i].timestamp);
+        }
+
+        assert_eq!(
+            batch_dec.ffmpeg_invocations, 1,
+            "decode_batch over one 2-GOP clip should need exactly 1 ffmpeg subprocess"
+        );
+        assert_eq!(
+            naive_dec.ffmpeg_invocations, 20,
+            "20 separate decode() calls should need 20 ffmpeg subprocesses (no reuse)"
+        );
     }
 
     #[test]
