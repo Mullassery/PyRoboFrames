@@ -223,3 +223,7 @@ __marimo__/
 Cargo.lock.orig
 *.so
 *.dylib
+
+# macOS
+.DS_Store
+**/.DS_Store

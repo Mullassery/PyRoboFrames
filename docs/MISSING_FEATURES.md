@@ -68,16 +68,25 @@ Comprehensive audit of gaps vs. robot-learning requirements and competing tools 
 
 ## 🟢 HIGH PRIORITY (v0.3+, implemented)
 
-### 7. ✅ **Sparse/masked episode support**
-- **Status:** DONE (masking.py)
-- **API:** `MaskedDataFrame(df).coverage_report()`, `interpolate_missing(df, method="forward_fill")`
-- **Features:** Coverage tracking, interpolation (forward/backward/linear/nearest)
+### 7. ✅ **Sparse/masked data support** (topic-aware)
+- **Status:** DONE (masking.py) — real as of 2026-10-11
+- **API:** `MaskedDataFrame(df).coverage_report()`,
+  `interpolate_missing(df, method="forward_fill", columns=["imu.a"])`,
+  `fill_with_zeros(df)`
+- **Features:** Per-`topic.column` coverage tracking; interpolation
+  (forward/backward/linear/nearest) and zero-fill over a `RoboticsDataFrame`; sensor health
+  monitor. Covered by `tests/test_masking.py`.
 - **Impact:** Handle sensor failures gracefully in production
 
-### 8. ✅ **Episode-level metadata querying**
-- **Status:** DONE (filtering.py)
-- **API:** `EpisodeFilter(df).where(task="pick", success=True)`
-- **Features:** SQL-like WHERE clauses, range queries
+### 8. ⚠️ **Episode-level metadata querying**
+- **Status:** NOT FUNCTIONAL (filtering.py) — `EpisodeFilter(df)` raises `AttributeError`
+  because it calls a nonexistent episode API (`df.num_episodes`,
+  `df.slice(episode_index=...)`, `to_pyarrow()`) on the topic-based `RoboticsDataFrame`.
+  Needs a redesign (see `ROADMAP_HONEST.md`).
+- **Intended API:** `EpisodeFilter(df).where(task="pick", success=True)`
+- **Intended features:** SQL-like WHERE clauses, range queries
+
+
 - **Impact:** Task-conditional training, failure analysis
 
 ### 9. ✅ **Streaming ingestion (MQTT/Kafka)**

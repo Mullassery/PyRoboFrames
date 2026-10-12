@@ -53,7 +53,12 @@ from .lerobot import (
     write_lerobot_dataset,
     write_from_robotics_dataframe,
 )
-from .masking import MaskedDataFrame, SensorHealthMonitor, interpolate_missing
+from .masking import (
+    MaskedDataFrame,
+    SensorHealthMonitor,
+    fill_with_zeros,
+    interpolate_missing,
+)
 from .netcdf import NetCDFDataset, convert_netcdf
 from .parquet_writer import ParquetWriter, ParquetWriteOptions, write_to_parquet
 from .quality import (
@@ -142,6 +147,7 @@ __all__ = [
     "MaskedDataFrame",
     "SensorHealthMonitor",
     "interpolate_missing",
+    "fill_with_zeros",
     "AugmentationPipeline",
     "RandomRotate",
     "RandomBrightness",

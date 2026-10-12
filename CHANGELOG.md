@@ -4,6 +4,27 @@ All notable changes to PyRoboFrames are documented in this file.
 
 ## [Unreleased]
 
+## [2.6.1] — 2026-10-12
+
+### Fixed
+- **`masking.py` was written against an episode API that doesn't exist, so the entire
+  module was dead code — including two explicit no-ops.** `MaskedDataFrame`,
+  `SensorHealthMonitor`, `interpolate_missing` and `fill_with_zeros` all called
+  `dataframe.slice(episode_index=...)`, `.num_episodes`, and `.to_pyarrow()`, none of which
+  exist on the real topic-based `RoboticsDataFrame` (it has `topics`, `slice(start, end)`,
+  and per-topic `TopicFrame`s) — so every method raised `AttributeError` on first use.
+  `interpolate_missing` and `fill_with_zeros` additionally just `return dataframe` with a
+  "placeholder" comment despite `docs/MISSING_FEATURES.md` marking sparse/masked data as
+  `DONE`. Rewritten against the real API: coverage is reported per `topic.column`,
+  interpolation (`forward_fill`/`backward_fill`/`linear`/`nearest`) and zero-fill are real
+  NumPy implementations that return a new `RoboticsDataFrame` (or mutate with
+  `inplace=True`), leading/trailing gaps are left `NaN` (no extrapolation), non-numeric
+  columns are untouched, and `SensorHealthMonitor.failure_topics` reports topics by real
+  missing fraction. New `tests/test_masking.py` (10 tests) exercises coverage, every
+  interpolation method, zero-fill defaults/selection, in-place vs. copy, and the health
+  monitor. (The same nonexistent-API pattern still exists in `filtering.py`; that is a
+  separate, still-open item — see `ROADMAP_HONEST.md`.)
+
 ## [2.6.0] — 2026-10-05
 
 ### Removed

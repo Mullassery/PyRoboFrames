@@ -72,8 +72,13 @@ verified this" companion.
 - **Distributed loading (PyTorch)** — `DistributedSampler`/`DistributedLoader` do real
   episode sharding with no overlap across ranks; unit-tested directly
   (`test_shard_episodes_*`).
-- **Filtering / masking / quality scoring / augmentation / versioning** — real,
-  dependency-free NumPy/Arrow implementations, each with direct test coverage.
+- **Quality scoring / augmentation / versioning** — real, dependency-free NumPy/Arrow
+  implementations, each with direct test coverage.
+- **Masking** (`masking.py`) — **fixed 2026-10-11.** Coverage tracking,
+  forward/backward/linear/nearest interpolation, and zero-fill are now real
+  implementations over the topic-based `RoboticsDataFrame`, covered by
+  `tests/test_masking.py`. See the entry in the "Known gaps" section below for the history
+  and for the still-open `filtering.py` sibling.
 
 ## 🟡 Real but thinner coverage
 
@@ -94,6 +99,26 @@ verified this" companion.
   stale as of the caps being removed in v2.5.0).
 
 ## 🔴 Known gaps / not done
+
+- **`filtering.py` (`EpisodeFilter`/`EpisodeFilterBuilder`) is still written against the
+  same nonexistent episode API that `masking.py` used to be** — `dataframe.num_episodes`,
+  `dataframe.slice(episode_index=...)`, `episode_slice.to_pyarrow()`. The real
+  `RoboticsDataFrame` is topic-based (`topics`, `slice(start, end)`, per-topic
+  `TopicFrame`s), so constructing an `EpisodeFilter` raises `AttributeError` on
+  `num_episodes` immediately. This was *not* fixed in the 2026-10-11 masking pass; it needs
+  its own redesign (either an episode-indexed dataset type to filter over, or a topic-aware
+  filter). `EpisodeFilter`/`EpisodeFilterBuilder` are exported from the package but are
+  currently non-functional.
+- **FIXED (2026-10-11): `masking.py` was dead code / two no-ops.** Every function called a
+  nonexistent episode API, and `interpolate_missing`/`fill_with_zeros` literally returned
+  their input unchanged with a "placeholder" comment — despite `docs/MISSING_FEATURES.md`
+  marking sparse/masked data as `DONE`. Rewritten against the real topic-based
+  `RoboticsDataFrame`; real coverage, interpolation, and zero-fill with
+  `tests/test_masking.py` (10 tests). The public API changed from the never-working
+  episode-index signature to topic-aware signatures (e.g.
+  `MaskedDataFrame.coverage_by_column(topic=None)`,
+  `interpolate_missing(df, columns=["topic.column"])`) — nothing could have depended on the
+  old signatures since they only ever raised.
 
 - **FIXED (2026-09-29), native VideoToolbox path only: `decode_batch` now actually reuses
   GOP decode state.** `Decoder::decode_batch`'s default trait method still just calls
