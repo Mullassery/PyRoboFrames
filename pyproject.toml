@@ -70,7 +70,7 @@ Changelog = "https://github.com/Mullassery/PyRoboFrames/releases"
 Discussions = "https://github.com/Mullassery/PyRoboFrames/discussions"
 
 [project.optional-dependencies]
-mlx = ["mlx==0.20"]
+mlx = ["mlx==0.32.3"]
 # pandas is required (not just optional-import) by tests/test_storage.py's LeRobot
 # hub download path (`hub.py: _download_lerobot_partial` calls `Table.to_pandas()`).
 # scipy/scikit-learn power the optional GPU-acceleration and 3D occupancy morphology
