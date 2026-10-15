@@ -100,16 +100,20 @@ prf.convert_hdf5("/data/robomimic_task.hdf5", "/data/lerobot_out")
 
 Bug reports and questions: [GitHub Issues](https://github.com/Mullassery/PyRoboFrames/issues). Releases are cut with `scripts/release.sh` (not `maturin build` directly).
 
-## Related projects
+## Part of the robotics & autonomy family
 
-Part of the Mullassery open-source family:
+PyRoboFrames is one of six complementary, composable tools in the Mullassery **robotics & autonomy** family. Together they form a single stack: **perceive → map → simulate → learn → debug → coordinate the fleet**.
 
-- [PyRoboSimulator](https://github.com/Mullassery/PyRoboSimulator) — large-scale world simulator for autonomous systems
-- [PyRoboVision](https://github.com/Mullassery/PyRoboVision) — perception stack (multi-object tracking, 3D fusion)
-- [PyRoboReplay](https://github.com/Mullassery/PyRoboReplay) — robotics perception and replay engine
-- [PyRoboFrames](https://github.com/Mullassery/PyRoboFrames) — high-performance robotics dataloader
-- [PyTerrainMap](https://github.com/Mullassery/PyTerrainMap) — unified terrain intelligence for multi-robot fleets
-- [Browse all projects](https://github.com/Mullassery?tab=repositories)
+| Tool | Role | What it does |
+|---|---|---|
+| [PyRoboVision](https://github.com/Mullassery/PyRoboVision) | Perception | Multi-object tracker (Kalman filter + Hungarian algorithm) and trajectory predictor for robot perception. |
+| [PyTerrainMap](https://github.com/Mullassery/PyTerrainMap) | Mapping / SLAM | Fuses multi-robot terrain observations into a spatial-temporal store, with H3 spatial indexing and SLAM. |
+| [PyRoboSimulator](https://github.com/Mullassery/PyRoboSimulator) | Simulation | World simulator for autonomous systems, with a FastAPI backend. |
+| [PyRoboFrames](https://github.com/Mullassery/PyRoboFrames) | Learning data | **This project** — Rust-backed ML dataloader for robot-learning datasets (native LeRobot format, Apple Silicon hardware video decode). |
+| [PyRoboReplay](https://github.com/Mullassery/PyRoboReplay) | Mission forensics | Forensic-debugging and causal-analysis engine for autonomous robot mission replay. |
+| [SyncFleet](https://github.com/Mullassery/SyncFleet) | Fleet coordination | Rust + SQLite, peer-to-peer state sync for robotics fleets — mutual-TLS 1.3, version-vector replication, mDNS discovery; conflict resolution on the roadmap. |
+
+Each works standalone, but they're complementary by design. [Browse all projects →](https://github.com/Mullassery?tab=repositories)
 
 ## License
 
