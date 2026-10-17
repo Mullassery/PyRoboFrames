@@ -1410,7 +1410,7 @@ dependencies = [
 
 [[package]]
 name = "pyroboframes-core"
-version = "2.6.1"
+version = "2.6.2"
 dependencies = [
  "apple-cf",
  "arrow",
@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "pyroboframes-py"
-version = "2.6.1"
+version = "2.6.2"
 dependencies = [
  "numpy",
  "pyo3",

@@ -4,6 +4,11 @@ All notable changes to PyRoboFrames are documented in this file.
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-10-17
+
+### Fixed
+- Audit remediation: security hardening, correctness fixes, and lint/CI gates.
+
 ## [2.6.1] — 2026-10-12
 
 ### Fixed
