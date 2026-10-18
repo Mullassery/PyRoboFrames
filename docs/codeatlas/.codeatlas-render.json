@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "outputs": {
+    "md": [
+      "crates.2.md",
+      "docs.3.md",
+      "overview.md",
+      "pyroboframes_core.2.1.md",
+      "pyroboframes_py.2.2.md",
+      "python.5.md",
+      "tools.8.md"
+    ],
+    "html": [
+      "crates.2.html",
+      "docs.3.html",
+      "overview.html",
+      "pyroboframes_core.2.1.html",
+      "pyroboframes_py.2.2.html",
+      "python.5.html",
+      "tools.8.html"
+    ]
+  }
+}
