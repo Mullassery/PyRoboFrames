@@ -14,8 +14,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyroboframes-core = { path = "../pyroboframes-core" }
-pyo3 = { version = "0.22", features = ["abi3-py310"] }
-numpy = "0.22"
+pyo3 = { version = "0.29", features = ["abi3-py310"] }
+numpy = "0.29"
 
 [features]
 # Enabled by maturin when building the wheel (see pyproject.toml). Left off for plain

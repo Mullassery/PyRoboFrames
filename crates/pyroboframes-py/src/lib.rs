@@ -13,6 +13,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use numpy::ndarray::{Array1, Array2, Array3, Array4, ArrayD, IxDyn};
 use numpy::IntoPyArray;
@@ -204,9 +205,9 @@ impl RoboFrameDataset {
         let Some(stats) = self.dataset.stats().map_err(core_err)? else {
             return Ok(None);
         };
-        let out = PyDict::new_bound(py);
+        let out = PyDict::new(py);
         for (name, fs) in &stats.features {
-            let d = PyDict::new_bound(py);
+            let d = PyDict::new(py);
             d.set_item("mean", fs.mean.clone())?;
             d.set_item("std", fs.std.clone())?;
             d.set_item("min", fs.min.clone())?;
@@ -229,9 +230,9 @@ impl RoboFrameDataset {
     /// index to `loader(episodes=[i])` to load a single episode.
     fn episodes(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let index = self.dataset.episodes().map_err(core_err)?;
-        let out = pyo3::types::PyList::empty_bound(py);
+        let out = pyo3::types::PyList::empty(py);
         for ep in index.episodes() {
-            let d = PyDict::new_bound(py);
+            let d = PyDict::new(py);
             d.set_item("episode_index", ep.episode_index)?;
             d.set_item("length", ep.length)?;
             d.set_item("from_index", ep.from_index)?;
@@ -432,7 +433,7 @@ impl RoboFrameDataset {
             (None, FrameCache::new(1))
         } else {
             let cap = cache_size.unwrap_or_else(|| (batch_size * cameras.len() * 8).max(256));
-            (Some(new_frame_decoder()?), FrameCache::new(cap))
+            (Some(Mutex::new(new_frame_decoder()?)), FrameCache::new(cap))
         };
 
         let loader = Loader {
@@ -474,7 +475,7 @@ struct Loader {
     window: Option<WindowSpec>,
     /// Camera streams to decode into frame arrays (empty = tabular only).
     cameras: Vec<String>,
-    frame_decoder: Option<Box<dyn Decoder + Send>>,
+    frame_decoder: Option<std::sync::Mutex<Box<dyn Decoder + Send>>>,
     frame_cache: FrameCache,
     /// "numpy" | "mlx" | "torch"
     output: String,
@@ -547,7 +548,13 @@ impl Loader {
             let dict = batch.bind(py);
             match self.window.clone() {
                 None => {
-                    let decoder = self.frame_decoder.as_deref_mut().expect("decoder set");
+                    let mut decoder_guard = self
+                        .frame_decoder
+                        .as_ref()
+                        .expect("decoder set")
+                        .lock()
+                        .expect("decoder lock poisoned");
+                    let decoder: &mut dyn Decoder = &mut **decoder_guard;
                     // camera -> decoded frames in batch order. `Frame` clones are cheap (the
                     // pixel buffer is `Arc`-backed), so collecting them all before writing out
                     // costs no extra pixel copies over the previous single-pass version.
@@ -570,13 +577,13 @@ impl Loader {
                         // gap referred to: no shared batch buffer exists for frames to be copied
                         // into at all, so there is nothing left to copy here.
                         for (cam, frames) in by_camera {
-                            let frame_list = PyList::empty_bound(py);
+                            let frame_list = PyList::empty(py);
                             for frame in &frames {
                                 let (w, h) = (frame.width as usize, frame.height as usize);
                                 let data = frame.to_rgb24_bytes();
                                 let arr = Array3::from_shape_vec((h, w, 3), data)
                                     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-                                frame_list.append(arr.into_pyarray_bound(py))?;
+                                frame_list.append(arr.into_pyarray(py))?;
                             }
                             dict.set_item(cam, frame_list)?;
                         }
@@ -605,12 +612,18 @@ impl Loader {
                             }
                             let arr = Array4::from_shape_vec((n, h as usize, w as usize, 3), data)
                                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
-                            dict.set_item(cam, arr.into_pyarray_bound(py))?;
+                            dict.set_item(cam, arr.into_pyarray(py))?;
                         }
                     }
                 }
                 Some(spec) => {
-                    let decoder = self.frame_decoder.as_deref_mut().expect("decoder set");
+                    let mut decoder_guard = self
+                        .frame_decoder
+                        .as_ref()
+                        .expect("decoder set")
+                        .lock()
+                        .expect("decoder lock poisoned");
+                    let decoder: &mut dyn Decoder = &mut **decoder_guard;
                     // camera -> per-batch-item Vec<Frame> (one per temporal step). Cheap to
                     // collect: `Frame` clones only bump an `Arc` refcount.
                     let mut by_camera: BTreeMap<String, Vec<Vec<Frame>>> = BTreeMap::new();
@@ -630,20 +643,20 @@ impl Loader {
                         // just nested one level deeper to carry the temporal-window axis.
                         for (cam, items) in by_camera {
                             let steps = items.first().map(Vec::len).unwrap_or(0);
-                            let batch_list = PyList::empty_bound(py);
+                            let batch_list = PyList::empty(py);
                             for frames in &items {
                                 if frames.len() != steps {
                                     return Err(PyValueError::new_err(
                                         "windowed frames have inconsistent steps or dimensions",
                                     ));
                                 }
-                                let step_list = PyList::empty_bound(py);
+                                let step_list = PyList::empty(py);
                                 for frame in frames {
                                     let (w, h) = (frame.width as usize, frame.height as usize);
                                     let data = frame.to_rgb24_bytes();
                                     let arr = Array3::from_shape_vec((h, w, 3), data)
                                         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-                                    step_list.append(arr.into_pyarray_bound(py))?;
+                                    step_list.append(arr.into_pyarray(py))?;
                                 }
                                 batch_list.append(step_list)?;
                             }
@@ -680,7 +693,7 @@ impl Loader {
                             let shape = IxDyn(&[n, steps, h as usize, w as usize, 3]);
                             let arr = ArrayD::from_shape_vec(shape, data)
                                 .map_err(|e| PyValueError::new_err(e.to_string()))?;
-                            dict.set_item(cam, arr.into_pyarray_bound(py))?;
+                            dict.set_item(cam, arr.into_pyarray(py))?;
                         }
                     }
                 }
@@ -727,7 +740,7 @@ impl Loader {
 
 /// Stack a batch of samples into a dict of NumPy arrays.
 fn batch_to_dict(py: Python<'_>, samples: &[Sample]) -> PyResult<Py<PyDict>> {
-    let dict = PyDict::new_bound(py);
+    let dict = PyDict::new(py);
     if samples.is_empty() {
         return Ok(dict.unbind());
     }
@@ -752,19 +765,19 @@ fn batch_to_dict(py: Python<'_>, samples: &[Sample]) -> PyResult<Py<PyDict>> {
         }
         let arr = Array2::from_shape_vec((n, dim), data)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        dict.set_item(name, arr.into_pyarray_bound(py))?;
+        dict.set_item(name, arr.into_pyarray(py))?;
     }
 
     // Provenance: episode index per row.
     let episodes: Vec<i64> = samples.iter().map(|s| s.episode_index as i64).collect();
-    dict.set_item("episode_index", episodes.into_pyarray_bound(py))?;
+    dict.set_item("episode_index", episodes.into_pyarray(py))?;
 
     Ok(dict.unbind())
 }
 
 /// Stack windowed samples into `[batch, num_deltas, dim]` arrays per feature.
 fn windowed_batch_to_dict(py: Python<'_>, samples: &[WindowedSample]) -> PyResult<Py<PyDict>> {
-    let dict = PyDict::new_bound(py);
+    let dict = PyDict::new(py);
     if samples.is_empty() {
         return Ok(dict.unbind());
     }
@@ -798,11 +811,11 @@ fn windowed_batch_to_dict(py: Python<'_>, samples: &[WindowedSample]) -> PyResul
         }
         let arr = Array3::from_shape_vec((n, nd, dim), data)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        dict.set_item(name, arr.into_pyarray_bound(py))?;
+        dict.set_item(name, arr.into_pyarray(py))?;
     }
 
     let episodes: Vec<i64> = samples.iter().map(|s| s.episode_index as i64).collect();
-    dict.set_item("episode_index", episodes.into_pyarray_bound(py))?;
+    dict.set_item("episode_index", episodes.into_pyarray(py))?;
 
     Ok(dict.unbind())
 }
@@ -818,7 +831,7 @@ fn convert_batch(py: Python<'_>, dict: &Bound<'_, PyDict>, output: &str) -> PyRe
         other => return Err(PyValueError::new_err(format!("unknown output '{other}'"))),
     };
     let func = py
-        .import_bound(module_name)
+        .import(module_name)
         .map_err(|e| {
             PyRuntimeError::new_err(format!("output='{output}' requires {module_name}: {e}"))
         })?
@@ -837,18 +850,18 @@ fn convert_batch(py: Python<'_>, dict: &Bound<'_, PyDict>, output: &str) -> PyRe
 
 /// Convert a Python-free [`RustBatch`] (raw buffers + shapes) into a dict of NumPy arrays.
 fn rustbatch_to_dict(py: Python<'_>, batch: RustBatch) -> PyResult<Py<PyDict>> {
-    let dict = PyDict::new_bound(py);
+    let dict = PyDict::new(py);
     for (name, (data, shape)) in batch.features {
         let arr = ArrayD::from_shape_vec(IxDyn(&shape), data)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        dict.set_item(name, arr.into_pyarray_bound(py))?;
+        dict.set_item(name, arr.into_pyarray(py))?;
     }
     for (cam, (data, shape)) in batch.frames {
         let arr = ArrayD::from_shape_vec(IxDyn(&shape), data)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        dict.set_item(cam, arr.into_pyarray_bound(py))?;
+        dict.set_item(cam, arr.into_pyarray(py))?;
     }
-    dict.set_item("episode_index", batch.episode_index.into_pyarray_bound(py))?;
+    dict.set_item("episode_index", batch.episode_index.into_pyarray(py))?;
     Ok(dict.unbind())
 }
 
@@ -871,7 +884,7 @@ impl PrefetchLoader {
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
         // Wait for the next assembled batch with the GIL released.
         let batch = py
-            .allow_threads(|| self.prefetcher.next_batch())
+            .detach(|| self.prefetcher.next_batch())
             .map_err(core_err)?;
         let Some(batch) = batch else {
             return Ok(None);
@@ -901,10 +914,10 @@ fn conversion_report_to_dict(
     py: Python<'_>,
     report: &pyroboframes_core::mcap::ConversionReport,
 ) -> PyResult<Py<PyDict>> {
-    let out = PyDict::new_bound(py);
-    let topics = pyo3::types::PyList::empty_bound(py);
+    let out = PyDict::new(py);
+    let topics = pyo3::types::PyList::empty(py);
     for t in &report.topics {
-        let d = PyDict::new_bound(py);
+        let d = PyDict::new(py);
         d.set_item("topic", &t.topic)?;
         d.set_item("messages", t.messages)?;
         d.set_item("columns", t.columns)?;
@@ -992,7 +1005,7 @@ impl PointCloudPy {
         }
         let arr = Array2::from_shape_vec((self.inner.points.len(), 3), data)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        Ok(arr.into_pyarray_bound(py).unbind().into())
+        Ok(arr.into_pyarray(py).unbind().into())
     }
 
     fn __len__(&self) -> usize {
@@ -1030,7 +1043,7 @@ impl CameraIntrinsicsPy {
         let k = self.inner.k_matrix();
         Array2::from_shape_vec((3, 3), k.to_vec())
             .unwrap()
-            .into_pyarray_bound(py)
+            .into_pyarray(py)
             .unbind()
             .into()
     }
@@ -1056,7 +1069,7 @@ impl CameraIntrinsicsPy {
     fn unproject_direction(&self, u: f64, v: f64, py: Python<'_>) -> Py<PyAny> {
         let dir = self.inner.unproject_direction(u, v);
         Array1::from_vec(dir.to_vec())
-            .into_pyarray_bound(py)
+            .into_pyarray(py)
             .unbind()
             .into()
     }
@@ -1158,8 +1171,8 @@ impl CameraCalibrationPy {
         let origin_arr = Array1::from_vec(origin.to_vec());
         let dir_arr = Array1::from_vec(direction.to_vec());
         (
-            origin_arr.into_pyarray_bound(py).unbind().into(),
-            dir_arr.into_pyarray_bound(py).unbind().into(),
+            origin_arr.into_pyarray(py).unbind().into(),
+            dir_arr.into_pyarray(py).unbind().into(),
         )
     }
 

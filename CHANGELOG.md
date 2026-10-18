@@ -4,6 +4,20 @@ All notable changes to PyRoboFrames are documented in this file.
 
 ## [Unreleased]
 
+## [2.6.3] - 2026-10-18
+
+### Security
+- `pyo3` 0.22 → 0.29 and `numpy` 0.22 → 0.29, clearing RUSTSEC-2025-0020
+  (buffer overflow in `PyString::from_object`) and RUSTSEC-2026-0177 (missing
+  `Sync` bound on `PyCFunction::new_closure`). Migrated the removed
+  `*_bound` constructors (`PyDict::new_bound` → `PyDict::new`,
+  `PyList::empty_bound` → `PyList::empty`, `into_pyarray_bound` →
+  `into_pyarray`, `Python::import_bound` → `Python::import`) and
+  `Python::allow_threads` → `Python::detach`.
+- pyo3 0.29 requires `#[pyclass]` types to be `Send + Sync`; the `Loader`
+  frame decoder (which is only used under `&mut self` on the Python thread)
+  is now held behind a `Mutex`, satisfying the bound without `unsafe`.
+
 ## [2.6.2] - 2026-10-17
 
 ### Fixed
