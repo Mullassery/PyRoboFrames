@@ -101,6 +101,13 @@ class HDF5Dataset:
         """
         if not os.path.exists(path):
             raise FileNotFoundError(f"HDF5 file not found: {path!r}")
+        import h5py
+
+        try:
+            with h5py.File(path, "r"):
+                pass
+        except OSError as exc:
+            raise ValueError(f"Invalid or unreadable HDF5 file {path!r}: {exc}") from exc
         return cls(path, episode_key=episode_key, base_dir=base_dir)
 
     def inspect(self) -> dict[str, Any]:

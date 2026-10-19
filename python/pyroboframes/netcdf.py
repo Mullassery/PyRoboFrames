@@ -101,6 +101,19 @@ class NetCDFDataset:
         """
         if not os.path.exists(path):
             raise FileNotFoundError(f"NetCDF file not found: {path!r}")
+        import xarray as xr
+
+        try:
+            dataset = xr.open_dataset(path)
+            dataset.close()
+        except ImportError as exc:
+            raise ImportError(
+                "NetCDF support requires netCDF4 or h5netcdf: pip install netCDF4"
+            ) from exc
+        except Exception as exc:  # backend-specific corrupt-file errors
+            raise ValueError(
+                f"Invalid or unreadable NetCDF file {path!r}: {exc}"
+            ) from exc
         return cls(path, time_dim=time_dim, episode_breaks=episode_breaks, base_dir=base_dir)
 
     def inspect(self) -> dict[str, Any]:
