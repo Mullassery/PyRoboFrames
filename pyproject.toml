@@ -70,6 +70,7 @@ Changelog = "https://github.com/Mullassery/PyRoboFrames/releases"
 Discussions = "https://github.com/Mullassery/PyRoboFrames/discussions"
 
 [project.optional-dependencies]
+torchcodec = ["torchcodec>=0.2"]
 mlx = ["mlx==0.20"]
 # pandas is required (not just optional-import) by tests/test_storage.py's LeRobot
 # hub download path (`hub.py: _download_lerobot_partial` calls `Table.to_pandas()`).

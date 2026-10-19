@@ -32,6 +32,7 @@ from .augmentation import (
     RandomRotate,
 )
 from .backend import available_backends, default_framework, resolve_device, to_backend
+from .torchcodec_decode import TorchCodecUnavailable, decode_video_frames
 from .compression import CompressionPipeline, DeltaEncoder, SparseArray
 from .dataframe import AlignedFrame, RoboticsDataFrame, TopicFrame
 from .dataloader import DataLoader
@@ -161,6 +162,8 @@ __all__ = [
     "KafkaStreamer",
     "StreamingRoboticsDataset",
     "transforms",
+    "decode_video_frames",
+    "TorchCodecUnavailable",
     "backend",
     "depth_io",
     "sensor_fusion",

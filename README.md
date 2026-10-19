@@ -39,6 +39,24 @@ PyRoboFrames loads robot-learning datasets fast. The heavy lifting — dataset r
 
 Released and in use, version **2.6.1** (matching the latest PyPI release). 323 Python tests and 324 Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [ROADMAP_HONEST.md](ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
 
+## Optional torchcodec fallback
+
+On Linux/CI, decode an RGB frame range with PyTorch's torchcodec:
+
+```bash
+pip install "pyroboframes[torchcodec]"
+```
+
+```python
+from pyroboframes import decode_video_frames
+
+frames = decode_video_frames("episode.mp4", start_seconds=1.0, end_seconds=2.0)
+# (N, H, W, 3) uint8
+```
+
+This is a standalone helper; the native dataset pipeline remains
+VideoToolbox-first. Missing torchcodec raises `TorchCodecUnavailable`.
+
 ## Installation
 
 ```bash

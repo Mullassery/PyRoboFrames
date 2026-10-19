@@ -3,7 +3,7 @@
 This file records what was shipped, what is blocked/failed, and what is rejected for this repository. It complements `AUDIT_FINDINGS.md`.
 
 ## Shipped
-- No code changes; audit/bundle docs added.
+- Optional torchcodec RGB frame-range decode fallback (`pyroboframes[torchcodec]`) for Linux/CI.
 
 ## Blocked / failed
 - Linux/CUDA wheels; zero-copy CUDA; hvc1/AV1.
