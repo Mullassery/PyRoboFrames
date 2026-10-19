@@ -106,11 +106,6 @@ prf.convert_hdf5("/data/robomimic_task.hdf5", "/data/lerobot_out")
 
 Full shipped/blocked/rejected detail: [`QUEUE_STATUS.md`](QUEUE_STATUS.md).
 
-## Queue status
-
-Shipped, blocked/failed, and rejected work for this repository is documented in
-[`QUEUE_STATUS.md`](QUEUE_STATUS.md).
-
 ## Contributing
 
 Bug reports and questions: [GitHub Issues](https://github.com/Mullassery/PyRoboFrames/issues). Releases are cut with `scripts/release.sh` (not `maturin build` directly).
