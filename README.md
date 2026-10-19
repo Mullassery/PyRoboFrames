@@ -96,6 +96,16 @@ prf.convert_hdf5("/data/robomimic_task.hdf5", "/data/lerobot_out")
 - [SECURITY.md](SECURITY.md) — security/compliance posture
 - [CHANGELOG.md](CHANGELOG.md) — notable changes
 
+## Known issues and deferred work
+
+**Blocked / failed:**
+- Linux/CUDA wheels; zero-copy CUDA; hvc1/AV1.
+
+**Rejected / deferred:**
+- Remote streaming; cache-first is acceptable.
+
+Full shipped/blocked/rejected detail: [`QUEUE_STATUS.md`](QUEUE_STATUS.md).
+
 ## Queue status
 
 Shipped, blocked/failed, and rejected work for this repository is documented in
