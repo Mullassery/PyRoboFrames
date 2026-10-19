@@ -99,6 +99,11 @@ dev = [
     # tests/test_storage.py exercises that path, so it's needed here for a
     # `pip install -e ".[dev]"` to actually be able to run the full suite.
     "huggingface_hub>=0.21.0",
+    # Property/fuzz tests for HDF5/NetCDF ingest (tests/test_ingestion_fuzz.py).
+    "hypothesis>=6.100",
+    "h5py",
+    "xarray",
+    "netCDF4",
 ]
 
 [tool.maturin]

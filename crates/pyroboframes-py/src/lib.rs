@@ -11,7 +11,7 @@
 #![allow(clippy::useless_conversion)]
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -72,24 +72,64 @@ fn core_err(e: pyroboframes_core::Error) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
 }
 
-/// Resolve `path` to a canonical, symlink-free form and, if `base_dir` is given, reject it if
-/// it falls outside `base_dir` — mirrors `pyroboframes.security.validate_dataset_path()` for the
-/// Rust-native entry points (`RoboFrameDataset.from_path`, `convert_mcap`, `convert_ros2_bag`),
-/// which can't call back into that Python helper. `base_dir` is opt-in: omitting it preserves
-/// today's unrestricted behavior for trusted-caller use.
-fn validate_path_containment(path: &Path, base_dir: Option<&Path>) -> PyResult<PathBuf> {
-    let canonical = path.canonicalize().map_err(|e| {
-        PyValueError::new_err(format!("Cannot resolve path {}: {e}", path.display()))
+/// Root used by `secure=True` sandboxing, mirroring
+/// `pyroboframes.security.project_root()`.
+fn default_project_root() -> PathBuf {
+    std::env::var_os("PYROBOFRAMES_PROJECT_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+/// Resolve `path` to a canonical, symlink-free form and, if `base_dir` (or `secure`) is given,
+/// reject it if it falls outside that root — mirrors
+/// `pyroboframes.security.validate_dataset_path()` for the Rust-native entry points
+/// (`RoboFrameDataset.from_path`, `convert_mcap`, `convert_ros2_bag`), which can't call back
+/// into that Python helper.
+///
+/// `base_dir` and `secure` are opt-in: omitting both preserves today's unrestricted behavior
+/// for trusted-caller use. With `secure=True` and no `base_dir`, relative paths resolve against
+/// the project root (`PYROBOFRAMES_PROJECT_ROOT` or the current directory) and absolute paths
+/// outside it are rejected unless `allow_outside_root` is set. An explicit `base_dir` is always
+/// enforced; `allow_outside_root` only relaxes the default project-root sandbox.
+fn validate_path_containment(
+    path: &Path,
+    base_dir: Option<&Path>,
+    secure: bool,
+    allow_outside_root: bool,
+) -> PyResult<PathBuf> {
+    if path.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Err(PyValueError::new_err(
+            "Directory traversal (..) not allowed",
+        ));
+    }
+
+    let (root, root_label) = if let Some(base) = base_dir {
+        (Some(base.to_path_buf()), "base_dir")
+    } else if secure {
+        (Some(default_project_root()), "project root")
+    } else {
+        (None, "")
+    };
+
+    let joined = match &root {
+        Some(root) if !path.is_absolute() => root.join(path),
+        _ => path.to_path_buf(),
+    };
+    let canonical = joined.canonicalize().map_err(|e| {
+        PyValueError::new_err(format!("Cannot resolve path {}: {e}", joined.display()))
     })?;
-    if let Some(base) = base_dir {
-        let base_canonical = base.canonicalize().map_err(|e| {
-            PyValueError::new_err(format!("Cannot resolve base_dir {}: {e}", base.display()))
+
+    if let Some(root) = root {
+        let root_canonical = root.canonicalize().map_err(|e| {
+            PyValueError::new_err(format!("Cannot resolve base_dir {}: {e}", root.display()))
         })?;
-        if !canonical.starts_with(&base_canonical) {
+        if !canonical.starts_with(&root_canonical)
+            && (root_label == "base_dir" || !allow_outside_root)
+        {
             return Err(PyValueError::new_err(format!(
-                "Path {} escapes base_dir {}",
+                "Path {} escapes {root_label} {}",
                 canonical.display(),
-                base_canonical.display()
+                root_canonical.display()
             )));
         }
     }
@@ -147,10 +187,19 @@ impl RoboFrameDataset {
     ///
     /// `base_dir`, if given, restricts `path` to that directory (rejects symlink/`..` escapes) —
     /// pass it whenever `path` comes from an untrusted source.
+    ///
+    /// `secure=True` (and no `base_dir`) resolves relative paths against the project root and
+    /// rejects paths outside it; `allow_outside_root=True` is the explicit escape hatch.
     #[staticmethod]
-    #[pyo3(signature = (path, base_dir=None))]
-    fn from_path(path: PathBuf, base_dir: Option<PathBuf>) -> PyResult<Self> {
-        let path = validate_path_containment(&path, base_dir.as_deref())?;
+    #[pyo3(signature = (path, base_dir=None, secure=false, allow_outside_root=false))]
+    fn from_path(
+        path: PathBuf,
+        base_dir: Option<PathBuf>,
+        secure: bool,
+        allow_outside_root: bool,
+    ) -> PyResult<Self> {
+        let path =
+            validate_path_containment(&path, base_dir.as_deref(), secure, allow_outside_root)?;
         match Dataset::open(&path) {
             Ok(dataset) => Ok(Self {
                 dataset: Arc::new(dataset),
@@ -935,16 +984,19 @@ fn conversion_report_to_dict(
 /// any other encoding is listed in `skipped`.
 ///
 /// `base_dir`, if given, restricts `input` to that directory — pass it whenever `input` comes
-/// from an untrusted source.
+/// from an untrusted source. `secure=True` (and no `base_dir`) resolves relative paths against
+/// the project root and rejects paths outside it; `allow_outside_root=True` is the escape hatch.
 #[pyfunction]
-#[pyo3(signature = (input, out_dir, base_dir=None))]
+#[pyo3(signature = (input, out_dir, base_dir=None, secure=false, allow_outside_root=false))]
 fn convert_mcap(
     py: Python<'_>,
     input: PathBuf,
     out_dir: PathBuf,
     base_dir: Option<PathBuf>,
+    secure: bool,
+    allow_outside_root: bool,
 ) -> PyResult<Py<PyDict>> {
-    let input = validate_path_containment(&input, base_dir.as_deref())?;
+    let input = validate_path_containment(&input, base_dir.as_deref(), secure, allow_outside_root)?;
     let report = pyroboframes_core::mcap::convert(&input, &out_dir).map_err(core_err)?;
     conversion_report_to_dict(py, &report)
 }
@@ -954,16 +1006,19 @@ fn convert_mcap(
 /// definition or not CDR-serialized are listed in `skipped`.
 ///
 /// `base_dir`, if given, restricts `input` to that directory — pass it whenever `input` comes
-/// from an untrusted source.
+/// from an untrusted source. `secure=True` (and no `base_dir`) resolves relative paths against
+/// the project root and rejects paths outside it; `allow_outside_root=True` is the escape hatch.
 #[pyfunction]
-#[pyo3(signature = (input, out_dir, base_dir=None))]
+#[pyo3(signature = (input, out_dir, base_dir=None, secure=false, allow_outside_root=false))]
 fn convert_ros2_bag(
     py: Python<'_>,
     input: PathBuf,
     out_dir: PathBuf,
     base_dir: Option<PathBuf>,
+    secure: bool,
+    allow_outside_root: bool,
 ) -> PyResult<Py<PyDict>> {
-    let input = validate_path_containment(&input, base_dir.as_deref())?;
+    let input = validate_path_containment(&input, base_dir.as_deref(), secure, allow_outside_root)?;
     let report = pyroboframes_core::rosbag::convert(&input, &out_dir).map_err(core_err)?;
     conversion_report_to_dict(py, &report)
 }

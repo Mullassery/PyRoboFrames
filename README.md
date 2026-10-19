@@ -19,6 +19,7 @@ PyRoboFrames loads robot-learning datasets fast. The heavy lifting — dataset r
 - **Format conversion** — bring HDF5 (ROBOMIMIC/ACT), NetCDF, RLDS (Open X-Embodiment), MCAP, or ROS 2 bags into LeRobot format via `convert_*` / `RLDSDataset.from_tfds()`.
 - **Cloud and Hub** — `download_lerobot_dataset()` from the Hugging Face Hub; `RemoteDataset.from_s3()/from_gcs()`.
 - **Unified registry** — `load_dataset(path, format=...)` across supported formats; missing optional deps raise a clear `ImportError` with an install hint.
+- **Ingestion hardening** — bounded, deterministic Hypothesis property tests replay truncated/bit-flipped/random-header HDF5 and NetCDF fixtures through the real loaders on every test run; MP4 decode is exercised in a timeout-isolated subprocess when the optional `torch`/`torchcodec` stack is installed. Corrupt inputs raise `ValueError`/`OSError`, not backend internals or hangs.
 
 ## Who it's for / Use cases
 
@@ -37,7 +38,7 @@ PyRoboFrames loads robot-learning datasets fast. The heavy lifting — dataset r
 
 ## Project status
 
-Released and in use, version **2.6.1** (matching the latest PyPI release). 323 Python tests and 324 Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [ROADMAP_HONEST.md](ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
+Released and in use, version **2.6.1** (matching the latest PyPI release). 331 Python tests (including deterministic HDF5/NetCDF ingest property tests) and 324 Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [ROADMAP_HONEST.md](ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
 
 ## Optional torchcodec fallback
 
@@ -118,11 +119,16 @@ prf.convert_hdf5("/data/robomimic_task.hdf5", "/data/lerobot_out")
 
 **Blocked / failed:**
 - Linux/CUDA wheels; zero-copy CUDA; hvc1/AV1.
+- The native VideoToolbox/FFmpeg MP4 path is still not fuzzed; only the optional torchcodec fallback has a subprocess-isolated mutation smoke test.
 
 **Rejected / deferred:**
 - Remote streaming; cache-first is acceptable.
 
 Full shipped/blocked/rejected detail: [`QUEUE_STATUS.md`](QUEUE_STATUS.md).
+
+## Path sandboxing
+
+`RoboFrameDataset.from_path`, `convert_mcap`, `convert_ros2_bag`, `HDF5Dataset`/`convert_hdf5`, and `NetCDFDataset`/`convert_netcdf` accept `base_dir=` for an explicit containment root. They also accept an opt-in `secure=True` mode: relative paths resolve against the project root (`PYROBOFRAMES_PROJECT_ROOT`, or the current directory) and absolute paths outside it are rejected. `allow_outside_root=True` is the explicit escape hatch; an explicit `base_dir` always remains authoritative. The secure mode is opt-in because flipping the default would break existing callers that legitimately pass absolute paths outside the process working directory.
 
 ## Contributing
 

@@ -61,6 +61,11 @@ class NetCDFDataset:
         episode_breaks: Array of frame indices marking episode starts (0 is always included).
         base_dir: If given, restrict ``path`` to this directory (rejects ``..``/symlink
             escapes) — pass this whenever ``path`` comes from an untrusted source.
+        secure: If True (and no ``base_dir``), resolve relative paths against the project
+            root and reject paths outside it. Opt-in for backward compatibility; use this
+            whenever ``path`` is untrusted.
+        allow_outside_root: Escape hatch for ``secure=True`` that permits an absolute path
+            outside the default project root. Ignored when ``base_dir`` is given.
     """
 
     def __init__(
@@ -69,6 +74,9 @@ class NetCDFDataset:
         time_dim: str = "time",
         episode_breaks: Optional[np.ndarray] = None,
         base_dir: Optional[str] = None,
+        *,
+        secure: bool = False,
+        allow_outside_root: bool = False,
     ) -> None:
         try:
             import xarray  # noqa: F401
@@ -76,8 +84,15 @@ class NetCDFDataset:
             raise ImportError(
                 "xarray is required to read NetCDF files: pip install xarray netCDF4"
             ) from exc
-        if base_dir is not None:
-            path = str(validate_dataset_path(path, base_dir=Path(base_dir)))
+        if base_dir is not None or secure:
+            path = str(
+                validate_dataset_path(
+                    path,
+                    base_dir=Path(base_dir) if base_dir is not None else None,
+                    secure=secure,
+                    allow_outside_root=allow_outside_root,
+                )
+            )
         self.path = path
         self.time_dim = time_dim
         self.episode_breaks = episode_breaks
@@ -89,6 +104,9 @@ class NetCDFDataset:
         time_dim: str = "time",
         episode_breaks: Optional[np.ndarray] = None,
         base_dir: Optional[str] = None,
+        *,
+        secure: bool = False,
+        allow_outside_root: bool = False,
     ) -> "NetCDFDataset":
         """Open a NetCDF dataset.
 
@@ -98,7 +116,20 @@ class NetCDFDataset:
             episode_breaks: Frame indices where new episodes start.
             base_dir: If given, restrict ``path`` to this directory — pass this whenever
                 ``path`` comes from an untrusted source.
+            secure: If True (and no ``base_dir``), resolve relative paths against the
+                project root and reject paths outside it.
+            allow_outside_root: Escape hatch for ``secure=True`` that permits an absolute
+                path outside the default project root.
         """
+        if base_dir is not None or secure:
+            path = str(
+                validate_dataset_path(
+                    path,
+                    base_dir=Path(base_dir) if base_dir is not None else None,
+                    secure=secure,
+                    allow_outside_root=allow_outside_root,
+                )
+            )
         if not os.path.exists(path):
             raise FileNotFoundError(f"NetCDF file not found: {path!r}")
         import xarray as xr
@@ -114,7 +145,13 @@ class NetCDFDataset:
             raise ValueError(
                 f"Invalid or unreadable NetCDF file {path!r}: {exc}"
             ) from exc
-        return cls(path, time_dim=time_dim, episode_breaks=episode_breaks, base_dir=base_dir)
+        return cls(
+            path,
+            time_dim=time_dim,
+            episode_breaks=episode_breaks,
+            secure=secure,
+            allow_outside_root=allow_outside_root,
+        )
 
     def inspect(self) -> dict[str, Any]:
         """Return variable names, shapes, dtypes, and dimension info."""
@@ -186,12 +223,22 @@ def _write_lerobot_layout(
     time_dim: str,
     episode_breaks: Optional[np.ndarray],
     base_dir: Optional[str] = None,
+    *,
+    secure: bool = False,
+    allow_outside_root: bool = False,
 ) -> ConversionReport:
     """Convert a NetCDF file to LeRobot v3.0 Parquet layout."""
     import xarray as xr
 
-    if base_dir is not None:
-        nc_path = str(validate_dataset_path(nc_path, base_dir=Path(base_dir)))
+    if base_dir is not None or secure:
+        nc_path = str(
+            validate_dataset_path(
+                nc_path,
+                base_dir=Path(base_dir) if base_dir is not None else None,
+                secure=secure,
+                allow_outside_root=allow_outside_root,
+            )
+        )
 
     report = ConversionReport()
     ds = xr.open_dataset(nc_path)
@@ -242,6 +289,8 @@ def convert_netcdf(
     time_dim: str = "time",
     episode_breaks: Optional[np.ndarray] = None,
     base_dir: Optional[str] = None,
+    secure: bool = False,
+    allow_outside_root: bool = False,
 ) -> ConversionReport:
     """Convert a NetCDF robot dataset to LeRobot v3.0 Parquet layout.
 
@@ -253,8 +302,20 @@ def convert_netcdf(
             from a ``done``/``terminal`` variable or treated as a single episode.
         base_dir: If given, restrict ``path`` to this directory — pass this whenever
             ``path`` comes from an untrusted source.
+        secure: If True (and no ``base_dir``), resolve relative paths against the project
+            root and reject paths outside it.
+        allow_outside_root: Escape hatch for ``secure=True`` that permits an absolute path
+            outside the default project root.
 
     Returns:
         :class:`ConversionReport` summarising the conversion.
     """
-    return _write_lerobot_layout(path, out_dir, time_dim, episode_breaks, base_dir=base_dir)
+    return _write_lerobot_layout(
+        path,
+        out_dir,
+        time_dim,
+        episode_breaks,
+        base_dir=base_dir,
+        secure=secure,
+        allow_outside_root=allow_outside_root,
+    )

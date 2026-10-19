@@ -4,6 +4,34 @@ All notable changes to PyRoboFrames are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Bounded property/fuzz tests for HDF5/NetCDF ingest.** `tests/test_ingestion_fuzz.py`
+  starts from real minimal fixtures written by h5py/xarray and applies truncation, bit
+  flips, and random-header mutations. Hypothesis is deterministic (`derandomize=True`,
+  `max_examples=20`, no example database) so the default suite stays fast and reproducible.
+  Mutated inputs must fail with `ValueError`/`OSError` (not backend internals), and each
+  loader call has a wall-clock alarm so a hang fails instead of wedging CI. `hypothesis`,
+  `h5py`, `xarray`, and `netCDF4` were added to the `dev` extra so CI actually runs these.
+- **Subprocess-isolated MP4 mutation smoke test.** `tests/test_mp4_fuzz.py` mutates a tiny
+  real H.264 fixture and decodes it in a child process with a hard timeout when
+  `torch`/`torchcodec` (and `ffmpeg`, to generate the fixture) are available. Without that
+  optional stack the test is a documented skip, not a fabricated pass.
+
+### Security
+- **Opt-in `secure=True` project-root sandbox for path-taking entry points.**
+  `RoboFrameDataset.from_path`, `convert_mcap`, `convert_ros2_bag`,
+  `HDF5Dataset`/`HDF5Dataset.from_path`/`convert_hdf5`, and
+  `NetCDFDataset`/`NetCDFDataset.from_path`/`convert_netcdf` now accept `secure=True`
+  (relative paths resolve against `PYROBOFRAMES_PROJECT_ROOT` or the current directory;
+  absolute paths outside it are rejected) and `allow_outside_root=True` as the explicit
+  escape hatch. An explicit `base_dir` remains authoritative. `validate_dataset_path()`
+  now also resolves relative paths against `base_dir` instead of the process CWD.
+  **Trade-off:** the secure sandbox stays opt-in rather than becoming the default because
+  the existing test suite and real callers legitimately pass absolute paths under
+  `tempfile`/cache directories outside the working directory. Flipping the default would
+  break them; callers handling untrusted paths should pass `secure=True`/`base_dir`.
+  See `README.md` ("Path sandboxing") and `SECURITY.md`.
+
 ## [2.6.3] - 2026-10-18
 
 ### Security

@@ -19,7 +19,7 @@ security-audited and carries **no compliance certifications** (see below) — ev
 yourself before using it to handle sensitive data, and don't treat this document as a
 substitute for your own review. That said, "beta, no production use" no longer reflects
 reality: the core dataset-loading and video-decode path is real, tested Rust/PyO3 code
-(323 Python tests + 324 Rust unit/integration tests as of this revision — treat the CI
+(331 Python tests + 324 Rust unit/integration tests as of this revision — treat the CI
 badge in `README.md` as more authoritative than any number in this file, since these
 drift), the headline VideoToolbox hardware-decode path is a genuine in-process
 `VTDecompressionSession` integration (not a subprocess shell-out), and it has been used to
@@ -45,17 +45,24 @@ fuzz-testing gap below.
   actually found and driven fixes for real crashes — see `ROADMAP_HONEST.md`'s "Fixed in
   v2.5.0"/"Technical Debt" sections, including one (an upstream `mcap` 0.25.0 `usize`
   overflow panic) that's mitigated via `catch_unwind` in `mcap::convert()` but not fixed
-  upstream. **MP4, HDF5, and NetCDF parsing are not fuzzed at all** and still assume
-  trusted input. Don't point any of this at untrusted user uploads without your own
-  sandboxing, and treat the MP4/HDF5/NetCDF paths as the least-hardened of the group.
+  upstream. HDF5 and NetCDF now have bounded, deterministic Hypothesis property tests in
+  the default Python suite: real h5py/xarray fixtures are truncated, bit-flipped, and given
+  random headers, and the loaders must raise `ValueError`/`OSError` within a wall-clock
+  limit. MP4 has a subprocess-isolated mutation smoke test only when `torch`/`torchcodec`
+  (and `ffmpeg`, to build the fixture) are installed; otherwise it is a documented skip.
+  **The native VideoToolbox/FFmpeg MP4 decode path is still not fuzzed.** Don't point any
+  of this at untrusted user uploads without your own sandboxing.
 - **Path handling:** `pyroboframes.security.validate_dataset_path()` rejects `..`
   components and can restrict a path to a base directory. `RoboFrameDataset.from_path`,
   `convert_mcap`, `convert_ros2_bag`, `HDF5Dataset`/`HDF5Dataset.from_path`/`convert_hdf5`,
-  and `NetCDFDataset`/`NetCDFDataset.from_path`/`convert_netcdf` all now accept a
-  `base_dir` keyword that enforces this containment check on their behalf — pass it
-  whenever the path comes from an untrusted source. It remains opt-in (omitting
-  `base_dir` preserves today's unrestricted behavior) so existing callers aren't broken
-  by paths that legitimately live outside any sandbox.
+  and `NetCDFDataset`/`NetCDFDataset.from_path`/`convert_netcdf` accept a `base_dir`
+  keyword that enforces this containment check on their behalf. They also accept
+  `secure=True`: relative paths resolve against the project root
+  (`PYROBOFRAMES_PROJECT_ROOT`, else the current directory), and absolute paths outside it
+  are rejected unless `allow_outside_root=True` is passed. An explicit `base_dir` is always
+  authoritative. This remains opt-in (omitting both preserves today's unrestricted
+  behavior) because making it the default would break existing callers that legitimately
+  pass absolute paths outside the process working directory.
 - **Cloud storage credentials:** `RemoteDataset.from_s3()` / `.from_gcs()` pass through
   to `fsspec`'s credential resolution (cloud provider profile / IAM role / storage
   token). Prefer short-lived IAM-style roles over long-lived keys — see

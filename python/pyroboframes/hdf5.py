@@ -64,6 +64,11 @@ class HDF5Dataset:
         episode_key: Group name prefix for episodes (default: auto-detect).
         base_dir: If given, restrict ``path`` to this directory (rejects ``..``/symlink
             escapes) — pass this whenever ``path`` comes from an untrusted source.
+        secure: If True (and no ``base_dir``), resolve relative paths against the project
+            root and reject paths outside it. Opt-in for backward compatibility; use this
+            whenever ``path`` is untrusted.
+        allow_outside_root: Escape hatch for ``secure=True`` that permits an absolute path
+            outside the default project root. Ignored when ``base_dir`` is given.
     """
 
     def __init__(
@@ -71,6 +76,9 @@ class HDF5Dataset:
         path: str,
         episode_key: Optional[str] = None,
         base_dir: Optional[str] = None,
+        *,
+        secure: bool = False,
+        allow_outside_root: bool = False,
     ) -> None:
         try:
             import h5py  # noqa: F401
@@ -78,8 +86,15 @@ class HDF5Dataset:
             raise ImportError(
                 "h5py is required to read HDF5 files: pip install h5py"
             ) from exc
-        if base_dir is not None:
-            path = str(validate_dataset_path(path, base_dir=Path(base_dir)))
+        if base_dir is not None or secure:
+            path = str(
+                validate_dataset_path(
+                    path,
+                    base_dir=Path(base_dir) if base_dir is not None else None,
+                    secure=secure,
+                    allow_outside_root=allow_outside_root,
+                )
+            )
         self.path = path
         self._episode_key = episode_key
         self._episode_groups: Optional[list[str]] = None
@@ -90,6 +105,9 @@ class HDF5Dataset:
         path: str,
         episode_key: Optional[str] = None,
         base_dir: Optional[str] = None,
+        *,
+        secure: bool = False,
+        allow_outside_root: bool = False,
     ) -> "HDF5Dataset":
         """Open an HDF5 dataset.
 
@@ -98,7 +116,20 @@ class HDF5Dataset:
             episode_key: Group name prefix for episodes. Auto-detected if None.
             base_dir: If given, restrict ``path`` to this directory — pass this whenever
                 ``path`` comes from an untrusted source.
+            secure: If True (and no ``base_dir``), resolve relative paths against the
+                project root and reject paths outside it.
+            allow_outside_root: Escape hatch for ``secure=True`` that permits an absolute
+                path outside the default project root.
         """
+        if base_dir is not None or secure:
+            path = str(
+                validate_dataset_path(
+                    path,
+                    base_dir=Path(base_dir) if base_dir is not None else None,
+                    secure=secure,
+                    allow_outside_root=allow_outside_root,
+                )
+            )
         if not os.path.exists(path):
             raise FileNotFoundError(f"HDF5 file not found: {path!r}")
         import h5py
@@ -106,9 +137,14 @@ class HDF5Dataset:
         try:
             with h5py.File(path, "r"):
                 pass
-        except OSError as exc:
+        except Exception as exc:  # h5py backend errors vary by corruption type
             raise ValueError(f"Invalid or unreadable HDF5 file {path!r}: {exc}") from exc
-        return cls(path, episode_key=episode_key, base_dir=base_dir)
+        return cls(
+            path,
+            episode_key=episode_key,
+            secure=secure,
+            allow_outside_root=allow_outside_root,
+        )
 
     def inspect(self) -> dict[str, Any]:
         """Return a tree of groups, datasets, shapes, and dtypes."""
@@ -204,6 +240,9 @@ def _write_lerobot_layout(
     out_dir: str,
     episode_key: Optional[str],
     base_dir: Optional[str] = None,
+    *,
+    secure: bool = False,
+    allow_outside_root: bool = False,
 ) -> ConversionReport:
     """Convert an HDF5 file to LeRobot v3.0 Parquet layout."""
     import h5py
@@ -211,7 +250,14 @@ def _write_lerobot_layout(
     import pyarrow.parquet as pq
 
     report = ConversionReport()
-    ds = HDF5Dataset(hdf5_path, episode_key=episode_key, base_dir=base_dir)
+    ds = HDF5Dataset(
+        hdf5_path,
+        episode_key=episode_key,
+        base_dir=base_dir,
+        secure=secure,
+        allow_outside_root=allow_outside_root,
+    )
+    hdf5_path = ds.path
     os.makedirs(os.path.join(out_dir, "data", "chunk-000"), exist_ok=True)
     os.makedirs(os.path.join(out_dir, "meta", "episodes", "chunk-000"), exist_ok=True)
 
@@ -278,6 +324,8 @@ def convert_hdf5(
     obs_key: str = "obs",
     action_key: str = "actions",
     base_dir: Optional[str] = None,
+    secure: bool = False,
+    allow_outside_root: bool = False,
 ) -> ConversionReport:
     """Convert an HDF5 robot learning dataset to LeRobot v3.0 Parquet layout.
 
@@ -289,8 +337,19 @@ def convert_hdf5(
         action_key: Dataset name for actions within each episode (informational).
         base_dir: If given, restrict ``path`` to this directory — pass this whenever
             ``path`` comes from an untrusted source.
+        secure: If True (and no ``base_dir``), resolve relative paths against the project
+            root and reject paths outside it.
+        allow_outside_root: Escape hatch for ``secure=True`` that permits an absolute path
+            outside the default project root.
 
     Returns:
         :class:`ConversionReport` summarising what was converted.
     """
-    return _write_lerobot_layout(path, out_dir, episode_key, base_dir=base_dir)
+    return _write_lerobot_layout(
+        path,
+        out_dir,
+        episode_key,
+        base_dir=base_dir,
+        secure=secure,
+        allow_outside_root=allow_outside_root,
+    )

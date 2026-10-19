@@ -16,7 +16,7 @@ verified this" companion.
 - **LeRobot v3.0 dataset reading** — native Rust core (`crates/pyroboframes-core`).
   Episode indexing, temporal windowing, train/val split, per-feature stats, batch
   loading with worker threads. Extensively covered by `cargo test` (324 unit tests) and
-  `pytest` (`tests/test_loader.py`, `test_dataset_loaders.py`, etc. — 323 tests total).
+  `pytest` (`tests/test_loader.py`, `test_dataset_loaders.py`, etc. — 331 tests total).
 - **VideoToolbox hardware decode (macOS/Apple Silicon)** — a real, in-process
   `VTDecompressionSession`: MP4 demux + `CMSampleBuffer` construction in Rust, decoded
   frames come back as a real IOSurface-backed `CVPixelBuffer`. Not a shell-out to the
@@ -251,16 +251,20 @@ verified this" companion.
   a known, warned-but-non-blocking exception; a crash in any of the other 4 targets still
   fails the job. Before `8447c70`, a `set -e` bug meant this target's failure was silently
   masking the other 4 targets from ever running at all — that's fixed too.
-- **Fuzz testing covers MCAP/rosbag/Parquet/ROS2 CDR, not MP4/HDF5/NetCDF.**
-  `crates/pyroboframes-core/fuzz/` (added v2.5.0) has 5 targets against
-  adversarially malformed bytes: MCAP, rosbag, Parquet data-shard, Parquet
-  episodes, and ROS2 CDR decode (the MCAP target's own OOM crash above is exactly
-  the kind of bug this suite exists to catch — it caught one). The MP4/HDF5/NetCDF
-  parsers still assume trusted input and aren't fuzzed yet. Path
-  traversal is handled — `RoboFrameDataset.from_path`, `convert_mcap`,
-  `convert_ros2_bag`, `HDF5Dataset`/`convert_hdf5`, and `NetCDFDataset`/`convert_netcdf`
-  all accept an opt-in `base_dir` that enforces `pyroboframes.security.validate_dataset_path()`
-  containment — see `SECURITY.md`.
+- **Fuzz testing covers MCAP/rosbag/Parquet/ROS2 CDR plus bounded HDF5/NetCDF properties;
+  native MP4 decode is still unfuzzed.** `crates/pyroboframes-core/fuzz/` (added
+  v2.5.0) has 5 targets against adversarially malformed bytes: MCAP, rosbag, Parquet
+  data-shard, Parquet episodes, and ROS2 CDR decode (the MCAP target's own OOM crash
+  above is exactly the kind of bug this suite exists to catch — it caught one). The
+  Python suite now also mutates real HDF5/NetCDF fixtures (truncation, bit flips, random
+  headers) with a fixed seed and small case count, asserting clean `ValueError`/`OSError`
+  failures and enforcing a wall-clock timeout. MP4 gets a subprocess-isolated torchcodec
+  mutation test when the optional stack is installed (otherwise a documented skip); the
+  native VideoToolbox/FFmpeg path remains a gap. Path traversal is handled —
+  `RoboFrameDataset.from_path`, `convert_mcap`, `convert_ros2_bag`,
+  `HDF5Dataset`/`convert_hdf5`, and `NetCDFDataset`/`convert_netcdf` accept an opt-in
+  `base_dir` and `secure=True` project-root sandbox with an explicit
+  `allow_outside_root=True` escape hatch — see `SECURITY.md`.
 
 ## Fixed this release (v2.5.1)
 
