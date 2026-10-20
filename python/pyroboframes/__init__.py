@@ -104,6 +104,12 @@ from ._format_registry import (
     get_registry,
     load_dataset,
 )
+from .gr00t import (
+    Gr00tDatasetInfo,
+    Gr00tLeRobotV2Loader,
+    load_gr00t_dataset,
+    validate_gr00t_dataset,
+)
 
 
 # Public aliases for depth and calibration classes
@@ -213,6 +219,10 @@ __all__ = [
     "LeRobotLoader",
     "RLDSLoader",
     "HDF5Loader",
+    "Gr00tDatasetInfo",
+    "Gr00tLeRobotV2Loader",
+    "load_gr00t_dataset",
+    "validate_gr00t_dataset",
     "get_registry",
     "load_dataset",
 ]

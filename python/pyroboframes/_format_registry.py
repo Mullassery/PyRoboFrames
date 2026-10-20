@@ -3,6 +3,7 @@ Format registry and loader for multiple robot learning dataset formats.
 
 Supports:
 - LeRobot (HuggingFace JSONL format)
+- GR00T-compatible LeRobot v2.1 with ``meta/modality.json``
 - RLDS (TF Records, Open X-Embodiment)
 - HDF5 (hierarchical data)
 - Custom formats via plugin system
@@ -23,6 +24,7 @@ class DatasetFormat(Enum):
     """Supported dataset formats."""
 
     LEROBOT = "lerobot"
+    GROOT = "gr00t"
     RLDS = "rlds"
     HDF5 = "hdf5"
     NETCDF = "netcdf"
@@ -247,6 +249,8 @@ class FormatRegistry:
 
     def _register_builtin_formats(self):
         """Register built-in formats."""
+        from .gr00t import Gr00tLeRobotV2Loader
+
         self.register(
             DatasetFormat.LEROBOT,
             FormatSpec(
@@ -257,6 +261,19 @@ class FormatRegistry:
                 supports_streaming=True,
                 supports_random_access=False,
                 description="LeRobot JSONL/Parquet format from HuggingFace",
+            ),
+        )
+
+        self.register(
+            DatasetFormat.GROOT,
+            FormatSpec(
+                name="GR00T",
+                format_enum=DatasetFormat.GROOT,
+                file_extensions=[".jsonl", ".parquet"],
+                loader_class=Gr00tLeRobotV2Loader,
+                supports_streaming=False,
+                supports_random_access=True,
+                description="GR00T-compatible LeRobot v2.1 dataset with modality.json",
             ),
         )
 
@@ -333,6 +350,10 @@ class FormatRegistry:
                 if spec.name.lower() == format_hint.lower():
                     logger.info(f"Using {spec.name} loader (hint)")
                     return spec.loader_class(dataset_path)
+
+        if (path / "meta" / "modality.json").is_file():
+            logger.info("Auto-detected GR00T format from meta/modality.json")
+            return self.formats[DatasetFormat.GROOT].loader_class(str(path))
 
         # Auto-detect by file extension
         for fmt, spec in self.formats.items():

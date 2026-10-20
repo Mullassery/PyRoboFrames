@@ -109,6 +109,7 @@ prf.convert_hdf5("/data/robomimic_task.hdf5", "/data/lerobot_out")
 ## Documentation
 
 - [docs/](docs/) — architecture, camera calibration, depth cameras, multimodal fusion, and more
+- [docs/GR00T_WORKFLOW.md](docs/GR00T_WORKFLOW.md) — validate and load GR00T LeRobot v2.1 datasets
 - [.github/INSTALL.md](.github/INSTALL.md) — platform-specific install notes
 - [examples/](examples/) — full training-loop scripts (humanoid multimodal fusion, quadruped proprioception)
 - [ROADMAP_HONEST.md](ROADMAP_HONEST.md) — solid vs rough, open issues, measurements
