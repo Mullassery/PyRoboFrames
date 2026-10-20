@@ -95,5 +95,13 @@ pytest tests/test_gr00t.py
 pytest
 ```
 
+Validate a real dataset when one is available:
+
+```bash
+GR00T_DATASET=/data/gr00t/my_dataset pytest tests/test_gr00t_live.py
+```
+
+The live test skips unless `GR00T_DATASET` is set. It validates metadata, modality mappings, parquet files, and video files; it does not load GR00T or run inference.
+
 The portfolio-level workflow, licensing, and hardware notes are in
 `reports/NVIDIA_INTEGRATION_WORKFLOW.md`.
