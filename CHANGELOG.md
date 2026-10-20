@@ -5,6 +5,7 @@ All notable changes to PyRoboFrames are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Opt-in live GR00T dataset validation gated by `GR00T_DATASET`.
 - **Bounded property/fuzz tests for HDF5/NetCDF ingest.** `tests/test_ingestion_fuzz.py`
   starts from real minimal fixtures written by h5py/xarray and applies truncation, bit
   flips, and random-header mutations. Hypothesis is deterministic (`derandomize=True`,
