@@ -90,7 +90,7 @@ mlx = ["mlx>=0.29.4,<0.33"]
 dev = [
     "pytest>=9.0.3,<10",
     "numpy>=1.24",
-    "maturin==1.7",
+    "maturin==1.15.0",
     "pandas",
     "scipy",
     "scikit-learn",
