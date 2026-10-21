@@ -4,6 +4,8 @@ All notable changes to PyRoboFrames are documented in this file.
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-21
+
 ### Added
 - Opt-in live GR00T dataset validation gated by `GR00T_DATASET`.
 - **Bounded property/fuzz tests for HDF5/NetCDF ingest.** `tests/test_ingestion_fuzz.py`

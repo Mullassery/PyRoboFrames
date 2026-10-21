@@ -38,7 +38,7 @@ PyRoboFrames loads robot-learning datasets fast. The heavy lifting — dataset r
 
 ## Project status
 
-Released and in use, version **2.6.1** (matching the latest PyPI release). 331 Python tests (including deterministic HDF5/NetCDF ingest property tests) and 324 Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [ROADMAP_HONEST.md](ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
+Released and in use, version **2.7.0** (matching the latest PyPI release). 343 Python tests (including deterministic HDF5/NetCDF ingest property tests) and 324 Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [ROADMAP_HONEST.md](ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
 
 ## Optional torchcodec fallback
 
