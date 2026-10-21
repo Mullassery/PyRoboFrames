@@ -206,6 +206,11 @@ impl BulkheadPattern {
         self.current_concurrent < self.max_concurrent
     }
 
+    /// Configured queue capacity for requests that cannot acquire immediately.
+    pub fn queue_size(&self) -> usize {
+        self.queue_size
+    }
+
     pub fn acquire(&mut self) -> Result<(), String> {
         if self.current_concurrent < self.max_concurrent {
             self.current_concurrent += 1;
@@ -321,6 +326,7 @@ mod tests {
     fn test_bulkhead_pattern() {
         let mut bulkhead = BulkheadPattern::new(3, 10);
 
+        assert_eq!(bulkhead.queue_size(), 10);
         assert!(bulkhead.acquire().is_ok());
         assert!(bulkhead.acquire().is_ok());
         assert!(bulkhead.acquire().is_ok());

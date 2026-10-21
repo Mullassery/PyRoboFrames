@@ -102,6 +102,11 @@ impl CloudStreamer {
         }
     }
 
+    /// Local directory used for cached downloads.
+    pub fn cache_dir(&self) -> &std::path::Path {
+        &self.cache_dir
+    }
+
     pub fn start_download(&mut self, file_id: &str, size_bytes: u64) -> Result<(), String> {
         if self.active_downloads.len() >= self.config.parallel_downloads {
             return Err("Max concurrent downloads reached".to_string());
@@ -272,6 +277,7 @@ mod tests {
         let cache_dir = std::path::PathBuf::from("/tmp/cache");
         let streamer = CloudStreamer::new(config, cache_dir);
 
+        assert_eq!(streamer.cache_dir(), std::path::Path::new("/tmp/cache"));
         assert_eq!(streamer.stats.active_downloads, 0);
     }
 

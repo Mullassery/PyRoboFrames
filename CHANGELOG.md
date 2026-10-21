@@ -4,6 +4,13 @@ All notable changes to PyRoboFrames are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added Linux manylinux (x86_64/aarch64) and Windows x86_64 wheel builds to CI.
+
+### Fixed
+- Exposed bulkhead queue capacity and cloud-streamer cache directory accessors,
+  clearing the release-build dead-code warnings.
+
 ## [2.7.0] - 2026-10-21
 
 ### Added

@@ -153,3 +153,48 @@ jobs:
         # false, so pytest never actually ran and this step silently
         # reported success on zero real tests.
         run: if [ -d "tests" ]; then pytest tests/ -v --tb=short; else echo "No Python tests found"; fi
+
+  build-wheels:
+    name: Wheel (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            label: linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            label: linux-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x86_64
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build manylinux / Windows wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: auto
+          args: --release --out dist
+
+      - name: Smoke-test wheel
+        if: matrix.label != 'linux-aarch64'
+        shell: bash
+        run: |
+          python -m pip install --force-reinstall dist/*.whl
+          python -c "import pyroboframes; print(pyroboframes.__version__)"
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.label }}
+          path: dist/*.whl
+          if-no-files-found: error
