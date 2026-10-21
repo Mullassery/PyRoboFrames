@@ -183,9 +183,8 @@ impl FeedbackLoop {
                 TrendDirection::Stable
             };
 
-            let confidence = ((metric.samples_count as f64).log2() / 10.0)
-                .min(1.0)
-                .max(0.1);
+            let confidence =
+                ((metric.samples_count as f64).log2() / 10.0).clamp(0.1, 1.0);
 
             trends.push(PerformanceTrend {
                 metric_name: name.clone(),
@@ -223,9 +222,8 @@ impl FeedbackLoop {
                 TriggerPriority::Medium
             };
 
-            let estimated_improvement = (1.0 - (avg_error / (error_threshold + 0.01)))
-                .min(1.0)
-                .max(0.0);
+            let estimated_improvement =
+                (1.0 - (avg_error / (error_threshold + 0.01))).clamp(0.0, 1.0);
 
             let trigger = RetrainingTrigger {
                 model_id: model_id.to_string(),

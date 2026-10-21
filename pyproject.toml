@@ -71,7 +71,7 @@ Discussions = "https://github.com/Mullassery/PyRoboFrames/discussions"
 
 [project.optional-dependencies]
 torchcodec = ["torchcodec>=0.2"]
-mlx = ["mlx==0.20"]
+mlx = ["mlx>=0.29.4,<0.33"]
 # pandas is required (not just optional-import) by tests/test_storage.py's LeRobot
 # hub download path (`hub.py: _download_lerobot_partial` calls `Table.to_pandas()`).
 # scipy/scikit-learn power the optional GPU-acceleration and 3D occupancy morphology
@@ -88,7 +88,7 @@ mlx = ["mlx==0.20"]
 # outright (no working setuptools.build_meta) on 3.12+ — pip naturally resolves to
 # a newer numpy there instead.
 dev = [
-    "pytest==8",
+    "pytest>=9.0.3,<10",
     "numpy>=1.24",
     "maturin==1.7",
     "pandas",

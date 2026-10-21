@@ -9,11 +9,11 @@ pip install pyroboframes
 ## Requirements
 
 - Python 3.10+
-- **Prebuilt wheel:** macOS (Apple Silicon / arm64) only, currently.
-- **Everywhere else (Linux, Windows, Intel macOS):** builds from the source
-  distribution — needs a Rust toolchain and, for the default `ffmpeg` video-decode
-  build feature, `ffmpeg`/`ffprobe` on `PATH` at build time. Not platform-restricted in
-  principle, just not validated on Linux/Windows yet (see `ROADMAP_HONEST.md`).
+- **PyPI wheel:** macOS (Apple Silicon / arm64) only, currently.
+- **Linux x86_64/aarch64 and Windows x86_64:** CI builds and smoke-tests wheels as
+  artifacts, but they are not yet published to PyPI. Until then, install from the
+  source distribution — needs a Rust toolchain and, for the default `ffmpeg`
+  video-decode build feature, `ffmpeg`/`ffprobe` on `PATH` at build time.
 
 ## Installation
 

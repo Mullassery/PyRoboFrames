@@ -7,6 +7,12 @@ All notable changes to PyRoboFrames are documented in this file.
 ### Added
 - Added Linux manylinux (x86_64/aarch64) and Windows x86_64 wheel builds to CI.
 
+### Changed
+- Bumped `pytest` to >=9.0.3, `mlx` to >=0.29.4, and `lru` to 0.18 to clear
+  Dependabot advisories.
+- MLX transforms now return NumPy arrays, matching the Torch and NumPy backends.
+- Updated GitHub Actions to Node 24-compatible releases.
+
 ### Fixed
 - Exposed bulkhead queue capacity and cloud-streamer cache directory accessors,
   clearing the release-build dead-code warnings.

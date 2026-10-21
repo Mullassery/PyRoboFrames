@@ -29,7 +29,7 @@ PyRoboFrames loads robot-learning datasets fast. The heavy lifting — dataset r
 
 ## What it is not
 
-- **Prebuilt wheels are macOS (Apple Silicon) only.** Linux/Windows install from the source distribution and need a Rust toolchain (and, for the default build, `ffmpeg`/`ffprobe` on `PATH`).
+- **PyPI wheels are macOS (Apple Silicon) only.** CI builds and smoke-tests Linux x86_64/aarch64 and Windows x86_64 wheels as artifacts, but they are not yet published to PyPI. Other platforms install from the source distribution and need a Rust toolchain (and, for the default build, `ffmpeg`/`ffprobe` on `PATH`).
 - **Not a true remote-streaming loader.** Cloud readers download to a local cache first.
 - **Video decode does not cover everything.** HEVC is limited to `hev1`-tagged files (not `hvc1`), the native path has no full B-frame reorder buffer, and AV1 uses software `dav1d` via subprocess.
 - **CUDA decode downloads frames to host memory** — not yet a zero-copy CUDA buffer handoff.
@@ -64,7 +64,7 @@ VideoToolbox-first. Missing torchcodec raises `TorchCodecUnavailable`.
 pip install pyroboframes
 ```
 
-Installs a prebuilt wheel on **macOS arm64**. On other platforms install from source (Rust toolchain; `ffmpeg`/`ffprobe` on `PATH` for the default build):
+Installs a prebuilt PyPI wheel on **macOS arm64**; Linux/Windows wheels are CI artifacts today. On other platforms install from source (Rust toolchain; `ffmpeg`/`ffprobe` on `PATH` for the default build):
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh

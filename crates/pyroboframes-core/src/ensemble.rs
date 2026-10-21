@@ -252,7 +252,7 @@ impl EnsembleOrchestrator {
 
     pub fn set_model_weight(&mut self, model_id: &str, weight: f64) {
         if let Some(model) = self.models.get_mut(model_id) {
-            model.weight = weight.min(1.0).max(0.0);
+            model.weight = weight.clamp(0.0, 1.0);
         }
     }
 

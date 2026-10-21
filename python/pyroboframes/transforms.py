@@ -247,7 +247,7 @@ def _resize_mlx(x, out_h: int, out_w: int, interpolation: str):
     if interpolation == "nearest":
         ys = (mx.arange(out_h) * h) // out_h
         xs = (mx.arange(out_w) * w) // out_w
-        return mx.take(mx.take(x_mx, ys, axis=1), xs, axis=2)
+        return np.array(mx.take(mx.take(x_mx, ys, axis=1), xs, axis=2), dtype=x.dtype)
 
     x_f = x_mx.astype(mx.float32)
     src_y = (mx.arange(out_h, dtype=mx.float32) + 0.5) * (h / out_h) - 0.5
@@ -270,7 +270,10 @@ def _resize_mlx(x, out_h: int, out_w: int, interpolation: str):
 
     top = top_l * (1 - wx)[..., None] + top_r * wx[..., None]
     bot = bot_l * (1 - wx)[..., None] + bot_r * wx[..., None]
-    return (top * (1 - wy)[..., None] + bot * wy[..., None]).astype(mx.float32)
+    return np.array(
+        (top * (1 - wy)[..., None] + bot * wy[..., None]).astype(mx.float32),
+        dtype=np.float32,
+    )
 
 
 def _resize_torch(x, out_h: int, out_w: int, interpolation: str):
@@ -309,7 +312,7 @@ def _normalize_mlx(x, mean, std, scale: float):
     x_mx = x_mx / scale
     mean_mx = mx.array(mean, dtype=mx.float32)
     std_mx = mx.array(std, dtype=mx.float32)
-    return (x_mx - mean_mx) / std_mx
+    return np.array((x_mx - mean_mx) / std_mx, dtype=np.float32)
 
 
 def _normalize_torch(x, mean, std, scale: float):
