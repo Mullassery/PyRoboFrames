@@ -19,7 +19,9 @@ from ._core import (
     CameraIntrinsicsPy,
     Loader,
     PointCloudPy,
+    PrefetchLoader,
     RoboFrameDataset,
+    ValidationReport,
     convert_mcap,
     convert_ros2_bag,
 )
@@ -122,6 +124,8 @@ __all__ = [
     "engine_version",
     "RoboFrameDataset",
     "Loader",
+    "PrefetchLoader",
+    "ValidationReport",
     "PointCloud",
     "CameraIntrinsics",
     "CameraCalibration",
