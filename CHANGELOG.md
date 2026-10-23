@@ -17,6 +17,11 @@ All notable changes to PyRoboFrames are documented in this file.
 - Exposed bulkhead queue capacity and cloud-streamer cache directory accessors,
   clearing the release-build dead-code warnings.
 
+## [2.7.1] - 2026-10-23
+
+### Added
+- Exported `PrefetchLoader` and `ValidationReport` from the public API.
+
 ## [2.7.0] - 2026-10-21
 
 ### Added
