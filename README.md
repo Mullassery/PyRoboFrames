@@ -1,11 +1,74 @@
 # PyRoboFrames
 
-High-performance Rust-backed dataloader for robot learning datasets — native LeRobot v3.0 support, in-process hardware video decode, format conversion from HDF5/NetCDF/RLDS/MCAP/ROS 2, and NumPy / PyTorch / JAX / MLX output.
+**The fast path from robot recordings to training batches.** A Rust-backed dataloader for LeRobot v3.0 and friends — in-process video decode, zero-copy arrays, and one API for NumPy, PyTorch, JAX, and MLX.
 
 [![CI](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml/badge.svg)](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![NVIDIA](https://img.shields.io/badge/NVIDIA-CUDA%20path%20experimental-76B900?logo=nvidia&logoColor=white)](#nvidia-ecosystem)
+
+> **Why it exists:** robot-learning training loops stall on data loading, not model compute. PyRoboFrames moves dataset reading, temporal windowing, and camera decode into Rust, so a Python training loop gets aligned state/action/video batches without an `ffmpeg` subprocess per frame.
+
+## Quickstart
+
+```bash
+pip install pyroboframes
+```
+
+```python
+import pyroboframes as prf
+
+ds = prf.RoboFrameDataset.from_path("/path/to/lerobot_dataset")
+print(ds.num_frames, ds.num_episodes, ds.fps, ds.cameras)
+
+loader = ds.loader(
+    batch_size=32,
+    shuffle=True,
+    cameras=["observation.images.top"],
+    output="numpy",  # or "torch" / "mlx" / "jax"
+)
+for batch in loader:
+    batch["observation.state"]        # [32, state_dim] float32
+    batch["action"]                   # [32, action_dim] float32
+    batch["observation.images.top"]   # [32, H, W, 3] uint8
+```
+
+No dataset handy? Pull one from the Hub:
+
+```python
+ds = prf.RoboFrameDataset.from_path(
+    prf.download_lerobot_dataset("lerobot/aloha_mobile_cabinet")
+)
+```
+
+## NVIDIA ecosystem
+
+PyRoboFrames is **NVIDIA-optional by design**: the default install needs no CUDA, no GPU, and no NVIDIA driver. The GPU seams that exist today are real code, but they are not the default path.
+
+| Component | Status | What it actually does |
+|---|---|---|
+| CuPy / CV-CUDA transforms | **Experimental**, optional | GPU-accelerated image transforms with CPU fallbacks (`gpu_acceleration.py`, `cvcuda_transforms.py`). |
+| NVDEC / CUDA video decode | **Experimental**, hardware-unverified | Feature-gated Rust decode path. The code documents that functional verification is deferred to NVIDIA hardware; no zero-copy CUDA buffer handoff yet. |
+| Linux CUDA wheels | **Not published** | CI builds Linux/Windows wheels as artifacts; PyPI currently serves macOS arm64. |
+| SANA-WM synthetic dataset ingestion | **Not integrated** | No SANA-WM loader, generator, or generated-video ingestion ships. Generated frames would need provenance before being treated as sensor data. |
+
+**The honest headline:** the best-tested hardware path today is Apple VideoToolbox on macOS arm64. NVIDIA users can install from source and opt into CUDA features, but should treat those paths as experimental until hardware verification lands.
+
+## At a glance
+
+| Area | Status |
+|---|---|
+| LeRobot v3.0 reader + batched loader | **Stable** |
+| VideoToolbox in-process decode (macOS arm64) | **Stable** |
+| HDF5 / NetCDF / RLDS / MCAP / ROS 2 conversion | **Stable**, optional deps |
+| NumPy / PyTorch / JAX / MLX output | **Stable** |
+| `numpy_zerocopy` per-frame output | **Stable** |
+| torchcodec fallback decode | **Optional**, Linux/CI path |
+| CUDA transforms / NVDEC decode | **Experimental**, optional |
+| Zero-copy CUDA handoff | **Not implemented** |
+| SANA-WM generation or ingestion | **Not shipped** |
+| Linux / Windows PyPI wheels | **CI artifacts only** |
 
 ## What it is
 
@@ -27,19 +90,6 @@ PyRoboFrames loads robot-learning datasets fast. The heavy lifting — dataset r
 - **Normalizing mixed recordings** — convert HDF5/NetCDF/RLDS/MCAP/ROS 2 into one LeRobot format so downstream code only knows one reader.
 - **Apple Silicon training where camera decode is the bottleneck** — the in-process VideoToolbox path avoids the subprocess-copy cost of per-frame `ffmpeg`.
 
-## What it is not
-
-- **PyPI wheels are macOS (Apple Silicon) only.** CI builds and smoke-tests Linux x86_64/aarch64 and Windows x86_64 wheels as artifacts, but they are not yet published to PyPI. Other platforms install from the source distribution and need a Rust toolchain (and, for the default build, `ffmpeg`/`ffprobe` on `PATH`).
-- **Not a true remote-streaming loader.** Cloud readers download to a local cache first.
-- **Video decode does not cover everything.** HEVC is limited to `hev1`-tagged files (not `hvc1`), the native path has no full B-frame reorder buffer, and AV1 uses software `dav1d` via subprocess.
-- **CUDA decode downloads frames to host memory** — not yet a zero-copy CUDA buffer handoff.
-- **`convert_mcap` has an open upstream crash** in `mcap` 0.25.0 on malformed input; it is isolated behind `catch_unwind` so callers get a clean error, but the fuzz smoke test cannot pass until upstream fixes it.
-- **Not a general-purpose video toolkit** — scope is robot-learning episodic data.
-
-## Project status
-
-Released and in use, version **2.7.0** (matching the latest PyPI release). 343 Python tests (including deterministic HDF5/NetCDF ingest property tests) and 324 Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [ROADMAP_HONEST.md](ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
-
 ## Optional torchcodec fallback
 
 On Linux/CI, decode an RGB frame range with PyTorch's torchcodec:
@@ -55,8 +105,7 @@ frames = decode_video_frames("episode.mp4", start_seconds=1.0, end_seconds=2.0)
 # (N, H, W, 3) uint8
 ```
 
-This is a standalone helper; the native dataset pipeline remains
-VideoToolbox-first. Missing torchcodec raises `TorchCodecUnavailable`.
+This is a standalone helper; the native dataset pipeline remains VideoToolbox-first. Missing torchcodec raises `TorchCodecUnavailable`.
 
 ## Installation
 
@@ -73,29 +122,6 @@ pip install pyroboframes
 
 Optional extras/dependencies, depending on format and backend: `pyroboframes[mlx]`, `h5py` (HDF5), `xarray netCDF4` (NetCDF), `tensorflow_datasets` (RLDS), `fsspec s3fs gcsfs` (cloud), `torch`/`jax` (array backends), `scipy scikit-learn` (GPU transforms and 3D occupancy morphology).
 
-## Quick start
-
-```python
-import pyroboframes as prf
-
-# Open a local LeRobot v3.0 dataset (directory holding meta/, data/, videos/)
-ds = prf.RoboFrameDataset.from_path("/path/to/lerobot_dataset")
-print(ds.num_frames, ds.num_episodes, ds.fps, ds.cameras)
-
-# Or pull one from the Hugging Face Hub first
-ds = prf.RoboFrameDataset.from_path(prf.download_lerobot_dataset("lerobot/aloha_mobile_cabinet"))
-
-loader = ds.loader(
-    batch_size=32, shuffle=True,
-    cameras=["observation.images.top"],  # decodes video on the fly
-    output="numpy",                      # or "torch" / "mlx" / "jax"
-)
-for batch in loader:
-    batch["observation.state"]           # [32, state_dim] float32
-    batch["action"]                      # [32, action_dim] float32
-    batch["observation.images.top"]      # [32, H, W, 3] uint8
-```
-
 ## Usage
 
 ```python
@@ -105,6 +131,39 @@ loader = ds.loader(batch_size=32, cameras=["observation.images.top"], output="nu
 # Convert a foreign recording into LeRobot format
 prf.convert_hdf5("/data/robomimic_task.hdf5", "/data/lerobot_out")
 ```
+
+## What it is not
+
+- **PyPI wheels are macOS (Apple Silicon) only.** CI builds and smoke-tests Linux x86_64/aarch64 and Windows x86_64 wheels as artifacts, but they are not yet published to PyPI. Other platforms install from the source distribution and need a Rust toolchain (and, for the default build, `ffmpeg`/`ffprobe` on `PATH`).
+- **Not a true remote-streaming loader.** Cloud readers download to a local cache first.
+- **Video decode does not cover everything.** HEVC is limited to `hev1`-tagged files (not `hvc1`), the native path has no full B-frame reorder buffer, and AV1 uses software `dav1d` via subprocess.
+- **CUDA decode downloads frames to host memory** — not yet a zero-copy CUDA buffer handoff.
+- **`convert_mcap` has an open upstream crash** in `mcap` 0.25.0 on malformed input; it is isolated behind `catch_unwind` so callers get a clean error, but the fuzz smoke test cannot pass until upstream fixes it.
+- **Not a general-purpose video toolkit** — scope is robot-learning episodic data.
+
+## Project status
+
+Released and in use, version **2.7.1**. 300+ Python tests (including deterministic HDF5/NetCDF ingest property tests) and 300+ Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [ROADMAP_HONEST.md](ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
+
+## For AI agents
+
+Canonical facts for automated tooling and coding agents:
+
+| Fact | Value |
+|---|---|
+| Package | `pyroboframes` |
+| Python | `>=3.10` |
+| Core | Rust/PyO3 extension `pyroboframes._core` |
+| Main entry points | `RoboFrameDataset.from_path()`, `.loader()`, `load_dataset()`, `convert_hdf5()`, `convert_mcap()` |
+| Source layout | `crates/` (Rust), `python/pyroboframes/` (Python surface) |
+| Python tests | `pip install -e ".[dev]"` then `pytest tests/ -v` |
+| Rust tests | `cargo test --release --features ffmpeg` |
+| Lint / format | `ruff check .`, `ruff format --check .`, `cargo clippy --release -p pyroboframes-core -- -D warnings` |
+| GPU needed? | **No** for core, tests, or default install |
+| Optional deps | Lazily imported; missing extras raise `ImportError` with an install hint |
+| Generated data | Not produced. SANA-WM ingestion is not integrated. |
+
+Agent-friendly docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CROSS_PROJECT_INTEGRATION.md](docs/CROSS_PROJECT_INTEGRATION.md), [ROADMAP_HONEST.md](ROADMAP_HONEST.md).
 
 ## Documentation
 
