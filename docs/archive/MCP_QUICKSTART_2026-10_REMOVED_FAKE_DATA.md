@@ -6,11 +6,11 @@
 > dependency that isn't installed by `pip install pyroboframes`, so `start_mcp_connector()`
 > failed immediately for any real user even before reaching the fake logic. `DatasetMetadata`
 > was nonetheless exported from the public API (`pyroboframes.__init__`) with zero test
-> coverage and zero prior disclosure in `ROADMAP_HONEST.md`. Deleted
+> coverage and zero prior disclosure in `../internal/ROADMAP_HONEST.md`. Deleted
 > (`python/pyroboframes/_mcp_connector.py`, `_mcp_tools.py`) rather than kept as a disclosed
 > stub, per this project's own precedent of removing exactly this class of fake-MCP-demo code
 > (see the v2.4.0 entry above: ~700 lines of near-identical dead fake-data MCP scripts already
-> removed once). See `TECHNICAL_DEBT.md` for the full writeup.
+> removed once). See `../internal/TECHNICAL_DEBT.md` for the full writeup.
 
 # PyRoboFrames MCP 2.0 Quick Start (ARCHIVED — REMOVED, DO NOT USE)
 

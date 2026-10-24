@@ -4,7 +4,7 @@
 > this file) see [`archive/IMPLEMENTATION_PLAN_v0.1.md`](./archive/IMPLEMENTATION_PLAN_v0.1.md);
 > for the competitive analysis see [`COMPARISON.md`](./COMPARISON.md). For the current,
 > verified-against-code status of everything below (not just what's aspirational), see
-> [`../ROADMAP_HONEST.md`](../ROADMAP_HONEST.md) — that file, not this one, is authoritative
+> [`../ROADMAP_HONEST.md`](internal/ROADMAP_HONEST.md) — that file, not this one, is authoritative
 > on what actually works today.
 
 ## North star: one script, six targets

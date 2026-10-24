@@ -91,7 +91,7 @@ All notable changes to PyRoboFrames are documented in this file.
   missing fraction. New `tests/test_masking.py` (10 tests) exercises coverage, every
   interpolation method, zero-fill defaults/selection, in-place vs. copy, and the health
   monitor. (The same nonexistent-API pattern still exists in `filtering.py`; that is a
-  separate, still-open item — see `ROADMAP_HONEST.md`.)
+  separate, still-open item — see `docs/internal/ROADMAP_HONEST.md`.)
 
 ## [2.6.0] — 2026-10-05
 
@@ -106,7 +106,7 @@ All notable changes to PyRoboFrames are documented in this file.
   pyroboframes`, so it failed immediately for any real user regardless. Zero test coverage,
   zero prior disclosure. Removed rather than kept as a disclosed stub, matching this
   project's own v2.4.0 precedent of removing ~700 lines of near-identical fake-MCP-demo
-  code. See `TECHNICAL_DEBT.md` TD-0001. `docs/MCP_QUICKSTART.md` archived with a disclosure
+  code. See `docs/internal/TECHNICAL_DEBT.md` TD-0001. `docs/MCP_QUICKSTART.md` archived with a disclosure
   note at `docs/archive/MCP_QUICKSTART_2026-10_REMOVED_FAKE_DATA.md`.
 
 ### Fixed
@@ -131,7 +131,7 @@ All notable changes to PyRoboFrames are documented in this file.
   which rejects it because the native VideoToolbox decoder wraps an FFI `VTDecompressionSession`
   handle of unverified thread-safety. Attempted, fully diagnosed (32 mechanical API renames
   confirmed working), deliberately reverted rather than forcing an unverified `unsafe impl
-  Sync`. See `TECHNICAL_DEBT.md` TD-0002.
+  Sync`. See `docs/internal/TECHNICAL_DEBT.md` TD-0002.
 
 ### Added
 - **`output="numpy_zerocopy"` loader mode: true zero-copy per-frame array handoff,
@@ -146,7 +146,7 @@ All notable changes to PyRoboFrames are documented in this file.
   one shared buffer. Since NumPy arrays implement `__dlpack__`, any
   `torch.from_dlpack`/`jax.dlpack.from_dlpack` consumer is zero-copy too. Not available
   with `num_workers>0` (separate prefetch-pipeline architecture) — fails clearly at
-  construction time if combined. See `ROADMAP_HONEST.md`.
+  construction time if combined. See `docs/internal/ROADMAP_HONEST.md`.
 - **Real AV1 video decode support.** Every current real-world LeRobot v3.0 dataset on the
   Hub ships AV1-encoded video by default (`lerobot/pusht`, `lerobot/xarm_lift_medium`,
   `lerobot/aloha_sim_insertion_human` — all three `av01`), which this decoder could not
@@ -169,7 +169,7 @@ All notable changes to PyRoboFrames are documented in this file.
   job) — the prior audit pass couldn't verify this sandbox had crates.io advisory-database
   access; it does. Found 2 real vulnerabilities (`RUSTSEC-2025-0020`, `RUSTSEC-2026-0177`,
   both `pyo3` 0.22.x, fixed upstream in a major-version bump not done here) and 3
-  unmaintained/unsound warnings (`paste`, `lru`) — see `ROADMAP_HONEST.md`. Non-blocking
+  unmaintained/unsound warnings (`paste`, `lru`) — see `docs/internal/ROADMAP_HONEST.md`. Non-blocking
   (`|| true`) until the `pyo3` migration lands, so it reports without failing CI today.
 
 ### Fixed
@@ -177,7 +177,7 @@ All notable changes to PyRoboFrames are documented in this file.
   `VideoToolboxDecoder` path.** Previously the trait's default (independent per-timestamp
   seeks) was never overridden by any backend despite a doc comment claiming otherwise,
   measured at ~14x slower than `lerobot`'s own dataloader on a real benchmark (see
-  `ROADMAP_HONEST.md`). `NativeVideoToolboxFile::decode_batch_at` now processes requests in
+  `docs/internal/ROADMAP_HONEST.md`). `NativeVideoToolboxFile::decode_batch_at` now processes requests in
   ascending decode-order and resumes decoding from the last-decoded sample instead of
   re-walking back to a keyframe per request. Verified against a real 20-frame, 2-GOP H.264
   test clip: pixel-identical to per-frame `decode_at` (including out-of-order/duplicate
@@ -241,7 +241,7 @@ All notable changes to PyRoboFrames are documented in this file.
   `Err` instead of a process abort (verified directly against the exact crash input).
   `cargo-fuzz`'s own smoke test for this one target will keep failing regardless, since
   `libfuzzer-sys` calls `process::abort()` on any panic before `catch_unwind` can run —
-  see `ROADMAP_HONEST.md` and the CI fix below for why that's expected, not a regression.
+  see `docs/internal/ROADMAP_HONEST.md` and the CI fix below for why that's expected, not a regression.
 - **CI's fuzz smoke-test job was silently skipping 4 of its 5 targets.** `set -e` meant
   the loop aborted on `mcap_convert`'s first (already-documented, unfixable-from-here)
   failure above, so `rosbag_convert`/`data_shard_parquet`/`episodes_parquet`/
@@ -279,7 +279,7 @@ All notable changes to PyRoboFrames are documented in this file.
   rosbag, Parquet data-shard, Parquet episodes, and ROS2 CDR decode. A new CI
   job builds and smoke-tests each target on every push.
 - **HEVC decode in the native VideoToolbox path** (`hev1`-tagged files — see
-  `ROADMAP_HONEST.md` for the `hvc1` scope limit). The `mp4` crate (0.14.0, its newest
+  `docs/internal/ROADMAP_HONEST.md` for the `hvc1` scope limit). The `mp4` crate (0.14.0, its newest
   published version) parses H.264's `avcC` box fully but its `HvcCBox` only reads
   `configurationVersion` and discards the rest, so
   `crates/pyroboframes-core/src/videotoolbox_native.rs::hevc_hvcc` is a from-scratch
@@ -297,13 +297,13 @@ All notable changes to PyRoboFrames are documented in this file.
   and updated both the non-windowed (`[batch, H, W, 3]`) and windowed
   (`[batch, steps, H, W, 3]`) assembly paths in `crates/pyroboframes-py/src/lib.rs` to use
   it. This does not make batching fully zero-copy (numpy still needs one contiguous
-  array, decoded frames still each live in their own buffer) — see `ROADMAP_HONEST.md`.
+  array, decoded frames still each live in their own buffer) — see `docs/internal/ROADMAP_HONEST.md`.
 
 ### Changed
 - **`dev` extra's `numpy<1.27`/`pandas<2.2`/`scipy<1.13`/`scikit-learn<1.5` caps
   removed.** These existed to keep the `dev` extra compatible with an assumed
   `numpy==1.24` hard pin — but that pin was already relaxed to a floor
-  (`numpy>=1.24`, no ceiling) in `2804b06`, and `ROADMAP_HONEST.md`/`SECURITY.md`
+  (`numpy>=1.24`, no ceiling) in `2804b06`, and `docs/internal/ROADMAP_HONEST.md`/`SECURITY.md`
   documented the caps as a live gap without anyone re-verifying whether they were
   still needed. They weren't: verified numpy 2.4.6 + pyarrow 25.0.1 + scipy 1.17.1 +
   scikit-learn 1.9.0 + pandas 3.0.5 together — full test suite green (302 passed, 0

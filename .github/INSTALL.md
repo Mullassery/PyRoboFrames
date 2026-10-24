@@ -80,5 +80,5 @@ pip install pyroboframes[mlx]              # MLX array output (Apple Silicon)
 After installation:
 1. See [README.md](../README.md) for a real quick-start example
 2. Check [examples/](../examples/) for full training-loop scripts
-3. Read [ROADMAP_HONEST.md](../ROADMAP_HONEST.md) for what's solid vs. still rough
+3. Read [../docs/internal/ROADMAP_HONEST.md](../docs/internal/ROADMAP_HONEST.md) for what's solid vs. still rough
 4. Read [docs/](../docs/) for deeper architecture notes

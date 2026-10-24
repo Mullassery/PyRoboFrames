@@ -143,7 +143,7 @@ prf.convert_hdf5("/data/robomimic_task.hdf5", "/data/lerobot_out")
 
 ## Project status
 
-Released and in use, version **2.7.1**. 300+ Python tests (including deterministic HDF5/NetCDF ingest property tests) and 300+ Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [ROADMAP_HONEST.md](ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
+Released and in use, version **2.7.1**. 300+ Python tests (including deterministic HDF5/NetCDF ingest property tests) and 300+ Rust unit+integration tests at this revision. Two shipped incidents are disclosed rather than hidden: the v2.5.0 PyPI wheel was broken (no compiled extension; fixed in v2.5.1), and VideoToolbox hardware decode was dead code in every wheel before v2.5.0 (the Cargo feature was missing from the maturin features list; fixed in v2.5.0). `scripts/release.sh` now guards against the former. See [docs/internal/ROADMAP_HONEST.md](docs/internal/ROADMAP_HONEST.md) for the solid-vs-rough breakdown.
 
 ## For AI agents
 
@@ -163,7 +163,7 @@ Canonical facts for automated tooling and coding agents:
 | Optional deps | Lazily imported; missing extras raise `ImportError` with an install hint |
 | Generated data | Not produced. SANA-WM ingestion is not integrated. |
 
-Agent-friendly docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CROSS_PROJECT_INTEGRATION.md](docs/CROSS_PROJECT_INTEGRATION.md), [ROADMAP_HONEST.md](ROADMAP_HONEST.md).
+Agent-friendly docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CROSS_PROJECT_INTEGRATION.md](docs/CROSS_PROJECT_INTEGRATION.md), [docs/internal/ROADMAP_HONEST.md](docs/internal/ROADMAP_HONEST.md).
 
 ## Documentation
 
@@ -171,7 +171,7 @@ Agent-friendly docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CROSS_P
 - [docs/GR00T_WORKFLOW.md](docs/GR00T_WORKFLOW.md) — validate and load GR00T LeRobot v2.1 datasets
 - [.github/INSTALL.md](.github/INSTALL.md) — platform-specific install notes
 - [examples/](examples/) — full training-loop scripts (humanoid multimodal fusion, quadruped proprioception)
-- [ROADMAP_HONEST.md](ROADMAP_HONEST.md) — solid vs rough, open issues, measurements
+- [docs/internal/ROADMAP_HONEST.md](docs/internal/ROADMAP_HONEST.md) — solid vs rough, open issues, measurements
 - [SECURITY.md](SECURITY.md) — security/compliance posture
 - [CHANGELOG.md](CHANGELOG.md) — notable changes
 
@@ -184,7 +184,7 @@ Agent-friendly docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CROSS_P
 **Rejected / deferred:**
 - Remote streaming; cache-first is acceptable.
 
-Full shipped/blocked/rejected detail: [`QUEUE_STATUS.md`](QUEUE_STATUS.md).
+Full shipped/blocked/rejected detail: [`docs/internal/QUEUE_STATUS.md`](docs/internal/QUEUE_STATUS.md).
 
 ## Path sandboxing
 

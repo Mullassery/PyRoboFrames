@@ -82,7 +82,7 @@ Comprehensive audit of gaps vs. robot-learning requirements and competing tools 
 - **Status:** NOT FUNCTIONAL (filtering.py) — `EpisodeFilter(df)` raises `AttributeError`
   because it calls a nonexistent episode API (`df.num_episodes`,
   `df.slice(episode_index=...)`, `to_pyarrow()`) on the topic-based `RoboticsDataFrame`.
-  Needs a redesign (see `ROADMAP_HONEST.md`).
+  Needs a redesign (see `internal/ROADMAP_HONEST.md`).
 - **Intended API:** `EpisodeFilter(df).where(task="pick", success=True)`
 - **Intended features:** SQL-like WHERE clauses, range queries
 

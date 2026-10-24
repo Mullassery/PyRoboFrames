@@ -37,12 +37,12 @@ fuzz-testing gap below.
 - VideoToolbox (macOS), FFmpeg (cross-platform), and NVDEC (Linux/CUDA) video decode
   backends.
 - S3/GCS dataset access via `fsspec`/`s3fs`/`gcsfs` — downloads to a local cache directory
-  and reads from there; **not** a true zero-copy remote stream (see `ROADMAP_HONEST.md`).
+  and reads from there; **not** a true zero-copy remote stream (see `docs/internal/ROADMAP_HONEST.md`).
 
 ### Known gaps (be aware of these)
 - **Input trust boundary — partial fuzz coverage, not full.** `crates/pyroboframes-core/fuzz/`
   (5 targets: MCAP, rosbag, Parquet data-shard, Parquet episodes, ROS2 CDR decode) has
-  actually found and driven fixes for real crashes — see `ROADMAP_HONEST.md`'s "Fixed in
+  actually found and driven fixes for real crashes — see `docs/internal/ROADMAP_HONEST.md`'s "Fixed in
   v2.5.0"/"Technical Debt" sections, including one (an upstream `mcap` 0.25.0 `usize`
   overflow panic) that's mitigated via `catch_unwind` in `mcap::convert()` but not fixed
   upstream. HDF5 and NetCDF now have bounded, deterministic Hypothesis property tests in
@@ -93,7 +93,7 @@ see "Known gaps" above for why the earlier exact pins were relaxed. There is cur
 `cargo audit` (or equivalent) job in CI checking Rust dependencies for known
 vulnerabilities — this is a real, unverified gap (this project's sandbox environments
 have no network access to crates.io's advisory database to run one), tracked in
-`ROADMAP_HONEST.md`'s Technical Debt section rather than claimed as done here.
+`docs/internal/ROADMAP_HONEST.md`'s Technical Debt section rather than claimed as done here.
 
 ## Compliance & Certifications
 
