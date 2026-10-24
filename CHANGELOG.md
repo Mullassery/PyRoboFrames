@@ -5,6 +5,9 @@ All notable changes to PyRoboFrames are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Release workflow builds Linux, macOS, and Windows wheels plus an sdist and
+  attaches them to the GitHub release.
+
 - Added Linux manylinux (x86_64/aarch64) and Windows x86_64 wheel builds to CI.
 
 ### Changed

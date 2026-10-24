@@ -68,7 +68,7 @@ PyRoboFrames is **NVIDIA-optional by design**: the default install needs no CUDA
 | CUDA transforms / NVDEC decode | **Experimental**, optional |
 | Zero-copy CUDA handoff | **Not implemented** |
 | SANA-WM generation or ingestion | **Not shipped** |
-| Linux / Windows PyPI wheels | **CI artifacts only** |
+| Linux / Windows PyPI wheels | **Built by the release workflow; not on PyPI yet** |
 
 ## What it is
 

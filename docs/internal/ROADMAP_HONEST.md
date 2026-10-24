@@ -229,10 +229,11 @@ verified this" companion.
   with an explanatory error instead of a confusing downstream one.
 - **HEVC decode for `hvc1`-tagged files** in the native VideoToolbox path (see the scope
   limits under VideoToolbox above — `hev1`-tagged HEVC works).
-- **Only macOS (Apple Silicon) wheels published to PyPI.** No Linux or Windows wheel has
-  been published; Linux/Windows users build from the source distribution (requires a
-  Rust toolchain + `ffmpeg` at build time). Linux `aarch64` and Windows haven't been
-  validated at all.
+- **Only macOS (Apple Silicon) wheels are published to PyPI.** A new
+  `.github/workflows/release.yml` builds Linux x86_64/aarch64, macOS arm64/x86_64,
+  and Windows x86_64 wheels plus an sdist on tags and attaches them to the
+  GitHub release, but PyPI publishing is still macOS-only until a tagged release
+  is run and the artifacts are verified.
 - **`mcap_convert`'s fuzz smoke test still cannot pass** (updated 2026-09-19, superseding
   the "CI is red" note below from 2026-09-11) — but the underlying risk to real callers is
   now mitigated, not open. Timeline: the original OOM abort (unbounded allocation in `mcap`
