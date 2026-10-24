@@ -100,15 +100,14 @@ verified this" companion.
 
 ## 🔴 Known gaps / not done
 
-- **`filtering.py` (`EpisodeFilter`/`EpisodeFilterBuilder`) is still written against the
-  same nonexistent episode API that `masking.py` used to be** — `dataframe.num_episodes`,
-  `dataframe.slice(episode_index=...)`, `episode_slice.to_pyarrow()`. The real
-  `RoboticsDataFrame` is topic-based (`topics`, `slice(start, end)`, per-topic
-  `TopicFrame`s), so constructing an `EpisodeFilter` raises `AttributeError` on
-  `num_episodes` immediately. This was *not* fixed in the 2026-10-11 masking pass; it needs
-  its own redesign (either an episode-indexed dataset type to filter over, or a topic-aware
-  filter). `EpisodeFilter`/`EpisodeFilterBuilder` are exported from the package but are
-  currently non-functional.
+- **FIXED (2026-10-25): `filtering.py` now filters the real episode index.**
+  `EpisodeFilter`/`EpisodeFilterBuilder` accept a `RoboFrameDataset` (via its
+  real `episodes` index) or an explicit sequence of episode-metadata
+  mappings. They no longer call the nonexistent `num_episodes`/
+  `slice(episode_index=...)`/`to_pyarrow()` API. Unknown metadata fields now
+  raise `ValueError` instead of silently matching every episode. New
+  `tests/test_filtering.py` covers chaining, ranges, membership, reset, the
+  builder, dataset-with-`.episodes`, and the clear-error path.
 - **FIXED (2026-10-11): `masking.py` was dead code / two no-ops.** Every function called a
   nonexistent episode API, and `interpolate_missing`/`fill_with_zeros` literally returned
   their input unchanged with a "placeholder" comment — despite `docs/MISSING_FEATURES.md`
