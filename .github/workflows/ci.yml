@@ -122,7 +122,7 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Run cargo audit
-        # The pyo3 and lru advisories called out in ROADMAP_HONEST.md are fixed;
+        # The pyo3 and lru advisories called out in docs/internal/ROADMAP_HONEST.md are fixed;
         # the remaining `paste` finding is an allowed unmaintained warning, which
         # `cargo audit` does not fail on. Keep this blocking so new vulnerabilities
         # surface immediately.
