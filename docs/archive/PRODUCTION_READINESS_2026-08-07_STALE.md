@@ -233,5 +233,5 @@ PyRoboFrames v2.0.0 is production-ready and has been comprehensively validated f
 
 **Release Date:** August 7, 2026  
 **Version:** 2.0.0 (GA)  
-**Repository:** https://github.com/Mullassery/PyRoboFrames  
+**Repository:** ../PyRoboFrames  
 **License:** Proprietary (Free to use with explicit attribution)

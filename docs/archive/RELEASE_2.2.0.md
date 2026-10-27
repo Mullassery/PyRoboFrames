@@ -280,7 +280,7 @@ Complete documentation available:
 
 For issues or questions:
 - 📧 Email: mullassery@gmail.com
-- 🐛 Report bugs: https://github.com/Mullassery/PyRoboFrames/issues
+- 🐛 Report bugs: ../PyRoboFrames/issues
 - 📚 Documentation: https://github.com/Mullassery/PyRoboFrames#readme
 
 ---

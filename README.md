@@ -2,7 +2,7 @@
 
 **The fast path from robot recordings to training batches.** A Rust-backed dataloader for LeRobot v3.0 and friends — in-process video decode, zero-copy arrays, and one API for NumPy, PyTorch, JAX, and MLX.
 
-[![CI](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml/badge.svg)](https://github.com/Mullassery/PyRoboFrames/actions/workflows/ci.yml)
+[![CI](../PyRoboFrames/actions/workflows/ci.yml/badge.svg)](../PyRoboFrames/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pyroboframes)](https://pypi.org/project/pyroboframes/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
@@ -192,7 +192,7 @@ Full shipped/blocked/rejected detail: [`docs/internal/QUEUE_STATUS.md`](docs/int
 
 ## Contributing
 
-Bug reports and questions: [GitHub Issues](https://github.com/Mullassery/PyRoboFrames/issues). Releases are cut with `scripts/release.sh` (not `maturin build` directly).
+Bug reports and questions: [GitHub Issues](../PyRoboFrames/issues). Releases are cut with `scripts/release.sh` (not `maturin build` directly).
 
 ## Part of the robotics & autonomy family
 
@@ -200,14 +200,14 @@ PyRoboFrames is one of six complementary, composable tools in the Mullassery **r
 
 | Tool | Role | What it does |
 |---|---|---|
-| [PyRoboVision](https://github.com/Mullassery/PyRoboVision) | Perception | Multi-object tracker (Kalman filter + Hungarian algorithm) and trajectory predictor for robot perception. |
-| [PyTerrainMap](https://github.com/Mullassery/PyTerrainMap) | Mapping / SLAM | Fuses multi-robot terrain observations into a spatial-temporal store, with H3 spatial indexing and SLAM. |
-| [PyRoboSimulator](https://github.com/Mullassery/PyRoboSimulator) | Simulation | World simulator for autonomous systems, with a FastAPI backend. |
-| [PyRoboFrames](https://github.com/Mullassery/PyRoboFrames) | Learning data | **This project** — Rust-backed ML dataloader for robot-learning datasets (native LeRobot format, Apple Silicon hardware video decode). |
-| [PyRoboReplay](https://github.com/Mullassery/PyRoboReplay) | Mission forensics | Forensic-debugging and causal-analysis engine for autonomous robot mission replay. |
-| [SyncFleet](https://github.com/Mullassery/SyncFleet) | Fleet coordination | Rust + SQLite, peer-to-peer state sync for robotics fleets — mutual-TLS 1.3, version-vector replication, mDNS discovery; conflict resolution on the roadmap. |
+| [PyRoboVision](../PyRoboVision) | Perception | Multi-object tracker (Kalman filter + Hungarian algorithm) and trajectory predictor for robot perception. |
+| [PyTerrainMap](../PyTerrainMap) | Mapping / SLAM | Fuses multi-robot terrain observations into a spatial-temporal store, with H3 spatial indexing and SLAM. |
+| [PyRoboSimulator](../PyRoboSimulator) | Simulation | World simulator for autonomous systems, with a FastAPI backend. |
+| [PyRoboFrames](../PyRoboFrames) | Learning data | **This project** — Rust-backed ML dataloader for robot-learning datasets (native LeRobot format, Apple Silicon hardware video decode). |
+| [PyRoboReplay](../PyRoboReplay) | Mission forensics | Forensic-debugging and causal-analysis engine for autonomous robot mission replay. |
+| [SyncFleet](../SyncFleet) | Fleet coordination | Rust + SQLite, peer-to-peer state sync for robotics fleets — mutual-TLS 1.3, version-vector replication, mDNS discovery; conflict resolution on the roadmap. |
 
-Each works standalone, but they're complementary by design. [Browse all projects →](https://github.com/Mullassery?tab=repositories)
+Each works standalone, but they're complementary by design. [Browse all projects →](../Mullassery-profile)
 
 ## License
 

@@ -567,7 +567,7 @@ uv add pyroboframes==1.2.0
 
 For development:
 ```bash
-git clone https://github.com/Mullassery/PyRoboFrames.git
+git clone ../PyRoboFrames
 cd PyRoboFrames
 pip install -e ".[dev]"
 pytest tests/ -v

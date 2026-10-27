@@ -76,4 +76,4 @@ PyRoboFrames provides fast, zero-copy ML dataloader for robot learning with mult
 ## Community
 
 Contribute:
-https://github.com/Mullassery/PyRoboFrames/issues
+../PyRoboFrames/issues
