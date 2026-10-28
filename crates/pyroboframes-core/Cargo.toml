@@ -21,7 +21,7 @@ mcap = "0.25"
 memmap2 = "0.9"
 bytes = "1.6"
 prost-reflect = { version = "0.14", features = ["serde"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 mp4 = { version = "0.14.0", optional = true }
 
 # videotoolbox/apple-cf bind real macOS system frameworks and cannot build on
