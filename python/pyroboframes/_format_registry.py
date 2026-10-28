@@ -28,6 +28,8 @@ class DatasetFormat(Enum):
     RLDS = "rlds"
     HDF5 = "hdf5"
     NETCDF = "netcdf"
+    SIMREADY = "simready"
+    USD = "usd"
     CUSTOM = "custom"
 
 
@@ -162,6 +164,65 @@ class RLDSLoader(DatasetLoader):
             elif feature.HasField("bytes_list"):
                 parsed[key] = feature.bytes_list.value
         return parsed
+
+
+class SimReadyLoader(DatasetLoader):
+    """Loader for NVIDIA SimReady/USD format."""
+
+    def load_episode(self, episode_id: int) -> Dict[str, Any]:
+        """Load SimReady/USD episode."""
+        try:
+            from .simready import SimReadyDataset
+        except ImportError:
+            raise ImportError(
+                "SimReady/USD support requires OpenUSD (pxr). "
+                "Install: pip install usd-core"
+            )
+
+        ds = SimReadyDataset.from_path(self.path)
+        # For USD stages, typically treat as single episode or extract based on structure
+        return {
+            "episode_id": episode_id,
+            "path": str(self.path),
+            "simready_profile": ds._detected_profile,
+            "articulations": [],
+            "cameras": [],
+        }
+
+    def load_frame(self, episode_id: int, frame_idx: int) -> Dict[str, Any]:
+        """Load single frame from SimReady/USD."""
+        episode = self.load_episode(episode_id)
+        return episode
+
+    def get_episode_count(self) -> int:
+        """Count SimReady/USD episodes."""
+        try:
+            from .simready import SimReadyDataset
+            ds = SimReadyDataset.from_path(self.path)
+            return ds.episode_count()
+        except Exception:
+            return 1
+
+    def get_metadata(self) -> Dict[str, Any]:
+        """Get SimReady/USD metadata."""
+        try:
+            from .simready import SimReadyDataset
+            ds = SimReadyDataset.from_path(self.path)
+            info = ds.inspect()
+            return {
+                "format": "simready",
+                "path": str(self.path),
+                "description": "NVIDIA SimReady/USD format",
+                "simready_profile": info.get("simready_profile"),
+                "articulations": len(info.get("articulations", [])),
+                "cameras": len(info.get("cameras", [])),
+            }
+        except Exception:
+            return {
+                "format": "simready",
+                "path": str(self.path),
+                "description": "NVIDIA SimReady/USD format",
+            }
 
 
 class HDF5Loader(DatasetLoader):
@@ -302,6 +363,35 @@ class FormatRegistry:
                 description="Hierarchical HDF5 format",
             ),
         )
+
+        # NVIDIA SimReady/USD support
+        try:
+            self.register(
+                DatasetFormat.SIMREADY,
+                FormatSpec(
+                    name="SimReady",
+                    format_enum=DatasetFormat.SIMREADY,
+                    file_extensions=[".usd", ".usda", ".usdc", ".usdz"],
+                    loader_class=SimReadyLoader,
+                    supports_streaming=False,
+                    supports_random_access=True,
+                    description="NVIDIA SimReady/USD format for robotics simulation",
+                ),
+            )
+            self.register(
+                DatasetFormat.USD,
+                FormatSpec(
+                    name="USD",
+                    format_enum=DatasetFormat.USD,
+                    file_extensions=[".usd", ".usda", ".usdc", ".usdz"],
+                    loader_class=SimReadyLoader,
+                    supports_streaming=False,
+                    supports_random_access=True,
+                    description="OpenUSD format",
+                ),
+            )
+        except Exception:
+            pass  # Graceful degradation if not available
 
     def register(self, format_enum: DatasetFormat, spec: FormatSpec):
         """Register a format loader."""

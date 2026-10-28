@@ -113,6 +113,17 @@ from .gr00t import (
     validate_gr00t_dataset,
 )
 
+try:
+    from .simready import (
+        SimReadyDataset,
+        SimReadyConversionReport,
+        convert_simready,
+    )
+except ImportError:
+    SimReadyDataset = None  # type: ignore
+    SimReadyConversionReport = None  # type: ignore
+    convert_simready = None  # type: ignore
+
 
 # Public aliases for depth and calibration classes
 PointCloud = PointCloudPy
@@ -229,6 +240,10 @@ __all__ = [
     "validate_gr00t_dataset",
     "get_registry",
     "load_dataset",
+    # SimReady/USD support (NVIDIA Omniverse)
+    "SimReadyDataset",
+    "SimReadyConversionReport",
+    "convert_simready",
 ]
 
 __version__: str = _core.__version__
