@@ -93,7 +93,7 @@ omniverse = ["usd-core>=23.11"]
 dev = [
     "pytest>=9.0.3,<10",
     "numpy>=1.24",
-    "maturin==1.7",
+    "maturin==1.15.0",
     "pandas",
     "scipy",
     "scikit-learn",
